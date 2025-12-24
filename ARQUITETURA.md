@@ -1,0 +1,705 @@
+# Arquitetura de IA - Sistema NEWAVE
+
+##  Índice
+
+1. [Arquitetura do Sistema](#arquitetura-do-sistema)
+2. [Semantic Matching](#semantic-matching)
+3. [Tool Router](#tool-router)
+
+---
+
+## Arquitetura do Sistema
+
+### Fluxo Principal - Dois Caminhos
+
+```
+                    ┌──────────────────────────────┐
+                    │      QUERY DO USUÁRIO        │
+                    │   "Cargas mensais Sudeste"   │
+                    └──────────────┬───────────────┘
+                                   │
+                                   ▼
+                    ┌──────────────────────────────┐
+                    │       TOOL ROUTER            │
+                    │    (Entry Point Otimizado)   │
+                    │                              │
+                    │  ┌────────────────────────┐  │
+                    │  │  Semantic Matcher      │  │
+                    │  │  (Encontra tool?)      │  │
+                    │  └────────────────────────┘  │
+                    └──────────────┬───────────────┘
+                                   │
+                    ┌──────────────┴──────────────┐
+                    │                             │
+          ┌─────────▼──────────┐      ┌──────────▼──────────┐
+          │  TOOL ENCONTRADA   │      │  TOOL NÃO ENCONTRADA│
+          │   (Score >= 0.4)   │      │    (Score < 0.4)    │
+          └─────────┬──────────┘      └──────────┬──────────┘
+                    │                             │
+                    │                             ▼
+                    │                  ┌──────────────────────┐
+                    │                  │  RAG Simplificado    │
+                    │                  │  (abstract.md)       │
+                    │                  └──────────┬───────────┘
+                    │                             │
+                    │                             ▼
+                    │                  ┌──────────────────────┐
+                    │                  │       CODER          │
+                    │                  │  (Gera código Python)│
+                    │                  └──────────┬───────────┘
+                    │                             │
+                    │                             ▼
+                    │                  ┌──────────────────────┐
+                    │                  │      EXECUTOR        │
+                    │                  │ (Executa o código)   │
+                    │                  └──────────┬───────────┘
+                    │                             │
+                    └─────────────┬───────────────┘
+                                  │
+                                  ▼
+                    ┌──────────────────────────────┐
+                    │      INTERPRETER             │
+                    │   (Formata resposta final)   │
+                    └──────────────────────────────┘
+```
+
+### Decisão no Tool Router
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    DECISÃO DO TOOL ROUTER                    │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  Semantic Matcher calcula score de similaridade            │
+│                                                             │
+│  ┌────────────────────────────────────────────────────┐    │
+│  │  SE score >= 0.4:                                  │    │
+│  │  ✅ Executa Tool pré-programada                    │    │
+│  │  → Interpreter (resposta rápida: ~2-3s)            │    │
+│  └────────────────────────────────────────────────────┘    │
+│                                                             │
+│  ┌────────────────────────────────────────────────────┐    │
+│  │  SE score < 0.4:                                   │    │
+│  │  ❌ Nenhuma Tool adequada                          │    │
+│  │  → RAG Simplificado → Coder → Executor             │    │
+│  │  → Interpreter (resposta mais lenta: ~10-15s)      │    │
+│  └────────────────────────────────────────────────────┘    │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Tools Disponíveis - Overview
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                    TOOLS PRÉ-PROGRAMADAS                     │
+│                    (8 Tools Disponíveis)                     │
+├──────────────────────────────────────────────────────────────┤
+│                                                              │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐     │
+│  │CargaMensalTool│  │  CadicTool   │  │ClastValoresTool│    │
+│  │  SISTEMA.DAT  │  │ C_ADIC.DAT   │  │  CLAST.DAT   │     │
+│  │ Cargas mensais│  │Cargas extras │  │ Custos térmicos│    │
+│  └──────────────┘  └──────────────┘  └──────────────┘     │
+│                                                              │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐     │
+│  │  VazoesTool  │  │ExptOperacaoTool│ │ModifOperacaoTool│  │
+│  │ VAZOES.DAT   │  │  EXPT.DAT     │  │  MODIF.DAT   │     │
+│  │ Vazões hist. │  │  Expansões    │  │ Modif. hídricas│   │
+│  └──────────────┘  └──────────────┘  └──────────────┘     │
+│                                                              │
+│  ┌──────────────┐  ┌──────────────┐                        │
+│  │  AgrintTool  │  │LimitesIntercambioTool│                 │
+│  │ AGRINT.DAT   │  │  SISTEMA.DAT  │                        │
+│  │ Agrupamentos │  │  Intercâmbios │                        │
+│  └──────────────┘  └──────────────┘                        │
+│                                                              │
+└──────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Semantic Matching
+
+### Como Funciona - Visão Geral
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│              PROCESSO DE SEMANTIC MATCHING                   │
+├──────────────────────────────────────────────────────────────┤
+│                                                              │
+│  1. QUERY EXPANSION                                          │
+│     ┌────────────────────────────────────────────────┐      │
+│     │ Query: "cargas mensais"                        │      │
+│     │                                                 │      │
+│     │ Expande para:                                  │      │
+│     │ "cargas mensais demandas mensais               │      │
+│     │  consumo mensal carga mensal demanda mensal"   │      │
+│     └────────────────────────────────────────────────┘      │
+│                           │                                   │
+│                           ▼                                   │
+│  2. GERAÇÃO DE EMBEDDINGS                                   │
+│     ┌────────────────────────────────────────────────┐      │
+│     │ Query Embedding:                               │      │
+│     │ [0.123, -0.456, 0.789, ..., 0.234]            │      │
+│     │ (vetor de ~3072 dimensões)                     │      │
+│     │                                                 │      │
+│     │ Tool Embeddings (8 tools):                     │      │
+│     │ • CargaMensalTool: [0.098, -0.412, ...]       │      │
+│     │ • CadicTool: [-0.234, 0.567, ...]             │      │
+│     │ • ClastValoresTool: [0.345, -0.123, ...]      │      │
+│     │ • ... (5 mais)                                 │      │
+│     └────────────────────────────────────────────────┘      │
+│                           │                                   │
+│                           ▼                                   │
+│  3. CÁLCULO DE SIMILARIDADE (Cosine Similarity)             │
+│     ┌────────────────────────────────────────────────┐      │
+│     │ Para cada tool:                                │      │
+│     │                                                 │      │
+│     │ similarity = (query_vec · tool_vec)            │      │
+│     │            / (||query_vec|| × ||tool_vec||)    │      │
+│     │                                                 │      │
+│     │ Resultado: 0.0 (sem relação) até 1.0 (igual)  │      │
+│     └────────────────────────────────────────────────┘      │
+│                           │                                   │
+│                           ▼                                   │
+│  4. RANKING E DECISÃO                                       │
+│     ┌────────────────────────────────────────────────┐      │
+│     │ Ranking ordenado por score:                    │      │
+│     │                                                 │      │
+│     │ 🏆 1. CargaMensalTool: 0.7515 ✅              │      │
+│     │    2. CadicTool: 0.4521                        │      │
+│     │    3. ClastValoresTool: 0.3106                 │      │
+│     │    ...                                         │      │
+│     │                                                 │      │
+│     │ Decisão:                                        │      │
+│     │ • Melhor score: 0.7515                         │      │
+│     │ • Score mínimo: 0.4                            │      │
+│     │ • 0.7515 >= 0.4 → ✅ EXECUTA TOOL              │      │
+│     └────────────────────────────────────────────────┘      │
+│                                                              │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### Detalhamento - Passo a Passo
+
+#### 1️⃣ Query Expansion
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                    QUERY EXPANSION                            │
+├──────────────────────────────────────────────────────────────┤
+│                                                              │
+│  Query Original:                                             │
+│  "quais são as cargas mensais por submercado"               │
+│                                                              │
+│  ┌──────────────────────────────────────────────────┐       │
+│  │  Dicionário de Expansões (sinônimos)             │       │
+│  ├──────────────────────────────────────────────────┤       │
+│  │  "cargas mensais" → "demandas mensais"           │       │
+│  │                  → "consumo mensal"              │       │
+│  │                  → "carga mensal"                │       │
+│  │  "submercado" → "subsistema"                     │       │
+│  │             → "região"                           │       │
+│  │  "quais são" → "mostre"                          │       │
+│  │            → "me dê"                             │       │
+│  └──────────────────────────────────────────────────┘       │
+│                           │                                   │
+│                           ▼                                   │
+│  Query Expandida:                                           │
+│  "quais são as cargas mensais por submercado                │
+│   demandas mensais consumo mensal carga mensal               │
+│   subsistema região mostre me dê"                           │
+│                                                              │
+└──────────────────────────────────────────────────────────────┘
+```
+
+#### 2️⃣ Geração de Embeddings
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                   GERAÇÃO DE EMBEDDINGS                       │
+├──────────────────────────────────────────────────────────────┤
+│                                                              │
+│  Modelo: OpenAI text-embedding-3-large                       │
+│  Dimensão: ~3072 dimensões                                   │
+│                                                              │
+│  ┌──────────────────────────────────────────────┐           │
+│  │  QUERY EMBEDDING                              │           │
+│  │  ┌────────────────────────────────────┐      │           │
+│  │  │ [0.123, -0.456, 0.789, ..., 0.234] │      │           │
+│  │  │ (vetor de 3072 números)            │      │           │
+│  │  └────────────────────────────────────┘      │           │
+│  │  Gerado uma vez por query                    │           │
+│  └──────────────────────────────────────────────┘           │
+│                                                              │
+│  ┌──────────────────────────────────────────────┐           │
+│  │  TOOL EMBEDDINGS (Cache)                     │           │
+│  │  ┌────────────────────────────────────┐      │           │
+│  │  │ CargaMensalTool:                   │      │           │
+│  │  │ [0.098, -0.412, 0.567, ..., 0.123] │      │           │
+│  │  │                                     │      │           │
+│  │  │ CadicTool:                         │      │           │
+│  │  │ [-0.234, 0.567, -0.123, ..., 0.456]│      │           │
+│  │  │                                     │      │           │
+│  │  │ ... (6 mais)                       │      │           │
+│  │  │                                     │      │           │
+│  │  │ ✅ Cacheados (hash da descrição)   │      │           │
+│  │  │ ✅ Regenerados apenas se mudar     │      │           │
+│  │  └────────────────────────────────────┘      │           │
+│  └──────────────────────────────────────────────┘           │
+│                                                              │
+└──────────────────────────────────────────────────────────────┘
+```
+
+#### 3️⃣ Cálculo de Similaridade
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│              CÁLCULO DE SIMILARIDADE (COSINE)                │
+├──────────────────────────────────────────────────────────────┤
+│                                                              │
+│  Fórmula:                                                    │
+│                                                              │
+│  ┌────────────────────────────────────────┐                 │
+│  │  similarity = (A · B) / (||A|| × ||B||)│                 │
+│  │                                         │                 │
+│  │  Onde:                                   │                 │
+│  │  • A = query_embedding                  │                 │
+│  │  • B = tool_embedding                   │                 │
+│  │  • · = produto escalar                  │                 │
+│  │  • || || = norma (magnitude)            │                 │
+│  └────────────────────────────────────────┘                 │
+│                                                              │
+│  Resultado:                                                  │
+│                                                              │
+│  ┌────────────────────────────────────────┐                 │
+│  │  Score entre 0.0 e 1.0                 │                 │
+│  │                                         │                 │
+│  │  • 0.0 = sem similaridade              │                 │
+│  │  • 0.5 = similaridade moderada         │                 │
+│  │  • 1.0 = idêntico                      │                 │
+│  └────────────────────────────────────────┘                 │
+│                                                              │
+│  Exemplo:                                                    │
+│                                                              │
+│  Query: "cargas mensais"                                    │
+│  ┌────────────────────────────────────────┐                 │
+│  │ CargaMensalTool:    0.7515  ✅         │                 │
+│  │ CadicTool:          0.4521             │                 │
+│  │ VazoesTool:         0.2891             │                 │
+│  │ ClastValoresTool:   0.3106             │                 │
+│  └────────────────────────────────────────┘                 │
+│                                                              │
+└──────────────────────────────────────────────────────────────┘
+```
+
+#### 4️⃣ Decisão Final
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                    DECISÃO FINAL                              │
+├──────────────────────────────────────────────────────────────┤
+│                                                              │
+│  ┌──────────────────────────────────────────────┐           │
+│  │  RANKING COMPLETO (ordenado por score)       │           │
+│  ├──────────────────────────────────────────────┤           │
+│  │                                               │           │
+│  │  🏆 1. CargaMensalTool:     0.7515 ✅        │           │
+│  │     2. CadicTool:            0.4521          │           │
+│  │     3. ClastValoresTool:     0.3106          │           │
+│  │     4. VazoesTool:           0.2891          │           │
+│  │     5. AgrintTool:           0.2678          │           │
+│  │     6. ExptOperacaoTool:     0.2456          │           │
+│  │     7. ModifOperacaoTool:    0.2234          │           │
+│  │     8. LimitesIntercambioTool: 0.2012        │           │
+│  │                                               │           │
+│  └──────────────────────────────────────────────┘           │
+│                           │                                   │
+│                           ▼                                   │
+│  ┌──────────────────────────────────────────────┐           │
+│  │  REGRA DE DECISÃO                            │           │
+│  ├──────────────────────────────────────────────┤           │
+│  │                                               │           │
+│  │  SEMANTIC_MATCH_MIN_SCORE = 0.4              │           │
+│  │                                               │           │
+│  │  ┌────────────────────────────────────┐      │           │
+│  │  │  IF melhor_score >= 0.4:           │      │           │
+│  │  │     ✅ EXECUTA TOOL                │      │           │
+│  │  │     → tool_route = True            │      │           │
+│  │  │                                     │      │           │
+│  │  │  ELSE:                             │      │           │
+│  │  │     ❌ NÃO EXECUTA                 │      │           │
+│  │  │     → tool_route = False           │      │           │
+│  │  │     → Continua para Coder          │      │           │
+│  │  └────────────────────────────────────┘      │           │
+│  │                                               │           │
+│  │  Neste exemplo:                              │           │
+│  │  • Melhor score: 0.7515                      │           │
+│  │  • Score mínimo: 0.4                         │           │
+│  │  • 0.7515 >= 0.4 → ✅ EXECUTA CargaMensalTool│           │
+│  │                                               │           │
+│  └──────────────────────────────────────────────┘           │
+│                                                              │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### Hybrid Matching (Fallback)
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│              HYBRID MATCHING (FALLBACK)                      │
+├──────────────────────────────────────────────────────────────┤
+│                                                              │
+│  Quando Semantic Matching falha (score < 0.4):              │
+│                                                              │
+│  ┌──────────────────────────────────────────────┐           │
+│  │  1. Semantic Matching (score < 0.4)          │           │
+│  │     ❌ Nenhuma tool acima do threshold       │           │
+│  └──────────────────────┬───────────────────────┘           │
+│                         │                                    │
+│                         ▼                                    │
+│  ┌──────────────────────────────────────────────┐           │
+│  │  2. Keyword Matching (fallback)              │           │
+│  │     ┌────────────────────────────────────┐   │           │
+│  │     │ Para cada tool:                   │   │           │
+│  │     │   if tool.can_handle(query):      │   │           │
+│  │     │      ✅ Executa tool              │   │           │
+│  │     │      break                        │   │           │
+│  │     └────────────────────────────────────┘   │           │
+│  │                                               │           │
+│  │  Exemplo:                                    │           │
+│  │  Query: "cargas mensais"                    │           │
+│  │  • CargaMensalTool.can_handle() → True      │           │
+│  │  • ✅ Executa CargaMensalTool               │           │
+│  └──────────────────────────────────────────────┘           │
+│                                                              │
+│  ⚙️ Configuração:                                           │
+│  USE_HYBRID_MATCHING = True                                 │
+│                                                              │
+└──────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Tool Router
+
+### Estrutura e Fluxo
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                    TOOL ROUTER NODE                          │
+├──────────────────────────────────────────────────────────────┤
+│                                                              │
+│  ┌──────────────────────────────────────────────┐           │
+│  │  ENTRADA                                      │           │
+│  ├──────────────────────────────────────────────┤           │
+│  │  • query: str                                │           │
+│  │  • deck_path: str                            │           │
+│  └──────────────────────────────────────────────┘           │
+│                           │                                   │
+│                           ▼                                   │
+│  ┌──────────────────────────────────────────────┐           │
+│  │  ETAPA 1: Obter Tools Disponíveis            │           │
+│  ├──────────────────────────────────────────────┤           │
+│  │  tools = get_available_tools(deck_path)      │           │
+│  │  → Retorna 8 instâncias de tools             │           │
+│  └──────────────────────────────────────────────┘           │
+│                           │                                   │
+│                           ▼                                   │
+│  ┌──────────────────────────────────────────────┐           │
+│  │  ETAPA 2: Semantic Matching                  │           │
+│  ├──────────────────────────────────────────────┤           │
+│  │  result = find_best_tool_semantic(           │           │
+│  │      query, tools, threshold=0.55            │           │
+│  │  )                                           │           │
+│  │                                               │           │
+│  │  ┌────────────────────────────────────┐      │           │
+│  │  │  SE result != None:                │      │           │
+│  │  │     tool, score = result           │      │           │
+│  │  │     SE score >= 0.4:               │      │           │
+│  │  │        → EXECUTA TOOL              │      │           │
+│  │  │        → tool_route = True         │      │           │
+│  │  │     SENÃO:                         │      │           │
+│  │  │        → Continua para passo 3     │      │           │
+│  │  │  SENÃO:                            │      │           │
+│  │  │     → Continua para passo 3        │      │           │
+│  │  └────────────────────────────────────┘      │           │
+│  └──────────────────────────────────────────────┘           │
+│                           │                                   │
+│                           ▼                                   │
+│  ┌──────────────────────────────────────────────┐           │
+│  │  ETAPA 3: Keyword Matching (Fallback)        │           │
+│  ├──────────────────────────────────────────────┤           │
+│  │  SE USE_HYBRID_MATCHING == True:             │           │
+│  │     Para cada tool:                          │           │
+│  │       SE tool.can_handle(query):             │           │
+│  │          → EXECUTA TOOL                      │           │
+│  │          → tool_route = True                 │           │
+│  │          break                               │           │
+│  └──────────────────────────────────────────────┘           │
+│                           │                                   │
+│                           ▼                                   │
+│  ┌──────────────────────────────────────────────┐           │
+│  │  SAÍDA                                       │           │
+│  ├──────────────────────────────────────────────┤           │
+│  │  SE tool executada:                          │           │
+│  │  {                                           │           │
+│  │    "tool_route": True,                       │           │
+│  │    "tool_result": {...},                     │           │
+│  │    "tool_used": "CargaMensalTool"            │           │
+│  │  }                                           │           │
+│  │                                               │           │
+│  │  SENÃO:                                      │           │
+│  │  {                                           │           │
+│  │    "tool_route": False                       │           │
+│  │  }                                           │           │
+│  └──────────────────────────────────────────────┘           │
+│                                                              │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### Tools Disponíveis - Detalhamento
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                    TOOLS PRÉ-PROGRAMADAS                            │
+│                    (8 Tools no Total)                               │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  ┌──────────────────────────────────────────────────────────────┐  │
+│  │  1. CargaMensalTool                                          │  │
+│  ├──────────────────────────────────────────────────────────────┤  │
+│  │  Arquivo:     SISTEMA.DAT                                    │  │
+│  │  Propriedade: mercado_energia                                │  │
+│  │  Função:      Cargas mensais por submercado                  │  │
+│  │  Queries:     "cargas mensais", "demanda mensal"             │  │
+│  └──────────────────────────────────────────────────────────────┘  │
+│                                                                     │
+│  ┌──────────────────────────────────────────────────────────────┐  │
+│  │  2. CadicTool                                                │  │
+│  ├──────────────────────────────────────────────────────────────┤  │
+│  │  Arquivo:     C_ADIC.DAT                                     │  │
+│  │  Propriedade: cargas                                         │  │
+│  │  Função:      Cargas/ofertas adicionais                      │  │
+│  │  Queries:     "cargas adicionais", "oferta adicional"        │  │
+│  └──────────────────────────────────────────────────────────────┘  │
+│                                                                     │
+│  ┌──────────────────────────────────────────────────────────────┐  │
+│  │  3. ClastValoresTool                                         │  │
+│  ├──────────────────────────────────────────────────────────────┤  │
+│  │  Arquivo:     CLAST.DAT                                      │  │
+│  │  Propriedade: valores                                        │  │
+│  │  Função:      Custos de classes térmicas                     │  │
+│  │  Queries:     "custos térmicos", "CVU", "CLAST"             │  │
+│  └──────────────────────────────────────────────────────────────┘  │
+│                                                                     │
+│  ┌──────────────────────────────────────────────────────────────┐  │
+│  │  4. VazoesTool                                               │  │
+│  ├──────────────────────────────────────────────────────────────┤  │
+│  │  Arquivo:     VAZOES.DAT                                     │  │
+│  │  Propriedade: vazoes                                         │  │
+│  │  Função:      Vazões históricas de postos                    │  │
+│  │  Queries:     "vazões históricas", "afluências"              │  │
+│  └──────────────────────────────────────────────────────────────┘  │
+│                                                                     │
+│  ┌──────────────────────────────────────────────────────────────┐  │
+│  │  5. ExptOperacaoTool                                         │  │
+│  ├──────────────────────────────────────────────────────────────┤  │
+│  │  Arquivo:     EXPT.DAT                                       │  │
+│  │  Propriedade: expansoes                                      │  │
+│  │  Função:      Modificações/expansões térmicas                │  │
+│  │  Queries:     "modificações térmicas", "POTEF"               │  │
+│  └──────────────────────────────────────────────────────────────┘  │
+│                                                                     │
+│  ┌──────────────────────────────────────────────────────────────┐  │
+│  │  6. ModifOperacaoTool                                        │  │
+│  ├──────────────────────────────────────────────────────────────┤  │
+│  │  Arquivo:     MODIF.DAT                                      │  │
+│  │  Propriedade: modificacoes                                   │  │
+│  │  Função:      Modificações operacionais hídricas             │  │
+│  │  Queries:     "modificações hídricas", "volume mínimo"       │  │
+│  └──────────────────────────────────────────────────────────────┘  │
+│                                                                     │
+│  ┌──────────────────────────────────────────────────────────────┐  │
+│  │  7. AgrintTool                                               │  │
+│  ├──────────────────────────────────────────────────────────────┤  │
+│  │  Arquivo:     AGRINT.DAT                                     │  │
+│  │  Propriedade: agrupamentos                                   │  │
+│  │  Função:      Agrupamentos de intercâmbio                    │  │
+│  │  Queries:     "agrupamentos", "AGRINT"                       │  │
+│  └──────────────────────────────────────────────────────────────┘  │
+│                                                                     │
+│  ┌──────────────────────────────────────────────────────────────┐  │
+│  │  8. LimitesIntercambioTool                                   │  │
+│  ├──────────────────────────────────────────────────────────────┤  │
+│  │  Arquivo:     SISTEMA.DAT                                    │  │
+│  │  Propriedade: intercambios                                   │  │
+│  │  Função:      Limites de intercâmbio entre subsistemas       │  │
+│  │  Queries:     "limites intercâmbio", "intercâmbio entre"     │  │
+│  └──────────────────────────────────────────────────────────────┘  │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Interface de uma Tool
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                    ESTRUTURA DE UMA TOOL                      │
+├──────────────────────────────────────────────────────────────┤
+│                                                              │
+│  class NEWAVETool(ABC):                                     │
+│                                                              │
+│      def get_name(self) -> str:                             │
+│          """Retorna nome da tool"""                         │
+│          return "CargaMensalTool"                           │
+│                                                              │
+│      def can_handle(self, query: str) -> bool:              │
+│          """Verifica se pode responder (keywords)"""        │
+│          keywords = ["carga mensal", "demanda mensal"]      │
+│          return any(kw in query.lower() for kw in keywords) │
+│                                                              │
+│      def execute(self, query: str) -> dict:                 │
+│          """Executa e retorna resultado"""                  │
+│          # 1. Ler arquivo com inewave                       │
+│          # 2. Filtrar dados conforme query                  │
+│          # 3. Processar e formatar                          │
+│          # 4. Retornar dict com dados                       │
+│          return {                                           │
+│              "success": True,                               │
+│              "data": [...],                                 │
+│              "summary": {...}                               │
+│          }                                                   │
+│                                                              │
+│      def get_description(self) -> str:                      │
+│          """Retorna descrição para semantic matching"""     │
+│          return """                                         │
+│          Carga mensal por submercado...                     │
+│          Queries: "cargas mensais", ...                     │
+│          """                                                │
+│                                                              │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### Fluxo de Execução de uma Tool
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│          EXECUÇÃO DE UMA TOOL PRÉ-PROGRAMADA                 │
+├──────────────────────────────────────────────────────────────┤
+│                                                              │
+│  ┌──────────────────────────────────────────────┐           │
+│  │  1. TOOL ROUTER executa tool                 │           │
+│  │     tool.execute(query)                      │           │
+│  └───────────────────┬──────────────────────────┘           │
+│                      │                                        │
+│                      ▼                                        │
+│  ┌──────────────────────────────────────────────┐           │
+│  │  2. TOOL lê arquivo NEWAVE                   │           │
+│  │     arquivo = Classe.read(caminho)           │           │
+│  │     df = arquivo.propriedade                 │           │
+│  └───────────────────┬──────────────────────────┘           │
+│                      │                                        │
+│                      ▼                                        │
+│  ┌──────────────────────────────────────────────┐           │
+│  │  3. TOOL filtra dados conforme query         │           │
+│  │     • Extrai subsistema (se mencionado)      │           │
+│  │     • Extrai período (se mencionado)         │           │
+│  │     • Filtra DataFrame                       │           │
+│  └───────────────────┬──────────────────────────┘           │
+│                      │                                        │
+│                      ▼                                        │
+│  ┌──────────────────────────────────────────────┐           │
+│  │  4. TOOL processa e formata                  │           │
+│  │     • Calcula estatísticas                   │           │
+│  │     • Agrupa dados                           │           │
+│  │     • Formata números                        │           │
+│  └───────────────────┬──────────────────────────┘           │
+│                      │                                        │
+│                      ▼                                        │
+│  ┌──────────────────────────────────────────────┐           │
+│  │  5. TOOL retorna resultado                   │           │
+│  │     {                                         │           │
+│  │       "success": True,                       │           │
+│  │       "data": [...],                         │           │
+│  │       "summary": {...},                      │           │
+│  │       "filtros_aplicados": {...}             │           │
+│  │     }                                         │           │
+│  └───────────────────┬──────────────────────────┘           │
+│                      │                                        │
+│                      ▼                                        │
+│  ┌──────────────────────────────────────────────┐           │
+│  │  6. TOOL ROUTER retorna para INTERPRETER     │           │
+│  │     tool_route = True                        │           │
+│  │     tool_result = {...}                      │           │
+│  └──────────────────────────────────────────────┘           │
+│                                                              │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### Comparação: Tool Route vs Coder Route
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│            COMPARAÇÃO: TOOL ROUTE vs CODER ROUTE                    │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  ┌──────────────────────────┐    ┌──────────────────────────┐     │
+│  │    TOOL ROUTE            │    │    CODER ROUTE           │     │
+│  ├──────────────────────────┤    ├──────────────────────────┤     │
+│  │                          │    │                          │     │
+│  │  ✅ Quando:              │    │  ✅ Quando:              │     │
+│  │  Score >= 0.4            │    │  Score < 0.4            │     │
+│  │                          │    │                          │     │
+│  │  ⚡ Velocidade:          │    │  ⏱️  Velocidade:         │     │
+│  │  ~2-3 segundos           │    │  ~10-15 segundos         │     │
+│  │                          │    │                          │     │
+│  │  💰 Custo:               │    │  💰 Custo:               │     │
+│  │  Baixo (sem LLM)         │    │  Médio (LLM + embeds)    │     │
+│  │                          │    │                          │     │
+│  │  🎯 Precisão:            │    │  🎯 Precisão:            │     │
+│  │  Alta (pré-programada)   │    │  Variável (código gerado)│     │
+│  │                          │    │                          │     │
+│  │  📊 Cobertura:           │    │  📊 Cobertura:           │     │
+│  │  8 casos específicos     │    │  Queries genéricas       │     │
+│  │                          │    │                          │     │
+│  └──────────────────────────┘    └──────────────────────────┘     │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Resumo Visual
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                    ARQUITETURA COMPLETA                          │
+├──────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  QUERY → TOOL ROUTER → [Semantic Matcher]                       │
+│                           │                                      │
+│              ┌────────────┴────────────┐                        │
+│              │                         │                        │
+│        TOOL FOUND              NO TOOL FOUND                    │
+│        (Score >= 0.4)         (Score < 0.4)                    │
+│              │                         │                        │
+│              │                         ▼                        │
+│              │              RAG → CODER → EXECUTOR              │
+│              │                         │                        │
+│              └─────────────┬───────────┘                        │
+│                            │                                    │
+│                            ▼                                    │
+│                      INTERPRETER                                 │
+│                         │                                        │
+│                         ▼                                        │
+│                    RESPOSTA FINAL                                │
+│                                                                  │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+**Última atualização**: 2024  
+**Versão**: 3.0 - Foco Visual
