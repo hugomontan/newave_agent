@@ -111,43 +111,85 @@ def tool_router_node(state: AgentState) -> dict:
     
     # Detectar se a query veio de uma escolha de disambiguation
     # Queries expandidas contêm " - " (espaço, hífen, espaço) separando query original do contexto
+    # OU podem conter diretamente o nome da tool (ex: "TermCadastroTool")
     is_from_disambiguation = " - " in query
-    if is_from_disambiguation:
-        print("[TOOL ROUTER] 🔍 Query detectada como escolha de disambiguation (contém ' - ')")
-        print("[TOOL ROUTER]   → Identificando tool diretamente sem semantic matching")
+    
+    # Verificar se a query contém diretamente o nome de uma tool
+    # Isso pode acontecer se o LLM retornar apenas o nome da tool na disambiguation
+    tool_names = [t.get_name() for t in tools]
+    direct_tool_match = None
+    for tool_name in tool_names:
+        if tool_name.lower() in query.lower():
+            # Verificar se é uma correspondência exata ou contém o nome da tool
+            query_words = query.lower().split()
+            if tool_name.lower() in query_words or tool_name.lower() == query.lower().strip():
+                direct_tool_match = tool_name
+                break
+    
+    if is_from_disambiguation or direct_tool_match:
+        if is_from_disambiguation:
+            print("[TOOL ROUTER] 🔍 Query detectada como escolha de disambiguation (contém ' - ')")
+            print("[TOOL ROUTER]   → Identificando tool diretamente sem semantic matching")
+            
+            # Extrair contexto após o " - "
+            parts = query.split(" - ", 1)
+            original_query = parts[0].strip()
+            context = parts[1].strip() if len(parts) > 1 else ""  # Não fazer lower aqui, fazer na função
+            
+            print(f"[TOOL ROUTER]   Query completa: {query}")
+            print(f"[TOOL ROUTER]   Query original: {original_query}")
+            print(f"[TOOL ROUTER]   Contexto escolhido: '{context}'")
+            
+            if not context:
+                print(f"[TOOL ROUTER] ⚠️ Contexto vazio após ' - ', continuando com fluxo normal")
+            else:
+                # Identificar tool diretamente pelo contexto
+                print(f"[TOOL ROUTER]   Buscando tool para contexto: '{context}'")
+                print(f"[TOOL ROUTER]   Tools disponíveis: {[t.get_name() for t in tools]}")
+                selected_tool = _identify_tool_from_context(context, tools)
+                
+                if selected_tool:
+                    tool_name = selected_tool.get_name()
+                    print(f"[TOOL ROUTER] ✅ Tool identificada diretamente: {tool_name}")
+                    print(f"[TOOL ROUTER]   → Executando tool sem semantic matching")
+                    print(f"[TOOL ROUTER]   Query que será usada na tool: {original_query}")
+                    # Usar query original (sem o contexto) para executar a tool
+                    result = _execute_tool(selected_tool, tool_name, original_query)
+                    # Marcar que veio de disambiguation para evitar mensagem "Processamento concluído"
+                    result["from_disambiguation"] = True
+                    print(f"[TOOL ROUTER] ✅ Resultado da tool retornado: success={result.get('tool_result', {}).get('success', False)}")
+                    return result
+                else:
+                    print(f"[TOOL ROUTER] ⚠️ Não foi possível identificar tool pelo contexto")
+                    print(f"[TOOL ROUTER]   → Continuando com fluxo normal (semantic matching)")
+                    print(f"[TOOL ROUTER]   ⚠️ ATENÇÃO: Tool não encontrada, pode não retornar resultado!")
         
-        # Extrair contexto após o " - "
-        parts = query.split(" - ", 1)
-        original_query = parts[0].strip()
-        context = parts[1].strip() if len(parts) > 1 else ""  # Não fazer lower aqui, fazer na função
-        
-        print(f"[TOOL ROUTER]   Query completa: {query}")
-        print(f"[TOOL ROUTER]   Query original: {original_query}")
-        print(f"[TOOL ROUTER]   Contexto escolhido: '{context}'")
-        
-        if not context:
-            print(f"[TOOL ROUTER] ⚠️ Contexto vazio após ' - ', continuando com fluxo normal")
-        else:
-            # Identificar tool diretamente pelo contexto
-            print(f"[TOOL ROUTER]   Buscando tool para contexto: '{context}'")
-            print(f"[TOOL ROUTER]   Tools disponíveis: {[t.get_name() for t in tools]}")
-            selected_tool = _identify_tool_from_context(context, tools)
+        elif direct_tool_match:
+            print(f"[TOOL ROUTER] 🔍 Query detectada como escolha de disambiguation (contém nome da tool: {direct_tool_match})")
+            print(f"[TOOL ROUTER]   → Executando tool diretamente sem semantic matching")
+            
+            # Encontrar a tool correspondente
+            selected_tool = None
+            for tool in tools:
+                if tool.get_name() == direct_tool_match:
+                    selected_tool = tool
+                    break
             
             if selected_tool:
-                tool_name = selected_tool.get_name()
-                print(f"[TOOL ROUTER] ✅ Tool identificada diretamente: {tool_name}")
-                print(f"[TOOL ROUTER]   → Executando tool sem semantic matching")
+                # Tentar extrair a query original (remover o nome da tool)
+                original_query = query.replace(direct_tool_match, "").strip()
+                # Se não sobrou nada, usar a query completa
+                if not original_query:
+                    original_query = query
+                
+                print(f"[TOOL ROUTER] ✅ Tool identificada diretamente: {direct_tool_match}")
                 print(f"[TOOL ROUTER]   Query que será usada na tool: {original_query}")
-                # Usar query original (sem o contexto) para executar a tool
-                result = _execute_tool(selected_tool, tool_name, original_query)
-                # Marcar que veio de disambiguation para evitar mensagem "Processamento concluído"
+                result = _execute_tool(selected_tool, direct_tool_match, original_query)
                 result["from_disambiguation"] = True
                 print(f"[TOOL ROUTER] ✅ Resultado da tool retornado: success={result.get('tool_result', {}).get('success', False)}")
                 return result
             else:
-                print(f"[TOOL ROUTER] ⚠️ Não foi possível identificar tool pelo contexto")
-                print(f"[TOOL ROUTER]   → Continuando com fluxo normal (semantic matching)")
-                print(f"[TOOL ROUTER]   ⚠️ ATENÇÃO: Tool não encontrada, pode não retornar resultado!")
+                print(f"[TOOL ROUTER] ⚠️ Tool {direct_tool_match} não encontrada na lista de tools")
     
     # 0. Verificar palavras-chave prioritárias ANTES do semantic matching
     # Isso garante que tools com palavras-chave prioritárias sejam executadas diretamente
@@ -477,6 +519,7 @@ def _create_fallback_disambiguation(
         "UsinasNaoSimuladasTool": "Geração de usinas não simuladas (PCH, PCT, EOL, UFV)",
         "ClastValoresTool": "Custos de classes térmicas",
         "CadicTool": "Cargas e ofertas adicionais",
+        "TermCadastroTool": "Cadastro de usinas termoelétricas (potência, fator de capacidade, indisponibilidades)",
     }
     
     # Pergunta padrão única
@@ -526,6 +569,7 @@ def _expand_query_for_tool(query: str, tool_name: str) -> str:
         "UsinasNaoSimuladasTool": f"{query} - geração de usinas não simuladas",
         "ClastValoresTool": f"{query} - custos de classes térmicas",
         "CadicTool": f"{query} - cargas e ofertas adicionais",
+        "TermCadastroTool": f"{query} - cadastro de usinas termoelétricas",
     }
     return expansions.get(tool_name, query)
 
@@ -557,6 +601,7 @@ def _identify_tool_from_context(context: str, tools: list[NEWAVETool]) -> Option
         "geração de usinas não simuladas": "UsinasNaoSimuladasTool",
         "custos de classes térmicas": "ClastValoresTool",
         "cargas e ofertas adicionais": "CadicTool",
+        "cadastro de usinas termoelétricas": "TermCadastroTool",
     }
     
     # Normalizar contexto (remover espaços extras, lowercase)
@@ -564,6 +609,17 @@ def _identify_tool_from_context(context: str, tools: list[NEWAVETool]) -> Option
     
     print(f"[TOOL ROUTER]   Buscando tool para contexto: '{context_normalized}'")
     print(f"[TOOL ROUTER]   Contextos disponíveis: {list(context_to_tool.keys())}")
+    
+    # PRIMEIRO: Verificar se o contexto contém diretamente o nome de uma tool
+    # Isso pode acontecer se o LLM retornar "TermCadastroTool" diretamente
+    tool_names = [t.get_name() for t in tools]
+    for tool_name in tool_names:
+        if tool_name.lower() == context_normalized or tool_name.lower() in context_normalized.split():
+            print(f"[TOOL ROUTER]   ✅ Contexto contém nome da tool diretamente: {tool_name}")
+            for tool in tools:
+                if tool.get_name() == tool_name:
+                    print(f"[TOOL ROUTER]   ✅ Tool encontrada: {tool.get_name()}")
+                    return tool
     
     # Buscar match exato primeiro
     tool_name = context_to_tool.get(context_normalized)

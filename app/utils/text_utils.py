@@ -69,16 +69,64 @@ def limit_emojis(text: str, max_emojis: int = 2) -> str:
     return result
 
 
+def normalize_markdown_tables(text: str) -> str:
+    """
+    Normaliza tabelas markdown para garantir que sejam renderizadas corretamente.
+    Garante que cada linha da tabela esteja em uma linha separada.
+    
+    Args:
+        text: Texto markdown a ser normalizado
+        
+    Returns:
+        Texto markdown normalizado
+    """
+    lines = text.split('\n')
+    normalized_lines = []
+    in_table = False
+    
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        
+        # Detectar início de tabela (linha com |)
+        if '|' in stripped and not in_table:
+            in_table = True
+            normalized_lines.append(line)
+            continue
+        
+        # Se estamos em uma tabela
+        if in_table:
+            # Se a linha contém |, é parte da tabela
+            if '|' in stripped:
+                normalized_lines.append(line)
+            # Se a linha está vazia, pode ser separador ou fim da tabela
+            elif not stripped:
+                # Verificar se a próxima linha também não tem |
+                if i + 1 < len(lines) and '|' not in lines[i + 1].strip():
+                    in_table = False
+                normalized_lines.append(line)
+            # Se não tem | e não está vazia, saiu da tabela
+            else:
+                in_table = False
+                normalized_lines.append(line)
+        else:
+            normalized_lines.append(line)
+    
+    return '\n'.join(normalized_lines)
+
+
 def clean_response_text(text: str, max_emojis: int = 2) -> str:
     """
-    Limpa texto de resposta, removendo emojis excessivos.
+    Limpa texto de resposta, removendo emojis excessivos e normalizando markdown.
     
     Args:
         text: Texto a ser processado
         max_emojis: Número máximo de emojis a manter (padrão: 2)
         
     Returns:
-        Texto limpo
+        Texto limpo e normalizado
     """
+    # Primeiro normalizar tabelas markdown
+    text = normalize_markdown_tables(text)
+    # Depois limitar emojis
     return limit_emojis(text, max_emojis)
 

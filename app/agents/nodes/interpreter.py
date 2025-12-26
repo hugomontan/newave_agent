@@ -145,12 +145,17 @@ EXEMPLOS DE FILTRAGEM:
 EXEMPLOS DE APRESENTAÇÃO CORRETA:
 
 ✅ CORRETO - CVU com múltiplos anos (mostrar TODOS):
+IMPORTANTE: Cada linha da tabela deve estar em uma linha separada, com quebra de linha após cada linha.
+
 | Ano | CVU ($/MWh) |
 |-----|-------------|
 | 2025 | 900,00 |
 | 2026 | 920,00 |
 | 2027 | 910,00 |
 | 2028 | 930,00 |
+
+❌ ERRADO - NUNCA coloque múltiplas linhas na mesma linha:
+| Ano | CVU | | 2025 | 900 | | 2026 | 920 | ← ERRADO! Cada linha deve estar separada
 
 ❌ ERRADO - NUNCA calcular média:
 "O CVU médio é 915,00 $/MWh" ← NUNCA FAÇA ISSO
@@ -178,6 +183,14 @@ FORMATO DA RESPOSTA (USE MARKDOWN):
 
 REGRAS DE FORMATAÇÃO:
 - Use tabelas Markdown para dados tabulares
+- IMPORTANTE: As tabelas Markdown DEVEM ter quebras de linha entre cada linha
+- Formato correto de tabela:
+  | Coluna 1 | Coluna 2 | Coluna 3 |
+  |----------|----------|----------|
+  | Valor 1  | Valor 2  | Valor 3  |
+  | Valor 4  | Valor 5  | Valor 6  |
+- NUNCA coloque múltiplas linhas da tabela na mesma linha de texto
+- Cada linha da tabela deve estar em uma linha separada
 - Formate números com separadores de milhar (ex: 1.234,56)
 - Para valores muito grandes (em notação científica como 1.10e+36), mantenha a notação científica na tabela
 - Use negrito para valores importantes

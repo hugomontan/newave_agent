@@ -14,6 +14,7 @@ from app.tools.confhd_tool import ConfhdTool
 from app.tools.dsvagua_tool import DsvaguaTool
 from app.tools.usinas_nao_simuladas_tool import UsinasNaoSimuladasTool
 from app.tools.restricao_eletrica_tool import RestricaoEletricaTool
+from app.tools.term_cadastro_tool import TermCadastroTool
 
 # Registry de todas as tools disponíveis
 TOOLS_REGISTRY = [
@@ -30,6 +31,7 @@ TOOLS_REGISTRY = [
     DsvaguaTool,
     UsinasNaoSimuladasTool,
     RestricaoEletricaTool,
+    TermCadastroTool,
     # Adicionar outras tools aqui conforme forem criadas
 ]
 
