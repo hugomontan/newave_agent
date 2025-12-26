@@ -312,7 +312,7 @@ class RestricaoEletrica:
                 'cod_rest': cod_rest,
                 'per_ini': per_ini,
                 'per_fin': per_fin,
-                'pat': pat,
+                'patamar': pat,  # Renomeado de 'pat' para 'patamar' para evitar confusão com "Patrimônio"
                 'lim_inf': lim_inf,
                 'lim_sup': lim_sup
             }
@@ -378,7 +378,7 @@ class RestricaoEletrica:
             - cod_rest (int): Código da restrição
             - per_ini (str): Período inicial (formato: YYYY/MM)
             - per_fin (str): Período final (formato: YYYY/MM)
-            - pat (int): Patamar (1, 2, 3, ...)
+            - patamar (int): Patamar (1, 2, 3, ...)
             - lim_inf (float): Limite inferior
             - lim_sup (float): Limite superior
             None se não houver dados

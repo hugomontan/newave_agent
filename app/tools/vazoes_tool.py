@@ -134,69 +134,89 @@ class VazoesTool(NEWAVETool):
             self._mapeamento_posto_usina = {}
             return self._mapeamento_usina_posto
     
-    def _buscar_posto_por_nome_usina(self, nome_usina_query: str) -> Optional[int]:
+    def _buscar_posto_por_query(self, query: str, confhd: Confhd) -> Optional[tuple]:
         """
-        Busca o posto de vazões associado a uma usina pelo nome.
-        Usa o mapeamento em cache.
+        Busca o posto de vazões associado a uma usina comparando diretamente com a query.
+        Segue o padrão da ClastValoresTool: compara a query diretamente com os nomes das usinas.
         
         Args:
-            nome_usina_query: Nome da usina mencionado na query
+            query: Query do usuário
+            confhd: Objeto Confhd já lido
             
         Returns:
-            Número do posto ou None se não encontrado
+            Tupla (posto, nome_usina) ou None se não encontrado
         """
-        # Carregar mapeamento (lazy loading)
-        mapeamento = self._carregar_mapeamento_usina_posto()
-        
-        if not mapeamento:
+        if confhd.usinas is None or confhd.usinas.empty:
             return None
         
-        nome_query_upper = nome_usina_query.strip().upper()
+        query_lower = query.lower()
         
-        # PRIORIDADE 1: Busca exata
-        if nome_query_upper in mapeamento:
-            posto = mapeamento[nome_query_upper]
-            nome_original = self._mapeamento_posto_usina.get(posto, nome_usina_query)
-            print(f"[TOOL] ✅ Usina '{nome_original}' encontrada → Posto {posto}")
-            return posto
+        # Palavras comuns a ignorar (artigos, preposições, etc.)
+        palavras_ignorar = {'de', 'da', 'do', 'das', 'dos', 'e', 'a', 'o', 'as', 'os', 'em', 'na', 'no', 'nas', 'nos',
+                           'vazao', 'vazão', 'vazoes', 'vazões', 'historica', 'histórica', 'posto', 'postos',
+                           'afluencia', 'afluência', 'afluencias', 'afluências'}
         
-        # PRIORIDADE 2: Busca por substring e similaridade
-        palavras_ignorar = {'de', 'da', 'do', 'das', 'dos', 'e', 'a', 'o', 'as', 'os', 'em', 'na', 'no'}
-        palavras_query = [p for p in nome_query_upper.split() 
-                         if len(p) > 2 and p not in palavras_ignorar]
+        # Extrair palavras significativas da query (remover palavras comuns)
+        palavras_query = [p for p in query_lower.split() if len(p) > 2 and p not in palavras_ignorar]
         
-        melhor_match = None
-        melhor_score = 0.0
-        melhor_tipo = None  # 'similarity' ou 'palavras'
+        print(f"[TOOL] Palavras significativas extraídas da query: {palavras_query}")
         
-        for nome_usina_upper, posto in mapeamento.items():
-            # Similaridade de string completa
-            similarity = SequenceMatcher(None, nome_query_upper, nome_usina_upper).ratio()
-            if similarity > 0.6 and similarity > melhor_score:
-                melhor_score = similarity
-                melhor_match = (posto, nome_usina_upper)
-                melhor_tipo = 'similarity'
+        # Obter usinas únicas (pode haver múltiplas usinas com mesmo posto, mas queremos o posto)
+        usinas_unicas = confhd.usinas[['posto', 'nome_usina']].drop_duplicates()
+        usinas_unicas = usinas_unicas.sort_values('posto')
+        
+        print(f"[TOOL] Usinas disponíveis no CONFHD:")
+        for _, row in usinas_unicas.iterrows():
+            posto = int(row.get('posto', 0))
+            nome = str(row.get('nome_usina', '')).strip()
+            if posto > 0 and nome:
+                print(f"[TOOL]   - Posto {posto}: \"{nome}\"")
+        
+        # Lista de candidatos com pontuação
+        candidatos = []
+        
+        for _, row in usinas_unicas.iterrows():
+            posto = int(row.get('posto', 0))
+            nome_usina = str(row.get('nome_usina', '')).strip()
+            nome_usina_lower = nome_usina.lower().strip()
             
-            # Verificar palavras em comum
-            palavras_nome = [p for p in nome_usina_upper.split() 
-                           if len(p) > 2 and p not in palavras_ignorar]
+            if not nome_usina_lower or posto == 0:
+                continue
+            
+            # Extrair palavras significativas do nome da usina
+            palavras_nome = [p for p in nome_usina_lower.split() if len(p) > 2 and p not in palavras_ignorar]
+            
+            # PRIORIDADE 1: Match exato do nome completo na query
+            if nome_usina_lower in query_lower:
+                print(f"[TOOL] ✅ Posto {posto} encontrado por nome completo '{nome_usina}' na query")
+                return (posto, nome_usina)
+            
+            # PRIORIDADE 2: Match exato de todas as palavras significativas
+            if palavras_nome and all(palavra in query_lower for palavra in palavras_nome):
+                print(f"[TOOL] ✅ Posto {posto} encontrado: todas as palavras significativas de '{nome_usina}' estão na query")
+                return (posto, nome_usina)
+            
+            # PRIORIDADE 3: Similaridade de string (para matches parciais)
+            similarity = SequenceMatcher(None, query_lower, nome_usina_lower).ratio()
+            if similarity > 0.6:  # 60% de similaridade
+                candidatos.append((posto, nome_usina, similarity, 'similarity'))
+            
+            # PRIORIDADE 4: Contagem de palavras significativas em comum
             palavras_comuns = set(palavras_query) & set(palavras_nome)
-            
             if palavras_comuns:
+                # Requer pelo menos 2 palavras em comum OU uma palavra longa (>= 5 chars)
                 palavras_longas = [p for p in palavras_comuns if len(p) >= 5]
-                # Requer pelo menos 2 palavras em comum OU uma palavra longa (>=5 chars)
                 if len(palavras_comuns) >= 2 or (len(palavras_longas) >= 1 and len(palavras_comuns) >= 1):
-                    score = len(palavras_comuns) / max(len(palavras_nome), 1)
-                    if score > melhor_score:
-                        melhor_score = score
-                        melhor_match = (posto, nome_usina_upper)
-                        melhor_tipo = 'palavras'
+                    score = len(palavras_comuns) / max(len(palavras_nome), 1)  # Proporção de palavras encontradas
+                    candidatos.append((posto, nome_usina, score, 'palavras_comuns'))
         
-        if melhor_match:
-            posto, nome_encontrado = melhor_match
-            nome_original = self._mapeamento_posto_usina.get(posto, nome_encontrado)
-            print(f"[TOOL] ✅ Usina '{nome_original}' encontrada por {melhor_tipo} (score: {melhor_score:.2f}) → Posto {posto}")
-            return posto
+        # Se encontrou candidatos, retornar o melhor
+        if candidatos:
+            # Ordenar por tipo de match (similarity primeiro) e depois por score
+            candidatos.sort(key=lambda x: (x[3] == 'similarity', x[2]), reverse=True)
+            melhor = candidatos[0]
+            print(f"[TOOL] ✅ Posto {melhor[0]} encontrado por {melhor[3]} (score: {melhor[2]:.2f}) - '{melhor[1]}'")
+            return (melhor[0], melhor[1])
         
         return None
     
@@ -234,6 +254,7 @@ class VazoesTool(NEWAVETool):
         """
         Tenta extrair nome de usina da query.
         Procura padrões como "vazão de X", "vazões da X", etc.
+        Melhorado para ser case-insensitive e capturar mais variações.
         
         Args:
             query: Query do usuário
@@ -242,39 +263,119 @@ class VazoesTool(NEWAVETool):
             Nome da usina ou None se não encontrado
         """
         query_lower = query.lower()
+        query_original = query  # Manter original para preservar maiúsculas/minúsculas
         
-        # Padrões comuns: "vazão de ITAIPU", "vazões da FURNAS", "vazão histórica de TUCURUI"
+        # Palavras-chave que indicam início de nome de usina
+        palavras_ignorar = {'de', 'da', 'do', 'das', 'dos', 'e', 'a', 'o', 'as', 'os', 
+                           'em', 'na', 'no', 'nas', 'nos', 'a', 'à', 'ao', 'aos',
+                           'vazao', 'vazão', 'vazoes', 'vazões', 'historica', 'histórica',
+                           'posto', 'postos', 'fluviometrico', 'fluviométrico', 'em', 'no', 'na'}
+        
+        # ETAPA 1: Padrões comuns com case-insensitive
+        # Padrão 1: "vazão de X", "vazões da X", "vazão histórica de X"
         patterns = [
-            r'vaz[aoões]*\s+(?:historica|histórica|do|da|de|das|dos)\s+([A-ZÁÂÊÔÇ][A-ZÁÂÊÔÇ\s]+?)(?:\s|$|historica|histórica|do|da|de|posto|postos)',
-            r'(?:vaz[aoões]*|aflu[êe]ncia|aflu[êe]ncias)\s+(?:de|da|do|das|dos)\s+([A-ZÁÂÊÔÇ][A-ZÁÂÊÔÇ\s]+?)(?:\s|$|historica|histórica)',
+            # Padrão case-insensitive: "vazao de BALBINA", "vazão de balbina", "vazões da FURNAS"
+            r'vaz[aoões]*\s+(?:historica|histórica|do|da|de|das|dos)\s+([A-ZÁÂÊÔÇa-záâêôç][A-ZÁÂÊÔÇa-záâêôç\s]+?)(?:\s|$|historica|histórica|do|da|de|posto|postos|em|no|na|\d)',
+            # Padrão mais flexível: "vazao de X em 2015"
+            r'vaz[aoões]*\s+(?:de|da|do|das|dos)\s+([A-ZÁÂÊÔÇa-záâêôç][A-ZÁÂÊÔÇa-záâêôç\s]+?)(?:\s+(?:em|no|na|historica|histórica|posto|postos)|\s+\d|$)',
+            # Padrão sem preposição: "vazao BALBINA", "vazões ITAIPU"
+            r'vaz[aoões]+\s+([A-ZÁÂÊÔÇa-záâêôç][A-ZÁÂÊÔÇa-záâêôç\s]+?)(?:\s+(?:em|no|na|historica|histórica|posto|postos|de|da|do)|\s+\d|$)',
+            # Padrão com afluência: "afluência de X", "afluências da X"
+            r'aflu[êe]ncia[s]?\s+(?:de|da|do|das|dos)\s+([A-ZÁÂÊÔÇa-záâêôç][A-ZÁÂÊÔÇa-záâêôç\s]+?)(?:\s|$|historica|histórica|em|no|na|\d)',
         ]
         
         for pattern in patterns:
-            match = re.search(pattern, query)
+            match = re.search(pattern, query_original, re.IGNORECASE)
             if match:
                 nome = match.group(1).strip()
-                # Limpar palavras comuns do final
-                palavras_final = ['historica', 'histórica', 'do', 'da', 'de', 'das', 'dos', 'posto', 'postos']
+                
+                # Limpar palavras comuns do início e final
                 palavras_nome = nome.split()
-                while palavras_nome and palavras_nome[-1].lower() in palavras_final:
+                
+                # Remover do início
+                while palavras_nome and palavras_nome[0].lower() in palavras_ignorar:
+                    palavras_nome.pop(0)
+                
+                # Remover do final
+                while palavras_nome and palavras_nome[-1].lower() in palavras_ignorar:
                     palavras_nome.pop()
+                
+                # Remover números do final (anos que podem ter sido capturados)
+                while palavras_nome and palavras_nome[-1].isdigit():
+                    palavras_nome.pop()
+                
                 if palavras_nome:
                     nome_limpo = ' '.join(palavras_nome)
-                    print(f"[TOOL] Nome de usina extraído: '{nome_limpo}'")
+                    # Capitalizar primeira letra de cada palavra para padronizar
+                    nome_limpo = ' '.join(palavra.capitalize() for palavra in nome_limpo.split())
+                    print(f"[TOOL] ✅ Nome de usina extraído (padrão): '{nome_limpo}'")
                     return nome_limpo
         
-        # Tentar detectar nomes de usinas conhecidas diretamente na query
-        # Lista de usinas comuns (pode ser expandida)
+        # ETAPA 2: Buscar por palavras-chave conhecidas de usinas
+        # Lista expandida de usinas comuns
         usinas_comuns = [
             'ITAIPU', 'FURNAS', 'TUCURUI', 'SOBRADINHO', 'ITAPARICA',
-            'PAULO AFONSO', 'XINGO', 'SERRA DA MESA', 'EMBORCACAO', 'NOVA PONTE'
+            'PAULO AFONSO', 'XINGO', 'SERRA DA MESA', 'EMBORCACAO', 'NOVA PONTE',
+            'BALBINA', 'SAMUEL', 'CURUA-UNA', 'COARACY NUNES', 'PONTE DE PEDRA',
+            'SALTO OSORIO', 'SALTO SANTIAGO', 'FOZ DO AREIA', 'SEGREDO', 'JORDÃO',
+            'ERNESTINA', 'PASSO FUNDO', 'MONJOLINHO', 'ITAUBA', 'MACHADINHO',
+            'BARRA GRANDE', 'CAMPOS NOVOS', 'ITAPEBI', 'ESTREITO', 'FUNIL',
+            'PEDRA DO CAVALO', 'MOXOTO'
         ]
         
         query_upper = query.upper()
+        # Buscar por substring (não apenas match exato)
         for usina in usinas_comuns:
             if usina in query_upper:
-                print(f"[TOOL] Usina conhecida detectada: '{usina}'")
+                print(f"[TOOL] ✅ Usina conhecida detectada: '{usina}'")
                 return usina
+        
+        # ETAPA 3: Tentar extrair sequência de palavras que pareça nome de usina
+        # Procurar por sequências de 1-4 palavras que começam com maiúscula
+        # e não são palavras comuns
+        palavras_query = query_original.split()
+        candidatos = []
+        
+        for i in range(len(palavras_query)):
+            # Tentar sequências de 1 a 4 palavras
+            for tamanho in range(1, min(5, len(palavras_query) - i + 1)):
+                sequencia = palavras_query[i:i+tamanho]
+                sequencia_str = ' '.join(sequencia)
+                sequencia_lower = sequencia_str.lower()
+                
+                # Verificar se não é apenas palavras comuns
+                if sequencia_lower in palavras_ignorar:
+                    continue
+                
+                # Verificar se contém pelo menos uma palavra com mais de 3 caracteres
+                palavras_significativas = [p for p in sequencia if len(p) > 3]
+                if not palavras_significativas:
+                    continue
+                
+                # Verificar se a primeira palavra começa com maiúscula ou é toda maiúscula
+                primeira_palavra = sequencia[0]
+                if primeira_palavra[0].isupper() or primeira_palavra.isupper():
+                    # Verificar se não é um número ou ano
+                    if not primeira_palavra.isdigit():
+                        # Verificar se não está muito próximo de palavras-chave de vazão
+                        idx_inicio = i
+                        idx_fim = i + tamanho
+                        contexto_antes = ' '.join(palavras_query[max(0, idx_inicio-2):idx_inicio]).lower()
+                        contexto_depois = ' '.join(palavras_query[idx_fim:min(len(palavras_query), idx_fim+2)]).lower()
+                        
+                        # Se está próximo de palavras de vazão, é um candidato forte
+                        if any(kw in contexto_antes for kw in ['vazao', 'vazão', 'vazoes', 'vazões', 'afluencia', 'afluência', 'de', 'da', 'do']):
+                            candidatos.append((sequencia_str, tamanho))
+        
+        # Ordenar candidatos por tamanho (maior primeiro) e posição (mais próximo de "vazão" primeiro)
+        if candidatos:
+            # Pegar o candidato mais longo
+            melhor_candidato = max(candidatos, key=lambda x: (x[1], -query_original.find(x[0])))
+            nome_limpo = melhor_candidato[0]
+            # Capitalizar
+            nome_limpo = ' '.join(palavra.capitalize() for palavra in nome_limpo.split())
+            print(f"[TOOL] ✅ Nome de usina extraído (sequência): '{nome_limpo}'")
+            return nome_limpo
         
         return None
     
@@ -475,18 +576,29 @@ class VazoesTool(NEWAVETool):
                 else:
                     print(f"[TOOL] ⚠️ Posto {posto_numero} não existe no arquivo (postos disponíveis: 1-{len(df_vazoes.columns)})")
             
-            # Se não encontrou posto, tentar buscar por nome de usina
+            # Se não encontrou posto, tentar buscar por nome de usina diretamente na query
+            # Seguindo o padrão da ClastValoresTool: comparar query diretamente com CONFHD
             if not postos_consultados:
-                nome_usina = self._extract_usina_name_from_query(query)
-                if nome_usina:
-                    posto_encontrado = self._buscar_posto_por_nome_usina(nome_usina)
-                    if posto_encontrado is not None:
-                        if posto_encontrado in df_vazoes.columns:
-                            postos_consultados.append(posto_encontrado)
-                            nome_usina_encontrado = self._mapeamento_posto_usina.get(posto_encontrado, nome_usina)
-                            print(f"[TOOL] ✅ Posto {posto_encontrado} encontrado para usina '{nome_usina_encontrado}'")
-                        else:
-                            print(f"[TOOL] ⚠️ Posto {posto_encontrado} da usina '{nome_usina_encontrado}' não existe no arquivo")
+                # Carregar CONFHD para busca direta
+                confhd_path = os.path.join(self.deck_path, "CONFHD.DAT")
+                if not os.path.exists(confhd_path):
+                    confhd_path = os.path.join(self.deck_path, "confhd.dat")
+                
+                if os.path.exists(confhd_path):
+                    try:
+                        confhd = Confhd.read(confhd_path)
+                        resultado = self._buscar_posto_por_query(query, confhd)
+                        if resultado is not None:
+                            posto_encontrado, nome_usina_encontrado = resultado
+                            if posto_encontrado in df_vazoes.columns:
+                                postos_consultados.append(posto_encontrado)
+                                print(f"[TOOL] ✅ Posto {posto_encontrado} encontrado para usina '{nome_usina_encontrado}'")
+                            else:
+                                print(f"[TOOL] ⚠️ Posto {posto_encontrado} da usina '{nome_usina_encontrado}' não existe no arquivo")
+                    except Exception as e:
+                        print(f"[TOOL] ⚠️ Erro ao ler CONFHD.DAT para busca: {e}")
+                else:
+                    print("[TOOL] ⚠️ CONFHD.DAT não encontrado - não é possível buscar por nome de usina")
             
             # ETAPA 5: Extrair ano da query (se houver)
             print("[TOOL] ETAPA 5: Verificando filtro por ano na query...")

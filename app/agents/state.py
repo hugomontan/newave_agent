@@ -31,3 +31,6 @@ class AgentState(TypedDict):
     tool_route: bool  # True se tool foi executada
     tool_result: Optional[dict]  # Resultado da tool
     tool_used: Optional[str]  # Nome da tool usada
+    
+    # Campos para Disambiguation
+    disambiguation: Optional[dict]  # Informações de disambiguation se houver

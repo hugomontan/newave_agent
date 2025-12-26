@@ -73,12 +73,18 @@ def should_continue_after_tool_router(state: AgentState) -> str:
     """
     Decide o próximo passo após Tool Router.
     
-    - Se tool executou: vai direto para interpreter
+    - Se disambiguation: termina o fluxo (disambiguation já foi emitida)
+    - Se tool executou: vai para interpreter
     - Se tool não executou: faz RAG simplificado para preparar contexto para coder
     """
     tool_route = state.get("tool_route", False)
+    disambiguation = state.get("disambiguation")
     
-    if tool_route:
+    if disambiguation:
+        # Disambiguation detectada - terminar fluxo imediatamente
+        # O evento de disambiguation já foi emitido, não precisa processar mais nada
+        return END
+    elif tool_route:
         # Tool foi executada, ir direto para interpreter
         return "interpreter"
     else:
@@ -167,11 +173,15 @@ def create_newave_agent() -> StateGraph:
     # Entry point: Tool Router (otimização)
     workflow.set_entry_point("tool_router")
     
-    # Decisão após Tool Router: interpreter (tool executou) ou rag_simple (tool não executou)
+    # Decisão após Tool Router: 
+    # - END se disambiguation (termina fluxo)
+    # - interpreter se tool executou
+    # - rag_simple se tool não executou
     workflow.add_conditional_edges(
         "tool_router",
         should_continue_after_tool_router,
         {
+            END: END,  # Termina fluxo quando há disambiguation
             "interpreter": "interpreter",
             "rag_simple": "rag_simple"
         }
@@ -240,7 +250,9 @@ def get_initial_state(query: str, deck_path: str) -> dict:
         # Campos para Tools
         "tool_route": False,
         "tool_result": None,
-        "tool_used": None
+        "tool_used": None,
+        # Campos para Disambiguation
+        "disambiguation": None
     }
 
 
@@ -337,6 +349,7 @@ def run_query_stream(query: str, deck_path: str, session_id: Optional[str] = Non
     
     current_retry = 0
     is_fallback = False
+    has_disambiguation = False  # Rastrear se houve disambiguation
     
     try:
         for event in agent.stream(initial_state, stream_mode="updates", config=config):
@@ -359,7 +372,10 @@ def run_query_stream(query: str, deck_path: str, session_id: Optional[str] = Non
                         "description": f"Corrigindo código... (tentativa {current_retry + 1}/{MAX_RETRIES})"
                     }
                 
-                yield f"data: {json.dumps({'type': 'node_start', 'node': node_name, 'info': node_info, 'retry': current_retry})}\n\n"
+                # IMPORTANTE: Não emitir node_start para tool_router se vai haver disambiguation
+                # Isso evita que a barra apareça rapidamente quando há disambiguation
+                if not (node_name == "tool_router" and node_output.get("disambiguation")):
+                    yield f"data: {json.dumps({'type': 'node_start', 'node': node_name, 'info': node_info, 'retry': current_retry})}\n\n"
                 
                 # Detalhes específicos de cada node
                 if node_name == "rag":
@@ -388,10 +404,22 @@ def run_query_stream(query: str, deck_path: str, session_id: Optional[str] = Non
                 
                 elif node_name == "tool_router":
                     tool_route = node_output.get("tool_route", False)
+                    disambiguation = node_output.get("disambiguation")
+                    from_disambiguation = node_output.get("from_disambiguation", False)
                     tool_used = node_output.get("tool_used")
                     tool_result = node_output.get("tool_result", {})
                     
-                    if tool_route:
+                    if disambiguation:
+                        # Emitir evento de disambiguation
+                        has_disambiguation = True  # Marcar que houve disambiguation
+                        yield f"data: {json.dumps({'type': 'disambiguation', 'data': disambiguation})}\n\n"
+                        # NÃO emitir node_detail nem node_complete quando há disambiguation
+                        # para evitar que o frontend mostre o tool como "executado"
+                        # O evento de disambiguation já é suficiente
+                    elif tool_route:
+                        # Se veio de disambiguation, marcar para não emitir mensagem final
+                        if from_disambiguation:
+                            has_disambiguation = True
                         yield f"data: {json.dumps({'type': 'node_detail', 'node': node_name, 'detail': f'✅ Tool {tool_used} executada com sucesso!'})}\n\n"
                         if tool_result.get("success"):
                             summary = tool_result.get("summary", {})
@@ -411,17 +439,36 @@ def run_query_stream(query: str, deck_path: str, session_id: Optional[str] = Non
                 
                 elif node_name == "interpreter":
                     response = node_output.get("final_response") if node_output else None
-                    if not response:
-                        response = "## ✅ Processamento concluído\n\nOs dados foram processados. Consulte a saída da execução acima."
-                    yield f"data: {json.dumps({'type': 'response_start', 'is_fallback': is_fallback})}\n\n"
-                    chunk_size = 50
-                    for i in range(0, len(response), chunk_size):
-                        yield f"data: {json.dumps({'type': 'response_chunk', 'chunk': response[i:i + chunk_size]})}\n\n"
-                    yield f"data: {json.dumps({'type': 'response_complete', 'response': response})}\n\n"
+                    print(f"[GRAPH] Interpreter retornou resposta: {len(response) if response else 0} caracteres")
+                    # SEMPRE emitir resposta se houver conteúdo, mesmo que venha de disambiguation
+                    # A diferença é que não emitimos mensagem "Processamento concluído" no final
+                    if response and response.strip():
+                        print(f"[GRAPH] Emitindo resposta do interpreter ({len(response)} caracteres)")
+                        yield f"data: {json.dumps({'type': 'response_start', 'is_fallback': is_fallback})}\n\n"
+                        chunk_size = 50
+                        for i in range(0, len(response), chunk_size):
+                            yield f"data: {json.dumps({'type': 'response_chunk', 'chunk': response[i:i + chunk_size]})}\n\n"
+                        yield f"data: {json.dumps({'type': 'response_complete', 'response': response})}\n\n"
+                    else:
+                        # Resposta vazia - pode ser disambiguation ou erro
+                        print(f"[GRAPH] ⚠️ Resposta vazia do interpreter")
+                        if has_disambiguation:
+                            print(f"[GRAPH]   (Disambiguation já processada, pulando)")
+                        else:
+                            print(f"[GRAPH]   (Pode ser erro ou resposta vazia)")
                 
-                yield f"data: {json.dumps({'type': 'node_complete', 'node': node_name})}\n\n"
+                # IMPORTANTE: Não emitir node_complete para tool_router quando há disambiguation
+                # Isso evita que o frontend mostre o tool como "executado" rapidamente
+                # Verificar diretamente no node_output se há disambiguation
+                if not (node_name == "tool_router" and node_output.get("disambiguation")):
+                    yield f"data: {json.dumps({'type': 'node_complete', 'node': node_name})}\n\n"
         
-        yield f"data: {json.dumps({'type': 'complete', 'message': 'Processamento concluído!', 'total_retries': current_retry, 'was_fallback': is_fallback})}\n\n"
+        # Não emitir mensagem de "Processamento concluído" se houve disambiguation
+        if not has_disambiguation:
+            yield f"data: {json.dumps({'type': 'complete', 'message': 'Processamento concluído!', 'total_retries': current_retry, 'was_fallback': is_fallback})}\n\n"
+        else:
+            # Para disambiguation, apenas emitir complete sem mensagem adicional
+            yield f"data: {json.dumps({'type': 'complete', 'message': '', 'total_retries': current_retry, 'was_fallback': is_fallback})}\n\n"
         
         # Fazer flush do Langfuse após streaming
         if langfuse_handler:

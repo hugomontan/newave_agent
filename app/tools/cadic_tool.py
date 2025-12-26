@@ -500,6 +500,7 @@ class CadicTool(NEWAVETool):
         - "qual a carga adicional de ande"
         - "cargas adicionais de itaipu"
         - "ofertas adicionais por razão"
+        - "ANDE"
         
         Termos-chave: cadic, c_adic, carga adicional, cargas adicionais, oferta adicional, ofertas adicionais, carga extra, ofertas extras, demanda adicional, valores extras, razão, ANDE, CONS.ITAIPU, MMGD.
         

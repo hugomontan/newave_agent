@@ -34,13 +34,20 @@ interface Message {
   retryCount?: number;
   error?: string | null;
   timestamp: Date;
+  disambiguationData?: {
+    type: string;
+    question: string;
+    options: Array<{label: string; query: string; tool_name: string}>;
+    original_query: string;
+  };
 }
 
 interface ChatMessageProps {
   message: Message;
+  onOptionClick?: (query: string) => void;
 }
 
-export function ChatMessage({ message }: ChatMessageProps) {
+export function ChatMessage({ message, onOptionClick }: ChatMessageProps) {
   const isUser = message.role === "user";
   const [copied, setCopied] = useState(false);
 
@@ -127,7 +134,30 @@ export function ChatMessage({ message }: ChatMessageProps) {
                   </Badge>
                 )}
 
-                {/* Response content with markdown */}
+                {/* Disambiguation Options */}
+                {message.disambiguationData && (
+                  <div className="mb-4 p-4 border border-primary/30 rounded-lg bg-primary/5">
+                    <h3 className="text-base font-semibold text-white mb-3">
+                      {message.disambiguationData.question}
+                    </h3>
+                    <div className="space-y-2">
+                      {message.disambiguationData.options.map((option, idx) => (
+                        <Button
+                          key={idx}
+                          onClick={() => onOptionClick?.(option.query)}
+                          variant="outline"
+                          className="w-full text-left justify-start bg-background/50 hover:bg-background border-border hover:border-primary/50 text-foreground"
+                        >
+                          <span className="font-bold mr-2 text-primary">{idx + 1}.</span>
+                          <span>{option.label}</span>
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Response content with markdown - apenas se houver conteúdo e não for apenas disambiguation */}
+                {message.content && message.content.trim() && (
                 <div className="prose prose-sm max-w-none prose-invert prose-headings:text-white prose-p:text-white prose-strong:text-white prose-code:text-white prose-ul:text-white prose-ol:text-white prose-li:text-white prose-a:text-blue-400 prose-blockquote:text-gray-300 prose-th:text-white prose-td:text-gray-200">
                 <ReactMarkdown
                       remarkPlugins={[remarkGfm]}
@@ -229,6 +259,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
                       {message.content}
                     </ReactMarkdown>
                 </div>
+                )}
               </div>
 
               {/* Raw Data Table */}

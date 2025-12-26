@@ -393,3 +393,92 @@ def find_best_tool_semantic(
         print("[SEMANTIC MATCHER] ===== FIM: Semantic Matching (ERRO) =====")
         return None
 
+
+def find_top_tools_semantic(
+    query: str,
+    tools: list[NEWAVETool],
+    top_n: int = 3,
+    threshold: float = 0.55
+) -> list[Tuple[NEWAVETool, float]]:
+    """
+    Encontra as top N tools mais relevantes usando matching semântico.
+    Baseado na análise empírica, retorna até 3 tools candidatas.
+    
+    Args:
+        query: Query do usuário
+        tools: Lista de tools disponíveis
+        top_n: Número máximo de tools a retornar (padrão: 3)
+        threshold: Threshold mínimo de similaridade para ranking
+        
+    Returns:
+        Lista de tuplas (tool, score) ordenadas por score decrescente
+    """
+    if not tools:
+        print("[SEMANTIC MATCHER] ⚠️ Nenhuma tool disponível")
+        return []
+    
+    print(f"[SEMANTIC MATCHER] ===== INÍCIO: find_top_tools_semantic (top_n={top_n}) =====")
+    print(f"[SEMANTIC MATCHER] Query: \"{query}\"")
+    
+    # Aplicar query expansion se habilitado
+    expanded_query = expand_query(query)
+    
+    try:
+        # Obter modelo de embeddings
+        embeddings_model = get_embeddings()
+        
+        # Gerar embedding da query expandida
+        query_embedding = embeddings_model.embed_query(expanded_query)
+        
+        # Calcular similaridade com cada tool
+        all_scores = []
+        
+        for tool in tools:
+            try:
+                tool_name = tool.get_name()
+                
+                # Obter embedding da descrição (usando cache se disponível)
+                tool_embedding = _get_tool_embedding(tool, embeddings_model)
+                
+                # Calcular similaridade de cosseno
+                similarity = _calculate_cosine_similarity(query_embedding, tool_embedding)
+                
+                # Armazenar score
+                all_scores.append((tool, similarity))
+                    
+            except Exception as e:
+                print(f"[SEMANTIC MATCHER]   └─ ❌ Erro ao processar {tool.get_name()}: {e}")
+                continue
+        
+        # Ordenar por score decrescente
+        all_scores.sort(key=lambda x: x[1], reverse=True)
+        
+        # Mostrar ranking completo de scores
+        print(f"[SEMANTIC MATCHER] 📊 RANKING COMPLETO DE SCORES ({len(all_scores)} tools):")
+        for idx, (tool, score) in enumerate(all_scores[:10], 1):  # Mostrar top 10
+            status = "✅" if score >= threshold else "❌"
+            print(f"[SEMANTIC MATCHER]   {idx}. {tool.get_name()}: {score:.4f} {status} (threshold: {threshold:.3f})")
+        if len(all_scores) > 10:
+            print(f"[SEMANTIC MATCHER]   ... ({len(all_scores) - 10} tools restantes)")
+        
+        # Filtrar por threshold e retornar top N
+        filtered_scores = [(tool, score) for tool, score in all_scores if score >= threshold]
+        top_tools = filtered_scores[:top_n]
+        
+        print(f"[SEMANTIC MATCHER] ✅ Top {len(top_tools)} tools encontradas (após filtro threshold={threshold:.3f}):")
+        for idx, (tool, score) in enumerate(top_tools, 1):
+            print(f"[SEMANTIC MATCHER]   {idx}. {tool.get_name()}: {score:.4f}")
+        
+        if len(top_tools) >= 2:
+            score_diff = top_tools[0][1] - top_tools[1][1]
+            print(f"[SEMANTIC MATCHER]   📏 Diferença 1º-2º: {score_diff:.4f}")
+        
+        print("[SEMANTIC MATCHER] ===== FIM: find_top_tools_semantic =====")
+        return top_tools
+            
+    except Exception as e:
+        print(f"[SEMANTIC MATCHER] ❌ Erro no find_top_tools_semantic: {e}")
+        import traceback
+        traceback.print_exc()
+        return []
+

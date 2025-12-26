@@ -104,13 +104,25 @@ class DsvaguaTool(NEWAVETool):
             True se a tool pode processar a query
         """
         query_lower = query.lower()
+        
+        # PALAVRAS-CHAVE PRIORITÁRIAS: "DESVIOS DE ÁGUA" em todas as variações
+        # Verificar primeiro para garantir prioridade máxima e ativação automática
+        # Verificar em lowercase (cobre todas as variações de maiúscula/minúscula)
+        desvios_agua_patterns = [
+            "desvios de água", "desvios de agua", "desvios de água", "desvios de agua",
+            "desvio de água", "desvio de agua", "desvio de água", "desvio de agua",
+            "desvios-agua", "desvios-água", "desvios_agua", "desvios_água",
+            "desvio-agua", "desvio-água", "desvio_agua", "desvio_água"
+        ]
+        
+        # Verificar se alguma variação de "desvios de água" está presente (case-insensitive)
+        if any(pattern in query_lower for pattern in desvios_agua_patterns):
+            return True
+        
+        # Outras palavras-chave
         keywords = [
             "dsvagua",
             "dsvagua.dat",
-            "desvio de água",
-            "desvio de agua",
-            "desvios de água",
-            "desvios de agua",
             "uso consuntivo",
             "usos consuntivos",
             "desvio água usina",

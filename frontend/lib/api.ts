@@ -40,6 +40,7 @@ export interface StreamEvent {
     | 'response_chunk'
     | 'response_complete'
     | 'retry'
+    | 'disambiguation'
     | 'complete'
     | 'error';
   message?: string;
@@ -62,6 +63,16 @@ export interface StreamEvent {
   max_retries?: number;
   retry?: number;
   total_retries?: number;
+  data?: {
+    type: string;
+    question: string;
+    options: Array<{
+      label: string;
+      query: string;
+      tool_name: string;
+    }>;
+    original_query: string;
+  };
 }
 
 export async function uploadDeck(file: File): Promise<UploadResponse> {

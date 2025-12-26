@@ -324,7 +324,7 @@ class RestricaoEletricaTool(NEWAVETool):
                 if cod_rest is not None:
                     resultado_limites = resultado_limites[resultado_limites['cod_rest'] == cod_rest]
                 if patamar is not None:
-                    resultado_limites = resultado_limites[resultado_limites['pat'] == patamar]
+                    resultado_limites = resultado_limites[resultado_limites['patamar'] == patamar]
                 if periodo is not None:
                     if 'per_ini' in periodo:
                         resultado_limites = resultado_limites[
@@ -359,8 +359,8 @@ class RestricaoEletricaTool(NEWAVETool):
             
             if df_limites is not None:
                 stats['total_limites'] = len(df_limites)
-                if 'pat' in df_limites.columns:
-                    stats['patamares_disponiveis'] = sorted(df_limites['pat'].unique().tolist())
+                if 'patamar' in df_limites.columns:
+                    stats['patamares_disponiveis'] = sorted(df_limites['patamar'].unique().tolist())
             
             # ETAPA 7: Formatar resultado final
             print("[TOOL] ETAPA 7: Formatando resultado final...")

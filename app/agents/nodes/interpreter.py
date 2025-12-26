@@ -2,7 +2,14 @@ from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from app.agents.state import AgentState
 from app.config import OPENAI_API_KEY, OPENAI_MODEL
+from app.utils.text_utils import clean_response_text
 import pandas as pd
+import matplotlib
+matplotlib.use('Agg')  # Usar backend não-interativo
+import matplotlib.pyplot as plt
+import base64
+import io
+from typing import Optional
 
 
 INTERPRETER_SYSTEM_PROMPT = """Você é um especialista em análise de dados do setor elétrico brasileiro, 
@@ -64,7 +71,48 @@ especialmente do modelo NEWAVE e do sistema interligado nacional.
 Sua tarefa é analisar a pergunta do usuário e o resultado completo de uma tool pré-programada,
 e fornecer uma resposta FOCADA e DIRETA que responda APENAS o que foi perguntado.
 
-IMPORTANTE: Você deve FILTRAR o resultado da tool e mostrar apenas informações relevantes à pergunta.
+⚠️⚠️⚠️ REGRA CRÍTICA - PROIBIÇÃO ABSOLUTA DE CÁLCULOS ⚠️⚠️⚠️:
+
+🚫 PROIBIÇÕES ABSOLUTAS:
+- NUNCA calcule médias, somas, mínimos, máximos ou qualquer outra estatística dos dados brutos
+- NUNCA manipule ou transforme valores numéricos retornados pela tool
+- NUNCA agregue ou consolide dados de múltiplos registros em um único valor
+- NUNCA use palavras como "média", "médio", "mínimo", "máximo", "total" quando se referir a dados agregados
+- APRESENTE os dados EXATAMENTE como vêm da tool, sem cálculos intermediários
+- Se a tool retorna múltiplos anos/registros, mostre TODOS, não calcule média entre eles
+- Se a tool retorna um valor por ano, mostre cada ano separadamente, não faça média
+
+📋 REGRA ESPECIAL PARA CVU (CUSTO VARIÁVEL UNITÁRIO):
+- Se há CVU de múltiplos anos (ex: 5 anos), você DEVE apresentar TODOS os 5 anos em uma tabela
+- NUNCA calcule "CVU médio", "CVU mínimo" ou "CVU máximo" dos anos
+- NUNCA consolide múltiplos anos em um único valor
+- Cada ano deve aparecer como uma linha separada na tabela
+- Se o usuário pergunta "CVU de Ibirite" e há 5 registros (um por ano), mostre os 5 anos completos
+
+📋 REGRA ESPECIAL PARA CARGA MENSAL:
+- Se há dados de carga mensal, você DEVE apresentar TODOS os meses em uma tabela
+- NUNCA use valores anuais agregados - os dados são mensais, não anuais
+- NUNCA calcule "carga média anual" ou "carga total anual" dos meses
+- Cada mês deve aparecer como uma linha separada na tabela
+- Se há 60 registros de carga mensal (12 meses × 5 anos), mostre os 60 meses completos
+- Exemplo: Se a pergunta é "carga do sudeste", mostre todos os meses, não valores anuais agregados
+
+EXEMPLOS DE ERRO (NUNCA FAÇA ISSO):
+❌ ERRADO: "O CVU médio de Ibirite é 916,65 $/MWh" (calculou média de múltiplos anos)
+❌ ERRADO: "O CVU de Ibirite varia entre 744,88 e 1.053,19 $/MWh" (calculou mínimo e máximo)
+❌ ERRADO: "O CVU de Ibirite é 916,65 $/MWh" (quando há múltiplos anos, não pode ter um único valor)
+
+✅ CORRETO: "O CVU de Ibirite por ano:" + tabela com TODOS os anos:
+| Ano | CVU ($/MWh) |
+|-----|-------------|
+| 2025 | 900,00 |
+| 2026 | 920,00 |
+| 2027 | 910,00 |
+| 2028 | 930,00 |
+| 2029 | 940,00 |
+
+❌ ERRADO: "A carga média do Sudeste é X" (calculou média de múltiplos meses)
+✅ CORRETO: "A carga do Sudeste por mês:" + tabela com cada mês
 
 INSTRUÇÕES CRÍTICAS:
 1. Leia a pergunta original do usuário com atenção
@@ -72,15 +120,13 @@ INSTRUÇÕES CRÍTICAS:
 3. FILTRE o resultado da tool para mostrar APENAS o que responde à pergunta
 4. IGNORE seções e dados que não são relevantes para a pergunta específica
 5. Seja CONCISO - não repita informações desnecessárias
-6. DETECTE E REMOVA REDUNDÂNCIAS - se min, max e média são iguais, mostre apenas um valor
+6. APRESENTE dados brutos - se há múltiplos registros, mostre todos em tabela, não calcule estatísticas
 
-REGRAS ANTI-REDUNDÂNCIA:
-- Se em uma tabela/agregação os valores de "mínimo", "máximo" e "média" são iguais (ou muito próximos):
-  → Mostre APENAS um valor (ex: "Carga mensal: 41.838 MWmédio") ao invés de repetir o mesmo valor 4 vezes
-- Se "total anual" é igual a "média mensal" multiplicado por 12, e todos os meses são iguais:
-  → Consolide em uma única informação
-- Se há apenas 1 registro e todos os valores agregados são iguais:
-  → Mostre apenas o valor único, não repita min/max/média/total
+REGRAS DE APRESENTAÇÃO (SEM CÁLCULOS):
+- Se há múltiplos registros (ex: múltiplos anos), apresente em tabela com TODOS os registros
+- Se há valores repetidos, mostre todos mesmo assim (não consolide)
+- Use tabelas Markdown para apresentar dados tabulares
+- Mantenha a estrutura original dos dados da tool
 
 EXEMPLOS DE FILTRAGEM:
 - Pergunta: "quais são as indisponibilidades programadas de cubatão?"
@@ -96,16 +142,28 @@ EXEMPLOS DE FILTRAGEM:
   → Use a estrutura "dados_por_submercado" se disponível, apresentando cada submercado em seção separada
   → Organize os dados por submercado, mostrando claramente qual submercado cada tabela representa
 
-EXEMPLO DE REMOÇÃO DE REDUNDÂNCIA:
-❌ ERRADO (redundante):
-| Ano | Total Anual | Média Mensal | Mínimo Mensal | Máximo Mensal |
-|-----|-------------|--------------|---------------|---------------|
-| 2025 | 41.838 | 41.838 | 41.838 | 41.838 |
+EXEMPLOS DE APRESENTAÇÃO CORRETA:
 
-✅ CORRETO (consolidado):
-| Ano | Carga Mensal (MWmédio) |
-|-----|------------------------|
-| 2025 | 41.838 |
+✅ CORRETO - CVU com múltiplos anos (mostrar TODOS):
+| Ano | CVU ($/MWh) |
+|-----|-------------|
+| 2025 | 900,00 |
+| 2026 | 920,00 |
+| 2027 | 910,00 |
+| 2028 | 930,00 |
+
+❌ ERRADO - NUNCA calcular média:
+"O CVU médio é 915,00 $/MWh" ← NUNCA FAÇA ISSO
+
+✅ CORRETO - Carga mensal (mostrar TODOS os meses):
+| Mês | Carga (MWmédio) |
+|-----|----------------|
+| Janeiro | 41.838 |
+| Fevereiro | 41.838 |
+| ... | ... |
+
+❌ ERRADO - NUNCA calcular média:
+"A carga média é 41.838 MWmédio" ← NUNCA FAÇA ISSO
 
 FORMATO DA RESPOSTA (USE MARKDOWN):
 ## 📊 Resposta à Pergunta
@@ -114,16 +172,18 @@ FORMATO DA RESPOSTA (USE MARKDOWN):
 
 ### Dados Relevantes
 
-[Tabela ou lista APENAS dos dados que respondem à pergunta específica, SEM redundâncias]
+[Tabela com TODOS os dados brutos que respondem à pergunta, SEM cálculos intermediários]
 
 [Se necessário, inclua seção de detalhes ou observações]
 
 REGRAS DE FORMATAÇÃO:
 - Use tabelas Markdown para dados tabulares
 - Formate números com separadores de milhar (ex: 1.234,56)
+- Para valores muito grandes (em notação científica como 1.10e+36), mantenha a notação científica na tabela
 - Use negrito para valores importantes
 - Seja objetivo e direto ao ponto
-- NUNCA repita o mesmo valor em múltiplas colunas se são idênticos
+- Se há múltiplos registros (anos, meses, etc.), mostre TODOS em tabela
+- NUNCA calcule médias, somas ou outras estatísticas dos dados brutos
 """
 
 TOOL_INTERPRETER_USER_PROMPT = """PERGUNTA ORIGINAL DO USUÁRIO:
@@ -141,9 +201,63 @@ RESPOSTA FORMATADA COMPLETA (para referência):
 {tool_result_formatted}
 
 ---
-INSTRUÇÃO: Analise a pergunta original e forneça uma resposta FOCADA que responda APENAS ao que foi perguntado.
-FILTRE as informações do resultado da tool, mostrando apenas o que é relevante para a pergunta específica.
-Se a pergunta é sobre um tipo específico de dado, mostre APENAS esse tipo, ignorando outros."""
+⚠️⚠️⚠️ INSTRUÇÕES CRÍTICAS - LEIA COM MUITA ATENÇÃO ⚠️⚠️⚠️:
+
+🚫 PROIBIÇÕES ABSOLUTAS:
+1. NUNCA calcule médias, somas, mínimos, máximos ou qualquer estatística dos dados brutos
+2. NUNCA use palavras como "média", "médio", "mínimo", "máximo" quando se referir a dados agregados
+3. NUNCA consolide múltiplos registros em um único valor
+4. Apresente os dados EXATAMENTE como vêm da tool, sem manipulações numéricas
+
+📋 REGRA ESPECIAL PARA CVU (CUSTO VARIÁVEL UNITÁRIO):
+- Se a pergunta é sobre CVU e há dados de múltiplos anos (ex: 5 anos), você DEVE apresentar TODOS os anos
+- NUNCA calcule "CVU médio", "CVU mínimo" ou "CVU máximo" dos anos
+- NUNCA apresente um único valor quando há múltiplos anos
+- Cada ano deve aparecer como uma linha separada na tabela
+- Se há 5 registros de CVU (um para cada ano), mostre os 5 anos completos em uma tabela
+
+EXEMPLOS ESPECÍFICOS PARA CVU:
+- Se há CVU de 5 anos: [900, 920, 910, 930, 940]
+- ❌ ERRADO: "O CVU médio é 920,00 $/MWh"
+- ❌ ERRADO: "O CVU varia entre 900,00 e 940,00 $/MWh"
+- ❌ ERRADO: "O CVU de Ibirite é 916,65 $/MWh" (quando há múltiplos anos)
+- ✅ CORRETO: Tabela com 5 linhas, uma para cada ano:
+  | Ano | CVU ($/MWh) |
+  |-----|--------------|
+  | 2025 | 900,00 |
+  | 2026 | 920,00 |
+  | 2027 | 910,00 |
+  | 2028 | 930,00 |
+  | 2029 | 940,00 |
+
+📋 REGRA ESPECIAL PARA CARGA MENSAL:
+- Se a pergunta é sobre carga mensal (ex: "carga do sudeste"), você DEVE apresentar TODOS os meses
+- NUNCA use valores anuais agregados - os dados são mensais, não anuais
+- NUNCA calcule "carga média anual" ou "carga total anual" dos meses
+- Cada mês deve aparecer como uma linha separada na tabela
+- Se há 60 registros de carga mensal (12 meses × 5 anos), mostre os 60 meses completos
+
+EXEMPLOS ESPECÍFICOS PARA CARGA MENSAL:
+- Se a pergunta é "carga do sudeste" e há dados mensais de 5 anos (60 meses):
+- ❌ ERRADO: Tabela com valores anuais agregados (5 linhas, uma por ano)
+- ❌ ERRADO: "A carga do Sudeste por ano:" + valores anuais
+- ✅ CORRETO: Tabela com TODOS os meses (60 linhas, uma por mês):
+  | Ano | Mês | Carga (MWmédio) |
+  |-----|-----|-----------------|
+  | 2025 | 1 | 41.838 |
+  | 2025 | 2 | 41.838 |
+  | ... | ... | ... |
+  | 2029 | 12 | 49.635 |
+
+📊 REGRAS GERAIS:
+- Se os dados contêm múltiplos registros (ex: múltiplos anos), apresente TODOS em uma tabela
+- Use tabelas Markdown para apresentar dados tabulares com todos os registros
+- Analise a pergunta original e forneça uma resposta FOCADA que responda APENAS ao que foi perguntado
+- FILTRE as informações do resultado da tool, mostrando apenas o que é relevante para a pergunta específica
+- Se a pergunta é sobre um tipo específico de dado, mostre APENAS esse tipo, ignorando outros
+- MAS SEMPRE apresente os dados brutos sem cálculos intermediários
+
+⚠️ LEMBRE-SE: Se você calcular qualquer estatística (média, mínimo, máximo) dos dados brutos, estará ERRADO."""
 
 
 def interpreter_node(state: AgentState) -> dict:
@@ -156,14 +270,29 @@ def interpreter_node(state: AgentState) -> dict:
     3. Caso contrário: interpreta resultados de execução de código
     """
     try:
-        # Verificar se há resultado de tool
+        # IMPORTANTE: Verificar resultado de tool PRIMEIRO
+        # Se há tool_result, processar mesmo que haja disambiguation no state
+        # (disambiguation pode estar no state de uma query anterior)
         tool_result = state.get("tool_result")
         tool_used = state.get("tool_used")
         
         if tool_result:
             print(f"[INTERPRETER] Processando resultado de tool: {tool_used}")
+            print(f"[INTERPRETER]   Success: {tool_result.get('success', False)}")
+            print(f"[INTERPRETER]   Data count: {len(tool_result.get('data', [])) if tool_result.get('data') else 0}")
             query = state.get("query", "")
-            return _format_tool_response_with_llm(tool_result, tool_used, query)
+            print(f"[INTERPRETER]   Query original: {query[:100]}")
+            result = _format_tool_response_with_llm(tool_result, tool_used, query)
+            print(f"[INTERPRETER]   Resposta gerada: {len(result.get('final_response', ''))} caracteres")
+            return result
+        
+        # Verificar se há disambiguation (apenas se não há tool_result)
+        disambiguation = state.get("disambiguation")
+        if disambiguation:
+            # Para disambiguation, não retornar mensagem - o frontend já cria
+            # Apenas retornar vazio para evitar duplicação
+            print(f"[INTERPRETER] Processando disambiguation com {len(disambiguation.get('options', []))} opções")
+            return {"final_response": ""}  # Vazio - frontend já cria a mensagem
         
         # Verificar se é um caso de fallback
         rag_status = state.get("rag_status", "success")
@@ -171,14 +300,15 @@ def interpreter_node(state: AgentState) -> dict:
         if rag_status == "fallback":
             fallback_response = state.get("fallback_response", "")
             if fallback_response:
+                fallback_response = clean_response_text(fallback_response, max_emojis=2)
                 return {"final_response": fallback_response}
             
             # Fallback genérico se não houver resposta
-            return {"final_response": """## ❌ Não foi possível processar sua solicitação
+            fallback_msg = """## Não foi possível processar sua solicitação
 
 Não encontrei arquivos de dados adequados para responder sua pergunta.
 
-### 💡 Sugestões de perguntas válidas:
+### Sugestões de perguntas válidas:
 
 - "Quais são as usinas hidrelétricas com maior potência instalada?"
 - "Quais térmicas têm manutenção programada?"
@@ -186,14 +316,16 @@ Não encontrei arquivos de dados adequados para responder sua pergunta.
 - "Qual a demanda do submercado Sudeste?"
 - "Quais são as vazões históricas do posto 1?"
 
-### 📋 Dados disponíveis para consulta:
+### Dados disponíveis para consulta:
 
 - **HIDR.DAT**: Cadastro de usinas hidrelétricas (potência, volumes, características)
 - **MANUTT.DAT**: Manutenções de térmicas
 - **CLAST.DAT**: Custos de classes térmicas
 - **SISTEMA.DAT**: Demandas e intercâmbios entre submercados
 - **VAZOES.DAT**: Séries históricas de vazões
-"""}
+"""
+            fallback_msg = clean_response_text(fallback_msg, max_emojis=2)
+            return {"final_response": fallback_msg}
         
         # Fluxo normal - interpretar resultados de execução
         execution_result = state.get("execution_result") or {}
@@ -236,15 +368,18 @@ Não encontrei arquivos de dados adequados para responder sua pergunta.
         # Garantir que response.content existe e não é None
         final_response = getattr(response, 'content', None)
         if not final_response:
-            final_response = "## ✅ Processamento concluído\n\nOs dados foram processados com sucesso. Consulte a saída da execução acima para mais detalhes."
-        
+            final_response = "## Processamento concluído\n\nOs dados foram processados com sucesso. Consulte a saída da execução acima para mais detalhes."
+        # Limitar emojis na resposta
+        final_response = clean_response_text(final_response, max_emojis=2)
         return {"final_response": final_response}
         
     except Exception as e:
         print(f"[INTERPRETER ERROR] {str(e)}")
         import traceback
         traceback.print_exc()
-        return {"final_response": f"## ⚠️ Erro ao interpretar resultados\n\nOcorreu um erro ao gerar a resposta: {str(e)}\n\nConsulte a saída da execução do código para ver os dados."}
+        error_msg = f"## Erro ao interpretar resultados\n\nOcorreu um erro ao gerar a resposta: {str(e)}\n\nConsulte a saída da execução do código para ver os dados."
+        error_msg = clean_response_text(error_msg, max_emojis=2)
+        return {"final_response": error_msg}
 
 
 def _format_tool_response_summary(tool_result: dict, tool_used: str) -> str:
@@ -332,6 +467,64 @@ def _format_tool_response_summary(tool_result: dict, tool_used: str) -> str:
     return "\n".join(summary_parts)
 
 
+def _format_number_for_display(value: float, threshold: float = 1e10) -> str:
+    """
+    Formata um número para exibição, usando notação científica para valores muito grandes.
+    
+    Args:
+        value: Valor numérico a formatar
+        threshold: Limite acima do qual usar notação científica
+        
+    Returns:
+        String formatada
+    """
+    if not isinstance(value, (int, float)):
+        return str(value)
+    
+    # Valores muito grandes (absoluto >= 1e10) ou muito pequenos (absoluto < 1e-3 e != 0): usar notação científica
+    # Valores como -1.0999999999999999e+36 devem ser formatados em notação científica
+    if abs(value) >= threshold or (abs(value) < 1e-3 and value != 0):
+        # Formatar em notação científica com 2 casas decimais
+        return f"{value:.2e}"
+    elif abs(value) >= 1e30:  # Valores extremamente grandes (como -1.0999999999999999e+36)
+        # Formatar em notação científica com 2 casas decimais
+        return f"{value:.2e}"
+    else:
+        # Formatar com separador de milhar e 2 casas decimais
+        return f"{value:,.2f}"
+
+
+def _format_restricao_eletrica_data(dados: list) -> list:
+    """
+    Formata os dados de restrições elétricas, convertendo valores muito grandes
+    para notação científica.
+    
+    Args:
+        dados: Lista de dicionários com dados de restrições elétricas
+        
+    Returns:
+        Lista de dicionários formatados
+    """
+    dados_formatados = []
+    for registro in dados:
+        registro_formatado = registro.copy()
+        
+        # Formatar lim_inf e lim_sup se existirem
+        if 'lim_inf' in registro_formatado:
+            valor = registro_formatado['lim_inf']
+            if isinstance(valor, (int, float)):
+                registro_formatado['lim_inf'] = _format_number_for_display(valor)
+        
+        if 'lim_sup' in registro_formatado:
+            valor = registro_formatado['lim_sup']
+            if isinstance(valor, (int, float)):
+                registro_formatado['lim_sup'] = _format_number_for_display(valor)
+        
+        dados_formatados.append(registro_formatado)
+    
+    return dados_formatados
+
+
 def _format_tool_response_data_for_llm(tool_result: dict) -> str:
     """
     Formata os dados da tool em formato estruturado para o LLM.
@@ -346,11 +539,25 @@ def _format_tool_response_data_for_llm(tool_result: dict) -> str:
     import json
     
     # Criar estrutura resumida
+    # IMPORTANTE: NÃO incluir stats_estrutural ou stats_conjuntural que contêm
+    # custo_medio, custo_min, custo_max - essas estatísticas podem influenciar
+    # o LLM a calcular médias, o que é proibido
     data_summary = {
         "success": tool_result.get("success", False),
         "filtros": tool_result.get("filtros"),
-        "stats_geral": tool_result.get("stats_geral"),
     }
+    
+    # Incluir stats_geral apenas se não contiver estatísticas calculadas
+    stats_geral = tool_result.get("stats_geral")
+    if stats_geral:
+        # Criar cópia sem campos de estatísticas calculadas
+        stats_geral_clean = {}
+        for key, value in stats_geral.items():
+            # Incluir apenas campos descritivos, não estatísticas calculadas
+            if key not in ['custo_medio', 'custo_min', 'custo_max', 'valor_medio', 'valor_min', 'valor_max']:
+                stats_geral_clean[key] = value
+        if stats_geral_clean:
+            data_summary["stats_geral"] = stats_geral_clean
     
     # Dados por submercado (prioridade quando disponível)
     dados_por_submercado = tool_result.get("dados_por_submercado")
@@ -381,6 +588,53 @@ def _format_tool_response_data_for_llm(tool_result: dict) -> str:
             else:
                 data_summary["dados_por_tipo"][tipo] = dados
     
+    # Dados de carga mensal (para CargaMensalTool)
+    # IMPORTANTE: Incluir apenas dados mensais brutos, NÃO dados agregados anuais
+    data = tool_result.get("data")
+    if data:
+        # Incluir TODOS os dados mensais (sem limite para carga mensal)
+        # O LLM deve apresentar todos os meses, não valores anuais agregados
+        data_summary["data"] = data
+    
+    # Dados por submercado (para CargaMensalTool quando organizado por submercado)
+    # IMPORTANTE: Incluir dados mensais brutos, não agregados
+    dados_por_submercado = tool_result.get("dados_por_submercado")
+    if dados_por_submercado:
+        data_summary["dados_por_submercado"] = {}
+        for codigo, info in dados_por_submercado.items():
+            nome = info.get('nome', f'Subsistema {codigo}')
+            dados = info.get('dados', [])
+            # Incluir TODOS os dados mensais (sem limite para carga mensal)
+            data_summary["dados_por_submercado"][codigo] = {
+                "nome": nome,
+                "dados": dados,  # TODOS os dados mensais, sem limite
+                "total_registros": len(dados)
+            }
+    
+    # Dados estruturais e conjunturais (para ClastValoresTool)
+    # IMPORTANTE: Incluir apenas os dados brutos, NÃO as estatísticas calculadas
+    dados_estruturais = tool_result.get("dados_estruturais")
+    if dados_estruturais:
+        # Incluir TODOS os dados estruturais (sem limite para CVU)
+        # O LLM deve apresentar todos os anos, não calcular médias
+        data_summary["dados_estruturais"] = dados_estruturais
+    
+    dados_conjunturais = tool_result.get("dados_conjunturais")
+    if dados_conjunturais:
+        # Incluir dados conjunturais (limitado para não exceder tokens)
+        data_summary["dados_conjunturais"] = dados_conjunturais[:50]
+        if len(dados_conjunturais) > 50:
+            data_summary["dados_conjunturais_total"] = len(dados_conjunturais)
+    
+    # Dados de restrições elétricas (para RestricaoEletricaTool)
+    dados = tool_result.get("dados")
+    if dados:
+        # Formatar valores numéricos muito grandes em notação científica
+        dados_formatados = _format_restricao_eletrica_data(dados)
+        data_summary["dados"] = dados_formatados[:50]  # Limitar a 50 registros
+        if len(dados_formatados) > 50:
+            data_summary["dados_total"] = len(dados_formatados)
+    
     # Outras seções importantes
     for key in ["desativacoes", "repotenciacoes", "expansoes", "indisponibilidades"]:
         if key in tool_result:
@@ -389,6 +643,11 @@ def _format_tool_response_data_for_llm(tool_result: dict) -> str:
                 data_summary[key] = value[:20]  # Limitar também
             else:
                 data_summary[key] = value
+    
+    # IMPORTANTE: NUNCA incluir:
+    # - aggregated: dados agregados anuais (para CargaMensalTool)
+    # - stats_estrutural ou stats_conjuntural: estatísticas calculadas (para ClastValoresTool)
+    # Esses dados podem influenciar o LLM a calcular médias ou usar valores agregados, o que é proibido
     
     try:
         return json.dumps(data_summary, indent=2, ensure_ascii=False, default=str)
@@ -417,8 +676,12 @@ def _format_tool_response_with_llm(tool_result: dict, tool_used: str, query: str
     try:
         print(f"[TOOL INTERPRETER LLM] Gerando resposta focada para query: {query[:100]}")
         
+        # Adicionar query ao tool_result para uso na formatação
+        tool_result_with_query = tool_result.copy()
+        tool_result_with_query["query"] = query
+        
         # Primeiro, gerar resposta formatada básica usando métodos existentes
-        formatted_response = _format_tool_response(tool_result, tool_used)
+        formatted_response = _format_tool_response(tool_result_with_query, tool_used)
         base_response = formatted_response.get("final_response", "")
         
         # Criar resumos para o LLM
@@ -451,6 +714,8 @@ def _format_tool_response_with_llm(tool_result: dict, tool_used: str, query: str
         
         if final_response:
             print(f"[TOOL INTERPRETER LLM] ✅ Resposta focada gerada ({len(final_response)} caracteres)")
+            # Limitar emojis na resposta
+            final_response = clean_response_text(final_response, max_emojis=2)
             return {"final_response": final_response}
         else:
             # Fallback para resposta formatada original
@@ -486,7 +751,9 @@ def _format_tool_response(tool_result: dict, tool_used: str) -> dict:
     if tool_used == "CargaMensalTool":
         return _format_carga_mensal_response(tool_result, tool_used)
     elif tool_used == "ClastValoresTool":
-        return _format_clast_valores_response(tool_result, tool_used)
+        # Passar query para detectar se é CVU e gerar gráfico
+        query = tool_result.get("query", "")
+        return _format_clast_valores_response(tool_result, tool_used, query)
     elif tool_used == "ExptOperacaoTool":
         return _format_expt_operacao_response(tool_result, tool_used)
     elif tool_used == "ModifOperacaoTool":
@@ -504,7 +771,8 @@ def _format_carga_mensal_response(tool_result: dict, tool_used: str) -> dict:
     data = tool_result.get("data", [])
     summary = tool_result.get("summary", {})
     stats = tool_result.get("stats_por_submercado", [])
-    aggregated = tool_result.get("aggregated", [])
+    # IMPORTANTE: NÃO usar aggregated (dados agregados anuais)
+    # Os dados devem ser apresentados mês a mês, não agregados por ano
     
     # Construir resposta em Markdown
     response_parts = []
@@ -556,28 +824,11 @@ def _format_carga_mensal_response(tool_result: dict, tool_used: str) -> dict:
         response_parts.append("\n")
     
     # Agregação anual
-    if aggregated:
-        response_parts.append("### 📅 Carga Anual por Submercado\n\n")
-        response_parts.append("| Submercado | Ano | Total Anual (MWmédio) | Média Mensal | Mínimo Mensal | Máximo Mensal |\n")
-        response_parts.append("|------------|-----|----------------------|--------------|---------------|---------------|\n")
-        
-        # Mostrar todos os registros agregados
-        for agg in aggregated:
-            sub = agg.get('codigo_submercado', 'N/A')
-            ano = agg.get('ano', 'N/A')
-            total_anual = agg.get('carga_anual_total', 0)
-            media_mensal = agg.get('carga_media_mensal', 0)
-            min_mensal = agg.get('carga_min_mensal', 0)
-            max_mensal = agg.get('carga_max_mensal', 0)
-            
-            response_parts.append(
-                f"| {sub} | {ano} | {total_anual:,.2f} | {media_mensal:,.2f} | {min_mensal:,.2f} | {max_mensal:,.2f} |\n"
-            )
-        
-        response_parts.append(f"\n*Total: {len(aggregated)} registros agregados*\n")
-        response_parts.append("\n")
+    # IMPORTANTE: NÃO mostrar dados agregados anuais
+    # Os dados de carga mensal devem ser apresentados mês a mês, não agregados por ano
+    # A seção de dados agregados foi removida para evitar que o LLM use valores anuais
     
-    # Dados detalhados
+    # Dados mensais detalhados
     if data:
         response_parts.append("### 📋 Dados Detalhados\n\n")
         response_parts.append(f"*Total de {len(data)} registros disponíveis*\n\n")
@@ -611,10 +862,117 @@ def _format_carga_mensal_response(tool_result: dict, tool_used: str) -> dict:
     response_parts.append("---\n\n")
     response_parts.append("*Dados processados diretamente do arquivo SISTEMA.DAT usando tool pré-programada.*\n")
     
-    return {"final_response": "".join(response_parts)}
+    response_text = "".join(response_parts)
+    response_text = clean_response_text(response_text, max_emojis=2)
+    return {"final_response": response_text}
 
 
-def _format_clast_valores_response(tool_result: dict, tool_used: str) -> dict:
+def _generate_cvu_chart(dados_estruturais: list, classe_nome: str = None) -> Optional[str]:
+    """
+    Gera um gráfico de CVU (Custo Variável Unitário) por ano.
+    
+    Args:
+        dados_estruturais: Lista de dicionários com dados estruturais
+        classe_nome: Nome da classe (opcional, para título)
+        
+    Returns:
+        String base64 da imagem do gráfico ou None se não for possível gerar
+    """
+    try:
+        if not dados_estruturais:
+            return None
+        
+        df = pd.DataFrame(dados_estruturais)
+        
+        # Verificar se tem as colunas necessárias
+        if 'indice_ano_estudo' not in df.columns or 'valor' not in df.columns:
+            return None
+        
+        # Se há múltiplas classes, usar apenas a primeira (ou agrupar)
+        if 'codigo_usina' in df.columns:
+            codigos_unicos = df['codigo_usina'].unique()
+            if len(codigos_unicos) == 1:
+                # Uma única classe - usar todos os dados
+                df_plot = df.copy()
+                if classe_nome is None and 'nome_usina' in df.columns:
+                    classe_nome = df['nome_usina'].iloc[0]
+            else:
+                # Múltiplas classes - usar a primeira ou fazer gráfico separado por classe
+                # Por enquanto, usar a primeira classe
+                primeiro_codigo = codigos_unicos[0]
+                df_plot = df[df['codigo_usina'] == primeiro_codigo].copy()
+                if classe_nome is None and 'nome_usina' in df_plot.columns:
+                    classe_nome = df_plot['nome_usina'].iloc[0]
+        else:
+            df_plot = df.copy()
+        
+        # Agrupar por ano e pegar o valor (se houver múltiplos valores por ano, usar o primeiro)
+        df_plot = df_plot.sort_values('indice_ano_estudo')
+        anos = df_plot['indice_ano_estudo'].tolist()
+        custos = df_plot['valor'].tolist()
+        
+        if not anos or not custos:
+            return None
+        
+        # Criar gráfico
+        plt.figure(figsize=(10, 6))
+        plt.plot(anos, custos, marker='o', linewidth=2, markersize=8)
+        plt.xlabel('Ano', fontsize=12, fontweight='bold')
+        plt.ylabel('CVU ($/MWh)', fontsize=12, fontweight='bold')
+        
+        if classe_nome:
+            plt.title(f'Custo Variável Unitário (CVU) - {classe_nome}', fontsize=14, fontweight='bold')
+        else:
+            plt.title('Custo Variável Unitário (CVU)', fontsize=14, fontweight='bold')
+        
+        plt.grid(True, alpha=0.3, linestyle='--')
+        plt.xticks(anos, rotation=45)
+        
+        # Adicionar valores nos pontos
+        for i, (ano, custo) in enumerate(zip(anos, custos)):
+            plt.annotate(f'{custo:,.2f}', (ano, custo), 
+                        textcoords="offset points", xytext=(0,10), ha='center', fontsize=9)
+        
+        plt.tight_layout()
+        
+        # Converter para base64
+        buffer = io.BytesIO()
+        plt.savefig(buffer, format='png', dpi=100, bbox_inches='tight')
+        buffer.seek(0)
+        image_base64 = base64.b64encode(buffer.read()).decode('utf-8')
+        plt.close()
+        
+        return image_base64
+        
+    except Exception as e:
+        print(f"[INTERPRETER] ⚠️ Erro ao gerar gráfico CVU: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+
+
+def _is_cvu_query(query: str) -> bool:
+    """
+    Verifica se a query é sobre CVU (Custo Variável Unitário).
+    
+    Args:
+        query: Query do usuário
+        
+    Returns:
+        True se for uma query de CVU
+    """
+    query_lower = query.lower()
+    cvu_keywords = [
+        "cvu",
+        "custo variável unitário",
+        "custo variavel unitario",
+        "custo variável unitario",
+        "custo variavel unitário",
+    ]
+    return any(kw in query_lower for kw in cvu_keywords)
+
+
+def _format_clast_valores_response(tool_result: dict, tool_used: str, query: str = "") -> dict:
     """
     Formata o resultado da ClastValoresTool em resposta Markdown.
     
@@ -685,10 +1043,23 @@ def _format_clast_valores_response(tool_result: dict, tool_used: str) -> dict:
         
         # Tabela de dados estruturais
         if dados_estruturais:
+            # Verificar se é query de CVU para gerar gráfico
+            is_cvu = _is_cvu_query(query)
+            classe_nome_grafico = None
+            if filtros and 'classe' in filtros:
+                classe_nome_grafico = filtros['classe'].get('nome')
+            
+            # Gerar gráfico se for CVU
+            chart_base64 = None
+            if is_cvu:
+                chart_base64 = _generate_cvu_chart(dados_estruturais, classe_nome_grafico)
+                if chart_base64:
+                    response_parts.append("#### 📈 Gráfico de CVU por Ano\n\n")
+                    response_parts.append(f"![Gráfico CVU](data:image/png;base64,{chart_base64})\n\n")
+            
             response_parts.append("#### 📋 Dados Estruturais Detalhados\n\n")
             
             # Criar tabela pivotada por classe e ano
-            import pandas as pd
             df_est = pd.DataFrame(dados_estruturais)
             
             if len(df_est) > 0 and 'codigo_usina' in df_est.columns and 'indice_ano_estudo' in df_est.columns:
@@ -769,7 +1140,9 @@ def _format_clast_valores_response(tool_result: dict, tool_used: str) -> dict:
     response_parts.append("---\n\n")
     response_parts.append("*Dados processados diretamente do arquivo CLAST.DAT usando tool pré-programada.*\n")
     
-    return {"final_response": "".join(response_parts)}
+    response_text = "".join(response_parts)
+    response_text = clean_response_text(response_text, max_emojis=2)
+    return {"final_response": response_text}
 
 
 def _format_expt_operacao_response(tool_result: dict, tool_used: str) -> dict:
@@ -1055,7 +1428,9 @@ def _format_expt_operacao_response(tool_result: dict, tool_used: str) -> dict:
     response_parts.append("---\n\n")
     response_parts.append("*Dados processados diretamente do arquivo EXPT.DAT usando tool pré-programada.*\n")
     
-    return {"final_response": "".join(response_parts)}
+    response_text = "".join(response_parts)
+    response_text = clean_response_text(response_text, max_emojis=2)
+    return {"final_response": response_text}
 
 
 def _format_modif_operacao_response(tool_result: dict, tool_used: str) -> dict:
@@ -1359,4 +1734,6 @@ def _format_modif_operacao_response(tool_result: dict, tool_used: str) -> dict:
     response_parts.append("---\n\n")
     response_parts.append("*Dados processados diretamente do arquivo MODIF.DAT usando tool pré-programada.*\n")
     
-    return {"final_response": "".join(response_parts)}
+    response_text = "".join(response_parts)
+    response_text = clean_response_text(response_text, max_emojis=2)
+    return {"final_response": response_text}

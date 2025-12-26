@@ -592,6 +592,8 @@ class UsinasNaoSimuladasTool(NEWAVETool):
         - "valores mensais de PCT"
         - "carga de EOL MMGD"
         - "geração mensal de UFV"
+        - "ANDE"
+        - "Carga de EOL"
         - "valores mensais de PCH MMGD do subsistema 1"
         
         Esta tool consulta o arquivo SISTEMA.DAT e retorna informações sobre geração de usinas não simuladas, incluindo:

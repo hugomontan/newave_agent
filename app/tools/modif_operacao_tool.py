@@ -37,6 +37,21 @@ class ModifOperacaoTool(NEWAVETool):
             True se a tool pode processar a query
         """
         query_lower = query.lower()
+        query_upper = query.upper()
+        
+        # PALAVRAS-CHAVE PRIORITÁRIAS: "VAZAO MÍNIMA" em todas as variações
+        # Verificar primeiro para garantir prioridade máxima e ativação automática
+        # Verificar em lowercase (cobre todas as variações de maiúscula/minúscula)
+        vazao_minima_patterns = [
+            "vazão mínima", "vazao minima", "vazão minima", "vazao mínima",
+            "vazao-minima", "vazão-mínima", "vazao_minima", "vazão_mínima"
+        ]
+        
+        # Verificar se alguma variação de "vazão mínima" está presente (case-insensitive)
+        if any(pattern in query_lower for pattern in vazao_minima_patterns):
+            return True
+        
+        # Outras palavras-chave
         keywords = [
             "modif",
             "modificação hídrica",
@@ -51,8 +66,6 @@ class ModifOperacaoTool(NEWAVETool):
             "volume minimo",
             "volume máximo",
             "volume maximo",
-            "vazão mínima",
-            "vazao minima",
             "vazão máxima",
             "vazao maxima",
             "canal de fuga",

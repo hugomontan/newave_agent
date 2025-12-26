@@ -44,6 +44,12 @@ interface Message {
   retryCount?: number;
   error?: string | null;
   timestamp: Date;
+  disambiguationData?: {
+    type: string;
+    question: string;
+    options: Array<{label: string; query: string; tool_name: string}>;
+    original_query: string;
+  };
 }
 
 export default function Home() {
@@ -67,6 +73,12 @@ export default function Home() {
   const [executionOutput, setExecutionOutput] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
   const [maxRetries, setMaxRetries] = useState(3);
+  const [disambiguationData, setDisambiguationData] = useState<{
+    type: string;
+    question: string;
+    options: Array<{label: string; query: string; tool_name: string}>;
+    original_query: string;
+  } | null>(null);
 
   // Refs para capturar estado durante streaming
   const streamingCodeRef = useRef("");
@@ -219,8 +231,15 @@ export default function Home() {
         }
         break;
 
+      case "response_start":
+        console.log("[FRONTEND] response_start recebido");
+        setStreamingResponse("");
+        streamingResponseRef.current = "";
+        break;
+
       case "response_chunk":
         if (event.chunk) {
+          console.log("[FRONTEND] response_chunk recebido:", event.chunk.length, "caracteres");
           setStreamingResponse((prev) => {
             const newResponse = prev + event.chunk;
             streamingResponseRef.current = newResponse;
@@ -231,8 +250,26 @@ export default function Home() {
 
       case "response_complete":
         if (event.response) {
+          console.log("[FRONTEND] response_complete recebido:", event.response.length, "caracteres");
           setStreamingResponse(event.response);
           streamingResponseRef.current = event.response;
+        }
+        break;
+
+      case "disambiguation":
+        if (event.data) {
+          setDisambiguationData(event.data);
+          // Adicionar mensagem com disambiguation (sem conteúdo, a pergunta aparece no componente)
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: Date.now().toString(),
+              role: "assistant",
+              content: "",  // Vazio - a pergunta aparece no componente de disambiguation
+              disambiguationData: event.data,
+              timestamp: new Date(),
+            },
+          ]);
         }
         break;
 
@@ -288,10 +325,26 @@ export default function Home() {
         }
       }
 
+      // Não criar mensagem final se:
+      // 1. Houve disambiguation (já foi criada)
+      // 2. Não há conteúdo de resposta e não há dados para mostrar
+      const hasContent = streamingResponseRef.current && streamingResponseRef.current.trim();
+      const hasData = rawData && rawData.length > 0;
+      const hasCode = streamingCodeRef.current && streamingCodeRef.current.trim();
+      
+      // Criar mensagem se houver conteúdo (sempre, pois disambiguation já foi processada)
+      // Removemos a verificação de disambiguationData pois se há conteúdo, devemos sempre criar a mensagem
+      if (hasContent || hasData || hasCode) {
+        console.log("[FRONTEND] ✅ Criando mensagem final após disambiguation:", {
+          hasContent: !!hasContent,
+          hasData: !!hasData,
+          hasCode: !!hasCode,
+          contentLength: streamingResponseRef.current?.length || 0
+        });
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
-        content: streamingResponseRef.current || "Processamento concluído.",
+          content: streamingResponseRef.current || "",
         code: streamingCodeRef.current || undefined,
         executionSuccess: executionSuccessRef.current ?? false,
         executionOutput: executionOutputRef.current,
@@ -302,6 +355,9 @@ export default function Home() {
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
+      } else {
+        console.log("[FRONTEND] ❌ Não criando mensagem final - sem conteúdo");
+      }
       
       setAgentSteps([]);
       setStreamingCode("");
@@ -378,6 +434,109 @@ export default function Home() {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSendMessage();
+    }
+  };
+
+  const handleDisambiguationOptionClick = async (query: string) => {
+    if (!sessionId) return;
+    
+    console.log("[FRONTEND] Disambiguation option clicked:", query);
+    
+    // LIMPAR disambiguation ANTES de adicionar mensagem do usuário
+    setDisambiguationData(null);
+    
+    // Adicionar mensagem do usuário com a query expandida
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      role: "user",
+      content: query,
+      timestamp: new Date(),
+    };
+    
+    setMessages((prev) => [...prev, userMessage]);
+    setInput("");
+    setIsLoading(true);
+    setAgentSteps([]);
+    setStreamingCode("");
+    setStreamingResponse("");
+    setExecutionSuccess(null);
+    setExecutionError(null);
+    setExecutionOutput(null);
+    setRetryCount(0);
+
+    try {
+      for await (const event of sendQueryStream(sessionId, query)) {
+        processStreamEvent(event);
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      let rawData: Record<string, unknown>[] | null = null;
+      if (executionOutputRef.current) {
+        try {
+          const jsonMatch = executionOutputRef.current.match(/---JSON_DATA_START---([\s\S]*?)---JSON_DATA_END---/);
+          if (jsonMatch) {
+            rawData = JSON.parse(jsonMatch[1].trim());
+          }
+        } catch {
+          // Ignora erro de parsing
+        }
+      }
+
+      // Não criar mensagem final se:
+      // 1. Houve disambiguation (já foi criada)
+      // 2. Não há conteúdo de resposta e não há dados para mostrar
+      const hasContent = streamingResponseRef.current && streamingResponseRef.current.trim();
+      const hasData = rawData && rawData.length > 0;
+      const hasCode = streamingCodeRef.current && streamingCodeRef.current.trim();
+      
+      // Criar mensagem se houver conteúdo (sempre, pois disambiguation já foi processada)
+      // Removemos a verificação de disambiguationData pois se há conteúdo, devemos sempre criar a mensagem
+      if (hasContent || hasData || hasCode) {
+        console.log("[FRONTEND] ✅ Criando mensagem final após disambiguation:", {
+          hasContent: !!hasContent,
+          hasData: !!hasData,
+          hasCode: !!hasCode,
+          contentLength: streamingResponseRef.current?.length || 0
+        });
+        const assistantMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          role: "assistant",
+          content: streamingResponseRef.current || "",
+          code: streamingCodeRef.current || undefined,
+          executionSuccess: executionSuccessRef.current ?? false,
+          executionOutput: executionOutputRef.current,
+          rawData: rawData,
+          retryCount: retryCountRef.current,
+          error: executionErrorRef.current,
+          timestamp: new Date(),
+        };
+
+        setMessages((prev) => [...prev, assistantMessage]);
+      } else {
+        console.log("[FRONTEND] ❌ Não criando mensagem final - sem conteúdo");
+      }
+      
+      setAgentSteps([]);
+      setStreamingCode("");
+      setStreamingResponse("");
+
+    } catch (err) {
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: "assistant",
+        content: `❌ **Erro ao processar sua pergunta:**\n\n${
+          err instanceof Error ? err.message : "Erro desconhecido"
+        }`,
+        timestamp: new Date(),
+      };
+
+      setMessages((prev) => [...prev, errorMessage]);
+      setAgentSteps([]);
+      setStreamingCode("");
+      setStreamingResponse("");
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -494,7 +653,11 @@ export default function Home() {
             ) : (
               <div className="space-y-8">
                 {messages.map((message) => (
-                  <ChatMessage key={message.id} message={message} />
+                  <ChatMessage 
+                    key={message.id} 
+                    message={message} 
+                    onOptionClick={handleDisambiguationOptionClick}
+                  />
                 ))}
                 
                 {isLoading && agentSteps.length > 0 && (

@@ -35,6 +35,11 @@ SEMANTIC_MATCH_MIN_SCORE = float(os.getenv("SEMANTIC_MATCH_MIN_SCORE", "0.4"))  
 USE_HYBRID_MATCHING = os.getenv("USE_HYBRID_MATCHING", "true").lower() == "true"
 QUERY_EXPANSION_ENABLED = os.getenv("QUERY_EXPANSION_ENABLED", "true").lower() == "true"
 
+# Disambiguation settings (baseado em análise empírica de 70 queries)
+DISAMBIGUATION_SCORE_DIFF_THRESHOLD = float(os.getenv("DISAMBIGUATION_SCORE_DIFF_THRESHOLD", "0.1"))  # Diferença mediana observada: 0.0931
+DISAMBIGUATION_MAX_OPTIONS = int(os.getenv("DISAMBIGUATION_MAX_OPTIONS", "3"))  # Maioria dos conflitos envolve 2-3 tools
+DISAMBIGUATION_MIN_SCORE = float(os.getenv("DISAMBIGUATION_MIN_SCORE", "0.4"))  # Score mínimo atual do sistema
+
 # Langfuse (Observability)
 LANGFUSE_SECRET_KEY = os.getenv("LANGFUSE_SECRET_KEY")
 LANGFUSE_PUBLIC_KEY = os.getenv("LANGFUSE_PUBLIC_KEY")
