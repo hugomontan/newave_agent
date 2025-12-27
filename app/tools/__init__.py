@@ -15,9 +15,12 @@ from app.tools.dsvagua_tool import DsvaguaTool
 from app.tools.usinas_nao_simuladas_tool import UsinasNaoSimuladasTool
 from app.tools.restricao_eletrica_tool import RestricaoEletricaTool
 from app.tools.term_cadastro_tool import TermCadastroTool
+from app.tools.multi_deck_comparison_tool import MultiDeckComparisonTool
 
 # Registry de todas as tools disponíveis
+# MultiDeckComparisonTool deve ser a primeira para ter prioridade
 TOOLS_REGISTRY = [
+    MultiDeckComparisonTool,  # Primeira para interceptar todas as queries
     CargaMensalTool,
     ClastValoresTool,
     ExptOperacaoTool,

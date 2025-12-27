@@ -32,10 +32,12 @@ def tool_router_node(state: AgentState) -> dict:
     """
     query = state.get("query", "")
     deck_path = state.get("deck_path", "")
+    analysis_mode = state.get("analysis_mode", "single")
     
     print("[TOOL ROUTER] ===== INÍCIO: tool_router_node =====")
     print(f"[TOOL ROUTER] Query: {query[:100]}")
     print(f"[TOOL ROUTER] Deck path: {deck_path}")
+    print(f"[TOOL ROUTER] Analysis mode: {analysis_mode}")
     
     if not deck_path:
         print("[TOOL ROUTER] ❌ Deck path não especificado")
@@ -191,7 +193,57 @@ def tool_router_node(state: AgentState) -> dict:
             else:
                 print(f"[TOOL ROUTER] ⚠️ Tool {direct_tool_match} não encontrada na lista de tools")
     
-    # 0. Verificar palavras-chave prioritárias ANTES do semantic matching
+    # 0. Se modo é "comparison", SEMPRE usar MultiDeckComparisonTool
+    if analysis_mode == "comparison":
+        print("[TOOL ROUTER] 🔍 Modo comparação ativo - buscando MultiDeckComparisonTool...")
+        multi_deck_tool = None
+        for tool in tools:
+            if tool.get_name() == "MultiDeckComparisonTool":
+                multi_deck_tool = tool
+                break
+        
+        if multi_deck_tool:
+            if multi_deck_tool.can_handle(query):
+                print("[TOOL ROUTER] ✅ MultiDeckComparisonTool pode processar - executando comparação")
+                return _execute_tool(multi_deck_tool, "MultiDeckComparisonTool")
+            else:
+                print("[TOOL ROUTER] ⚠️ MultiDeckComparisonTool disponível mas não pode processar (decks não encontrados)")
+                # Retornar erro se modo comparison mas decks não disponíveis
+                return {
+                    "tool_route": True,
+                    "tool_result": {
+                        "success": False,
+                        "error": "Modo comparação ativo mas decks de comparação não encontrados.",
+                        "is_comparison": True
+                    },
+                    "tool_used": "MultiDeckComparisonTool",
+                    "execution_result": {
+                        "success": False,
+                        "stdout": "",
+                        "stderr": "Decks de comparação (Dezembro/Janeiro) não encontrados ou não carregados.",
+                        "return_code": -1
+                    }
+                }
+        else:
+            print("[TOOL ROUTER] ⚠️ Modo comparação ativo mas MultiDeckComparisonTool não encontrada")
+    
+    # 0. Verificar MultiDeckComparisonTool PRIMEIRO (se disponível e modo single)
+    # Ela intercepta todas as queries quando os decks estão disponíveis
+    if analysis_mode == "single":
+        print("[TOOL ROUTER] 🔍 Verificando MultiDeckComparisonTool (modo single)...")
+        multi_deck_tool = None
+        for tool in tools:
+            if tool.get_name() == "MultiDeckComparisonTool":
+                multi_deck_tool = tool
+                break
+        
+        if multi_deck_tool and multi_deck_tool.can_handle(query):
+            print("[TOOL ROUTER] ✅ MultiDeckComparisonTool pode processar - executando comparação")
+            return _execute_tool(multi_deck_tool, "MultiDeckComparisonTool")
+        elif multi_deck_tool:
+            print("[TOOL ROUTER] ⚠️ MultiDeckComparisonTool disponível mas não pode processar (decks não encontrados)")
+    
+    # 1. Verificar palavras-chave prioritárias ANTES do semantic matching
     # Isso garante que tools com palavras-chave prioritárias sejam executadas diretamente
     print("[TOOL ROUTER] 🔍 Verificando palavras-chave prioritárias...")
     query_lower = query.lower()

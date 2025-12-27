@@ -33,4 +33,10 @@ class AgentState(TypedDict):
     tool_used: Optional[str]  # Nome da tool usada
     
     # Campos para Disambiguation
-    disambiguation: Optional[dict]  # Informações de disambiguation se houver
+    disambiguation: Optional[dict]
+    
+    # Campos para Comparação Multi-Deck
+    comparison_data: Optional[dict]  # Dados de comparação multi-deck
+    
+    # Modo de análise
+    analysis_mode: str  # "single" ou "comparison"

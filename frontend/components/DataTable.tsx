@@ -69,10 +69,10 @@ export function DataTable({ data, title }: DataTableProps) {
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="w-full"
+      className="w-full max-w-full"
     >
-      <div className="bg-card border border-border shadow-sm rounded-lg">
-        <div className="pb-3 px-6 pt-6">
+      <div className="bg-card border border-border shadow-sm rounded-lg overflow-hidden">
+        <div className="pb-3 px-4 sm:px-6 pt-4 sm:pt-6">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
             <div>
               {title && (
@@ -111,53 +111,55 @@ export function DataTable({ data, title }: DataTableProps) {
             </div>
           </div>
         </div>
-        <div className="p-6 pt-0">
-          <div className="overflow-x-auto">
-            <table className="min-w-full border-collapse">
-              <thead>
-                <tr className="border-b border-border">
-                  {columns.map((col) => (
-                    <th
-                      key={col}
-                      className="px-4 py-2 text-left text-xs font-medium text-card-foreground uppercase tracking-wider bg-background"
-                    >
-                      {col}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {paginatedData.map((row, rowIndex) => (
-                  <tr
-                    key={rowIndex}
-                    className="border-b border-border hover:bg-background transition-colors"
-                  >
+        <div className="px-4 sm:px-6 pb-4 sm:pb-6 pt-0">
+          <div className="overflow-x-auto -mx-4 sm:mx-0">
+            <div className="inline-block min-w-full align-middle">
+              <table className="min-w-full border-collapse">
+                <thead>
+                  <tr className="border-b border-border">
                     {columns.map((col) => (
-                      <td
+                      <th
                         key={col}
-                        className="px-4 py-2 text-sm text-card-foreground/90"
+                        className="px-3 sm:px-4 py-2 text-left text-xs font-medium text-card-foreground uppercase tracking-wider bg-background whitespace-nowrap"
                       >
-                        {String(row[col] ?? "")}
-                      </td>
+                        {col}
+                      </th>
                     ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {paginatedData.map((row, rowIndex) => (
+                    <tr
+                      key={rowIndex}
+                      className="border-b border-border hover:bg-background transition-colors"
+                    >
+                      {columns.map((col) => (
+                        <td
+                          key={col}
+                          className="px-3 sm:px-4 py-2 text-xs sm:text-sm text-card-foreground/90 whitespace-nowrap"
+                        >
+                          {String(row[col] ?? "")}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
 
           {/* Pagination */}
           {totalPages > 1 && (
-            <div className="flex items-center justify-between mt-4 pt-4 border-t border-border">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mt-4 pt-4 border-t border-border px-4 sm:px-0">
               <div className="flex items-center gap-2">
-                <span className="text-sm text-muted-foreground">Linhas por página:</span>
+                <span className="text-xs sm:text-sm text-muted-foreground">Linhas por página:</span>
                 <select
                   value={rowsPerPage}
                   onChange={(e) => {
                     setRowsPerPage(Number(e.target.value));
                     setPage(1);
                   }}
-                  className="text-sm border border-border rounded px-2 py-1 text-foreground bg-background"
+                  className="text-xs sm:text-sm border border-border rounded px-2 py-1 text-foreground bg-background"
                 >
                   <option value={10}>10</option>
                   <option value={25}>25</option>
@@ -171,11 +173,11 @@ export function DataTable({ data, title }: DataTableProps) {
                   size="sm"
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                   disabled={page === 1}
-                  className="h-8"
+                  className="h-8 text-xs sm:text-sm"
                 >
                   Anterior
                 </Button>
-                <span className="text-sm text-muted-foreground">
+                <span className="text-xs sm:text-sm text-muted-foreground">
                   Página {page} de {totalPages}
                 </span>
                 <Button
@@ -183,7 +185,7 @@ export function DataTable({ data, title }: DataTableProps) {
                   size="sm"
                   onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                   disabled={page === totalPages}
-                  className="h-8"
+                  className="h-8 text-xs sm:text-sm"
                 >
                   Próxima
                 </Button>

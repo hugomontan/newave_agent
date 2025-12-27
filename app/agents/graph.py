@@ -225,7 +225,7 @@ def reset_agent():
     _agent = None
 
 
-def get_initial_state(query: str, deck_path: str) -> dict:
+def get_initial_state(query: str, deck_path: str, analysis_mode: str = "single") -> dict:
     """Retorna o estado inicial para uma query."""
     return {
         "query": query,
@@ -247,12 +247,15 @@ def get_initial_state(query: str, deck_path: str) -> dict:
         "fallback_response": None,
         "tried_files": [],
         "rejection_reasons": [],
+        "analysis_mode": analysis_mode,
         # Campos para Tools
         "tool_route": False,
         "tool_result": None,
         "tool_used": None,
         # Campos para Disambiguation
-        "disambiguation": None
+        "disambiguation": None,
+        # Campos para Comparação Multi-Deck
+        "comparison_data": None
     }
 
 
@@ -317,10 +320,10 @@ def run_query(query: str, deck_path: str, session_id: Optional[str] = None) -> d
     return result
 
 
-def run_query_stream(query: str, deck_path: str, session_id: Optional[str] = None) -> Generator[str, None, None]:
+def run_query_stream(query: str, deck_path: str, session_id: Optional[str] = None, analysis_mode: str = "single") -> Generator[str, None, None]:
     """Executa uma query no agente NEWAVE com streaming de eventos."""
     agent = get_agent()
-    initial_state = get_initial_state(query, deck_path)
+    initial_state = get_initial_state(query, deck_path, analysis_mode)
     
     # Configurar Langfuse para observabilidade
     print("[LANGFUSE DEBUG] ===== INÍCIO: run_query_stream =====")
@@ -439,6 +442,7 @@ def run_query_stream(query: str, deck_path: str, session_id: Optional[str] = Non
                 
                 elif node_name == "interpreter":
                     response = node_output.get("final_response") if node_output else None
+                    comparison_data = node_output.get("comparison_data") if node_output else None
                     print(f"[GRAPH] Interpreter retornou resposta: {len(response) if response else 0} caracteres")
                     # SEMPRE emitir resposta se houver conteúdo, mesmo que venha de disambiguation
                     # A diferença é que não emitimos mensagem "Processamento concluído" no final
@@ -448,7 +452,7 @@ def run_query_stream(query: str, deck_path: str, session_id: Optional[str] = Non
                         chunk_size = 50
                         for i in range(0, len(response), chunk_size):
                             yield f"data: {json.dumps({'type': 'response_chunk', 'chunk': response[i:i + chunk_size]})}\n\n"
-                        yield f"data: {json.dumps({'type': 'response_complete', 'response': response})}\n\n"
+                        yield f"data: {json.dumps({'type': 'response_complete', 'response': response, 'comparison_data': comparison_data})}\n\n"
                     else:
                         # Resposta vazia - pode ser disambiguation ou erro
                         print(f"[GRAPH] ⚠️ Resposta vazia do interpreter")

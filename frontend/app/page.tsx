@@ -1,741 +1,143 @@
 "use client";
 
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import React from "react";
+import { useRouter } from "next/navigation";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Card, CardContent } from "@/components/ui/card";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { ChatMessage } from "@/components/ChatMessage";
-import { FileUpload } from "@/components/FileUpload";
-import { AgentProgress, AgentStep } from "@/components/AgentProgress";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
-  sendQueryStream,
-  getSession,
-  deleteSession,
-  reindexDocs,
-  UploadResponse,
-  StreamEvent,
-} from "@/lib/api";
 import { motion } from "framer-motion";
-import { Upload, Send, MoreVertical, RefreshCw, Trash2, FileText } from "lucide-react";
-
-interface Message {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  code?: string;
-  executionSuccess?: boolean;
-  executionOutput?: string | null;
-  rawData?: Record<string, unknown>[] | null;
-  retryCount?: number;
-  error?: string | null;
-  timestamp: Date;
-  disambiguationData?: {
-    type: string;
-    question: string;
-    options: Array<{label: string; query: string; tool_name: string}>;
-    original_query: string;
-  };
-}
+import { FileText, GitCompare, ArrowRight } from "lucide-react";
 
 export default function Home() {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [sessionId, setSessionId] = useState<string | null>(null);
-  const [files, setFiles] = useState<string[]>([]);
-  const [filesCount, setFilesCount] = useState(0);
-  const [isReindexing, setIsReindexing] = useState(false);
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  // Streaming state
-  const [agentSteps, setAgentSteps] = useState<AgentStep[]>([]);
-  const [streamingCode, setStreamingCode] = useState("");
-  const [streamingResponse, setStreamingResponse] = useState("");
-  const [isStreaming, setIsStreaming] = useState(false);
-  const [executionSuccess, setExecutionSuccess] = useState<boolean | null>(null);
-  const [executionError, setExecutionError] = useState<string | null>(null);
-  const [executionOutput, setExecutionOutput] = useState<string | null>(null);
-  const [retryCount, setRetryCount] = useState(0);
-  const [maxRetries, setMaxRetries] = useState(3);
-  const [disambiguationData, setDisambiguationData] = useState<{
-    type: string;
-    question: string;
-    options: Array<{label: string; query: string; tool_name: string}>;
-    original_query: string;
-  } | null>(null);
-
-  // Refs para capturar estado durante streaming
-  const streamingCodeRef = useRef("");
-  const streamingResponseRef = useRef("");
-  const executionSuccessRef = useRef<boolean | null>(null);
-  const executionErrorRef = useRef<string | null>(null);
-  const executionOutputRef = useRef<string | null>(null);
-  const retryCountRef = useRef(0);
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages, agentSteps, streamingCode, streamingResponse]);
-
-  const handleUploadSuccess = async (response: UploadResponse) => {
-    setSessionId(response.session_id);
-    setFilesCount(response.files_count);
-
-    try {
-      const sessionInfo = await getSession(response.session_id);
-      setFiles(sessionInfo.files);
-    } catch (err) {
-      console.error("Error getting session info:", err);
-    }
-
-    setMessages([
-      {
-        id: Date.now().toString(),
-        role: "assistant",
-        content: `Deck NEWAVE carregado, faça sua consulta.`,
-        timestamp: new Date(),
-      },
-    ]);
-
-    setIsDialogOpen(false);
-  };
-
-  const processStreamEvent = useCallback((event: StreamEvent) => {
-    switch (event.type) {
-      case "start":
-        setAgentSteps([]);
-        setStreamingCode("");
-        setStreamingResponse("");
-        setIsStreaming(true);
-        setExecutionSuccess(null);
-        setExecutionError(null);
-        setExecutionOutput(null);
-        setRetryCount(0);
-        streamingCodeRef.current = "";
-        streamingResponseRef.current = "";
-        executionSuccessRef.current = null;
-        executionErrorRef.current = null;
-        executionOutputRef.current = null;
-        retryCountRef.current = 0;
-        break;
-
-      case "node_start":
-        if (event.node && event.info) {
-          setAgentSteps((prev) => {
-            const existing = prev.find((s) => s.node === event.node);
-            if (existing) {
-              return prev.map((s) =>
-                s.node === event.node ? { ...s, status: "running" as const } : s
-              );
-            }
-            return [
-              ...prev,
-              {
-                node: event.node!,
-                name: event.info!.name,
-                icon: event.info!.icon,
-                description: event.info!.description,
-                status: "running" as const,
-              },
-            ];
-          });
-        }
-        break;
-
-      case "node_detail":
-        if (event.node && event.detail) {
-          setAgentSteps((prev) =>
-            prev.map((s) =>
-              s.node === event.node ? { ...s, detail: event.detail } : s
-            )
-          );
-        }
-        break;
-
-      case "node_complete":
-        if (event.node) {
-          setAgentSteps((prev) =>
-            prev.map((s) =>
-              s.node === event.node ? { ...s, status: "completed" as const } : s
-            )
-          );
-        }
-        break;
-
-      case "code_line":
-        if (event.line !== undefined) {
-          setStreamingCode((prev) => {
-            const newCode = prev ? prev + "\n" + event.line : event.line!;
-            streamingCodeRef.current = newCode;
-            return newCode;
-          });
-        }
-        break;
-
-      case "code_complete":
-        if (event.code) {
-          setStreamingCode(event.code);
-          streamingCodeRef.current = event.code;
-        }
-        break;
-
-      case "execution_result":
-        setExecutionSuccess(event.success ?? false);
-        executionSuccessRef.current = event.success ?? false;
-        if (event.stdout) {
-          setExecutionOutput(event.stdout);
-          executionOutputRef.current = event.stdout;
-        }
-        if (event.stderr) {
-          setExecutionError(event.stderr);
-          executionErrorRef.current = event.stderr;
-        }
-        break;
-
-      case "retry":
-        if (event.retry_count !== undefined) {
-          setRetryCount(event.retry_count);
-          retryCountRef.current = event.retry_count;
-          if (event.max_retries) {
-            setMaxRetries(event.max_retries);
-          }
-          setAgentSteps((prev) => [
-            ...prev,
-            {
-              node: `retry_${event.retry_count}`,
-              name: `Tentativa ${event.retry_count + 1}/${event.max_retries || 3}`,
-              icon: "🔄",
-              description: event.message || "Corrigindo código com base no erro...",
-              status: "running" as const,
-            },
-          ]);
-        }
-        break;
-
-      case "response_start":
-        console.log("[FRONTEND] response_start recebido");
-        setStreamingResponse("");
-        streamingResponseRef.current = "";
-        break;
-
-      case "response_chunk":
-        if (event.chunk) {
-          console.log("[FRONTEND] response_chunk recebido:", event.chunk.length, "caracteres");
-          setStreamingResponse((prev) => {
-            const newResponse = prev + event.chunk;
-            streamingResponseRef.current = newResponse;
-            return newResponse;
-          });
-        }
-        break;
-
-      case "response_complete":
-        if (event.response) {
-          console.log("[FRONTEND] response_complete recebido:", event.response.length, "caracteres");
-          setStreamingResponse(event.response);
-          streamingResponseRef.current = event.response;
-        }
-        break;
-
-      case "disambiguation":
-        if (event.data) {
-          setDisambiguationData(event.data);
-          // Adicionar mensagem com disambiguation (sem conteúdo, a pergunta aparece no componente)
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: Date.now().toString(),
-              role: "assistant",
-              content: "",  // Vazio - a pergunta aparece no componente de disambiguation
-              disambiguationData: event.data,
-              timestamp: new Date(),
-            },
-          ]);
-        }
-        break;
-
-      case "complete":
-        setIsStreaming(false);
-        break;
-
-      case "error":
-        setIsStreaming(false);
-        setExecutionError(event.message || "Erro desconhecido");
-        executionErrorRef.current = event.message || "Erro desconhecido";
-        break;
-    }
-  }, []);
-
-  const handleSendMessage = async () => {
-    if (!input.trim() || !sessionId || isLoading) return;
-
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      role: "user",
-      content: input.trim(),
-      timestamp: new Date(),
-    };
-
-    setMessages((prev) => [...prev, userMessage]);
-    setInput("");
-    setIsLoading(true);
-    setAgentSteps([]);
-    setStreamingCode("");
-    setStreamingResponse("");
-    setExecutionSuccess(null);
-    setExecutionError(null);
-    setExecutionOutput(null);
-    setRetryCount(0);
-
-    try {
-      for await (const event of sendQueryStream(sessionId, userMessage.content)) {
-        processStreamEvent(event);
-      }
-
-      await new Promise(resolve => setTimeout(resolve, 100));
-
-      let rawData: Record<string, unknown>[] | null = null;
-      if (executionOutputRef.current) {
-        try {
-          const jsonMatch = executionOutputRef.current.match(/---JSON_DATA_START---([\s\S]*?)---JSON_DATA_END---/);
-          if (jsonMatch) {
-            rawData = JSON.parse(jsonMatch[1].trim());
-          }
-        } catch {
-          // Ignora erro de parsing
-        }
-      }
-
-      // Não criar mensagem final se:
-      // 1. Houve disambiguation (já foi criada)
-      // 2. Não há conteúdo de resposta e não há dados para mostrar
-      const hasContent = streamingResponseRef.current && streamingResponseRef.current.trim();
-      const hasData = rawData && rawData.length > 0;
-      const hasCode = streamingCodeRef.current && streamingCodeRef.current.trim();
-      
-      // Criar mensagem se houver conteúdo (sempre, pois disambiguation já foi processada)
-      // Removemos a verificação de disambiguationData pois se há conteúdo, devemos sempre criar a mensagem
-      if (hasContent || hasData || hasCode) {
-        console.log("[FRONTEND] ✅ Criando mensagem final após disambiguation:", {
-          hasContent: !!hasContent,
-          hasData: !!hasData,
-          hasCode: !!hasCode,
-          contentLength: streamingResponseRef.current?.length || 0
-        });
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-          content: streamingResponseRef.current || "",
-        code: streamingCodeRef.current || undefined,
-        executionSuccess: executionSuccessRef.current ?? false,
-        executionOutput: executionOutputRef.current,
-        rawData: rawData,
-        retryCount: retryCountRef.current,
-        error: executionErrorRef.current,
-        timestamp: new Date(),
-      };
-
-      setMessages((prev) => [...prev, assistantMessage]);
-      } else {
-        console.log("[FRONTEND] ❌ Não criando mensagem final - sem conteúdo");
-      }
-      
-      setAgentSteps([]);
-      setStreamingCode("");
-      setStreamingResponse("");
-
-    } catch (err) {
-      const errorMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: `❌ **Erro ao processar sua pergunta:**\n\n${
-          err instanceof Error ? err.message : "Erro desconhecido"
-        }`,
-        timestamp: new Date(),
-      };
-
-      setMessages((prev) => [...prev, errorMessage]);
-      setAgentSteps([]);
-      setStreamingCode("");
-      setStreamingResponse("");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const onClearSession = async () => {
-    if (sessionId) {
-      try {
-        await deleteSession(sessionId);
-      } catch (err) {
-        console.error("Error deleting session:", err);
-      }
-    }
-
-    setSessionId(null);
-    setFiles([]);
-    setFilesCount(0);
-    setMessages([]);
-    setAgentSteps([]);
-    setStreamingCode("");
-    setStreamingResponse("");
-  };
-
-  const handleReindex = async () => {
-    setIsReindexing(true);
-    try {
-      const result = await reindexDocs();
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: Date.now().toString(),
-          role: "assistant",
-          content: `📚 **Documentação reindexada!**\n\n${result.documents_count} documentos foram processados.`,
-          timestamp: new Date(),
-        },
-      ]);
-    } catch (err) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: Date.now().toString(),
-          role: "assistant",
-          content: `❌ **Erro ao reindexar:**\n\n${
-            err instanceof Error ? err.message : "Erro desconhecido"
-          }`,
-          timestamp: new Date(),
-        },
-      ]);
-    } finally {
-      setIsReindexing(false);
-    }
-  };
-
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSendMessage();
-    }
-  };
-
-  const handleDisambiguationOptionClick = async (query: string) => {
-    if (!sessionId) return;
-    
-    console.log("[FRONTEND] Disambiguation option clicked:", query);
-    
-    // LIMPAR disambiguation ANTES de adicionar mensagem do usuário
-    setDisambiguationData(null);
-    
-    // Adicionar mensagem do usuário com a query expandida
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      role: "user",
-      content: query,
-      timestamp: new Date(),
-    };
-    
-    setMessages((prev) => [...prev, userMessage]);
-    setInput("");
-    setIsLoading(true);
-    setAgentSteps([]);
-    setStreamingCode("");
-    setStreamingResponse("");
-    setExecutionSuccess(null);
-    setExecutionError(null);
-    setExecutionOutput(null);
-    setRetryCount(0);
-
-    try {
-      for await (const event of sendQueryStream(sessionId, query)) {
-        processStreamEvent(event);
-      }
-
-      await new Promise(resolve => setTimeout(resolve, 100));
-
-      let rawData: Record<string, unknown>[] | null = null;
-      if (executionOutputRef.current) {
-        try {
-          const jsonMatch = executionOutputRef.current.match(/---JSON_DATA_START---([\s\S]*?)---JSON_DATA_END---/);
-          if (jsonMatch) {
-            rawData = JSON.parse(jsonMatch[1].trim());
-          }
-        } catch {
-          // Ignora erro de parsing
-        }
-      }
-
-      // Não criar mensagem final se:
-      // 1. Houve disambiguation (já foi criada)
-      // 2. Não há conteúdo de resposta e não há dados para mostrar
-      const hasContent = streamingResponseRef.current && streamingResponseRef.current.trim();
-      const hasData = rawData && rawData.length > 0;
-      const hasCode = streamingCodeRef.current && streamingCodeRef.current.trim();
-      
-      // Criar mensagem se houver conteúdo (sempre, pois disambiguation já foi processada)
-      // Removemos a verificação de disambiguationData pois se há conteúdo, devemos sempre criar a mensagem
-      if (hasContent || hasData || hasCode) {
-        console.log("[FRONTEND] ✅ Criando mensagem final após disambiguation:", {
-          hasContent: !!hasContent,
-          hasData: !!hasData,
-          hasCode: !!hasCode,
-          contentLength: streamingResponseRef.current?.length || 0
-        });
-        const assistantMessage: Message = {
-          id: (Date.now() + 1).toString(),
-          role: "assistant",
-          content: streamingResponseRef.current || "",
-          code: streamingCodeRef.current || undefined,
-          executionSuccess: executionSuccessRef.current ?? false,
-          executionOutput: executionOutputRef.current,
-          rawData: rawData,
-          retryCount: retryCountRef.current,
-          error: executionErrorRef.current,
-          timestamp: new Date(),
-        };
-
-        setMessages((prev) => [...prev, assistantMessage]);
-      } else {
-        console.log("[FRONTEND] ❌ Não criando mensagem final - sem conteúdo");
-      }
-      
-      setAgentSteps([]);
-      setStreamingCode("");
-      setStreamingResponse("");
-
-    } catch (err) {
-      const errorMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: `❌ **Erro ao processar sua pergunta:**\n\n${
-          err instanceof Error ? err.message : "Erro desconhecido"
-        }`,
-        timestamp: new Date(),
-      };
-
-      setMessages((prev) => [...prev, errorMessage]);
-      setAgentSteps([]);
-      setStreamingCode("");
-      setStreamingResponse("");
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const router = useRouter();
 
   return (
-    <main className="flex flex-col h-screen bg-background overflow-hidden">
-      {/* Minimalist Header */}
-      <header className="border-b border-border bg-background">
-        <div className="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between">
-          <h1 className="text-sm font-medium text-foreground">NEWAVE Agent</h1>
-          <div className="flex items-center gap-1">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setIsDialogOpen(true)}
-              className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-muted"
-            >
-              <Upload className="w-4 h-4" />
-            </Button>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-muted"
-                >
-                  <MoreVertical className="w-4 h-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-72 bg-card border-border">
-                <DropdownMenuLabel className="text-card-foreground">Configurações</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                
-                {sessionId && (
-                  <>
-                    <div className="px-2 py-1.5">
-                      <p className="text-xs text-muted-foreground font-medium mb-1">Session ID</p>
-                      <code className="text-xs bg-background text-foreground px-2 py-1 rounded block overflow-hidden text-ellipsis border border-border font-mono break-all">
-                        {sessionId}
-                      </code>
-                    </div>
-                    
-                    {filesCount > 0 && (
-                      <div className="px-2 py-1.5">
-                        <p className="text-xs text-muted-foreground font-medium mb-2">
-                          Arquivos ({filesCount})
-                        </p>
-                        <div className="max-h-32 overflow-y-auto space-y-1">
-                          {files.slice(0, 10).map((file, index) => (
-                            <div
-                              key={index}
-                              className="text-xs bg-background px-2 py-1 rounded flex items-center gap-2 border border-border"
-                            >
-                              <FileText className="w-3 h-3 text-muted-foreground flex-shrink-0" />
-                              <span className="truncate text-foreground">{file}</span>
-                            </div>
-                          ))}
-                          {files.length > 10 && (
-                            <p className="text-xs text-muted-foreground italic pl-2">
-                              +{files.length - 10} arquivos...
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                    
-                    <DropdownMenuSeparator />
-                    
-                    <DropdownMenuItem
-                      className="text-destructive focus:text-destructive focus:bg-destructive/20 cursor-pointer"
-                      onSelect={onClearSession}
-                    >
-                      <Trash2 className="w-4 h-4 mr-2" />
-                      Limpar Sessão
-                    </DropdownMenuItem>
-                    
-                    <DropdownMenuSeparator />
-                  </>
-                )}
-                
-                <DropdownMenuItem
-                  onSelect={handleReindex}
-                  disabled={isReindexing}
-                  className="cursor-pointer text-foreground focus:bg-muted"
-                >
-                  <RefreshCw className={`w-4 h-4 mr-2 ${isReindexing ? "animate-spin" : ""}`} />
-                  {isReindexing ? "Reindexando..." : "Reindexar Documentação"}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+    <div className="min-h-screen bg-background flex flex-col">
+      {/* Header */}
+      <header className="border-b border-border bg-card/50 backdrop-blur-sm">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <FileText className="w-8 h-8 text-primary" />
+              <h1 className="text-2xl font-bold text-foreground">NEWAVE Agent</h1>
+            </div>
           </div>
         </div>
       </header>
 
-      {/* Main content */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <ScrollArea className="flex-1">
-          <div className="max-w-3xl mx-auto py-12 px-4">
-            {messages.length === 0 && !isLoading ? (
-              <div className="flex flex-col items-center justify-center text-center">
-                <h2 className="text-4xl font-semibold mb-4 text-foreground">
-                  NEWAVE Agent
-                </h2>
-                <p className="text-muted-foreground mb-8 text-lg">
-                  Faça upload de um deck NEWAVE para começar
-                </p>
-                <Button 
-                  onClick={() => setIsDialogOpen(true)}
-                  className="bg-primary hover:bg-primary/90 text-primary-foreground"
-                >
-                  <Upload className="w-4 h-4 mr-2" />
-                  Upload do Deck
-                </Button>
-              </div>
-            ) : (
-              <div className="space-y-8">
-                {messages.map((message) => (
-                  <ChatMessage 
-                    key={message.id} 
-                    message={message} 
-                    onOptionClick={handleDisambiguationOptionClick}
-                  />
-                ))}
-                
-                {isLoading && agentSteps.length > 0 && (
-                  <AgentProgress
-                    steps={agentSteps}
-                    currentCode={streamingCode}
-                    streamingResponse={streamingResponse}
-                    isStreaming={isStreaming}
-                    retryCount={retryCount}
-                    maxRetries={maxRetries}
-                  />
-                )}
-                
-                {isLoading && agentSteps.length === 0 && (
-                  <div className="flex justify-start">
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <div className="flex gap-1">
-                        <div className="w-2 h-2 bg-primary/60 rounded-full animate-bounce"></div>
-                        <div
-                          className="w-2 h-2 bg-primary/60 rounded-full animate-bounce"
-                          style={{ animationDelay: "0.2s" }}
-                        ></div>
-                        <div
-                          className="w-2 h-2 bg-primary/60 rounded-full animate-bounce"
-                          style={{ animationDelay: "0.4s" }}
-                        ></div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-                
-                <div ref={messagesEndRef} />
-              </div>
-            )}
-          </div>
-        </ScrollArea>
-
-        {/* Input area - ChatGPT style */}
-        <div className="border-t border-border bg-background">
-          <div className="max-w-3xl mx-auto px-4 py-4">
-            <div className="relative flex items-end gap-3">
-              <div className="flex-1 relative">
-                <div className="relative flex items-center bg-input border border-border rounded-2xl shadow-sm hover:border-primary/50 transition-colors">
-                  <Input
-                    placeholder={sessionId ? "Faça uma pergunta sobre os dados..." : "Faça upload de um deck para começar"}
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    onKeyDown={handleKeyPress}
-                    disabled={!sessionId || isLoading}
-                    className="border-0 focus-visible:ring-0 focus-visible:ring-offset-0 bg-transparent text-foreground placeholder:text-muted-foreground text-base pr-12 py-3"
-                  />
-                </div>
-              </div>
-              <Button
-                onClick={handleSendMessage}
-                disabled={!sessionId || !input.trim() || isLoading}
-                className="bg-primary hover:bg-primary/90 text-primary-foreground h-9 w-9 p-0 rounded-lg flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
-                size="icon"
-              >
-                <Send className="w-4 h-4" />
-              </Button>
-            </div>
-            <p className="text-xs text-center text-muted-foreground mt-2">
-              NEWAVE Agent pode cometer erros. Verifique informações importantes.
+      {/* Main Content */}
+      <main className="flex-1 flex items-center justify-center p-4">
+        <div className="max-w-4xl w-full space-y-8">
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+            className="text-center space-y-4"
+          >
+            <h2 className="text-4xl font-bold text-foreground">
+              Escolha o Modo de Análise
+            </h2>
+            <p className="text-lg text-muted-foreground">
+              Selecione como deseja analisar os decks NEWAVE disponíveis
             </p>
-          </div>
-        </div>
-      </div>
+          </motion.div>
 
-      {/* Upload Dialog */}
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="bg-card border-border">
-          <DialogHeader>
-            <DialogTitle className="text-card-foreground">Upload do Deck NEWAVE</DialogTitle>
-          </DialogHeader>
-          <FileUpload onUploadSuccess={handleUploadSuccess} />
-        </DialogContent>
-      </Dialog>
-    </main>
+          <div className="grid md:grid-cols-2 gap-6">
+            {/* Análise Single Deck */}
+            <motion.div
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.5, delay: 0.2 }}
+            >
+              <Card className="h-full hover:shadow-lg transition-shadow cursor-pointer border-2 hover:border-primary/50">
+                <CardHeader>
+                  <div className="flex items-center space-x-3 mb-2">
+                    <div className="p-3 bg-primary/10 rounded-lg">
+                      <FileText className="w-6 h-6 text-primary" />
+                    </div>
+                    <CardTitle className="text-2xl">Análise Single Deck</CardTitle>
+                  </div>
+                  <CardDescription className="text-base">
+                    Analise um deck NEWAVE específico. Faça upload de um deck ou escolha entre os decks disponíveis no repositório.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium text-foreground">Decks Disponíveis:</p>
+                      <ul className="text-sm text-muted-foreground space-y-1">
+                        <li>• Dezembro 2025 (NW202512)</li>
+                        <li>• Janeiro 2026 (NW202601)</li>
+                      </ul>
+                    </div>
+                    <Button
+                      onClick={() => router.push("/analysis")}
+                      className="w-full"
+                      size="lg"
+                    >
+                      Acessar Análise Single Deck
+                      <ArrowRight className="w-4 h-4 ml-2" />
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+
+            {/* Análise Comparativa */}
+            <motion.div
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.5, delay: 0.3 }}
+            >
+              <Card className="h-full hover:shadow-lg transition-shadow cursor-pointer border-2 hover:border-primary/50">
+                <CardHeader>
+                  <div className="flex items-center space-x-3 mb-2">
+                    <div className="p-3 bg-primary/10 rounded-lg">
+                      <GitCompare className="w-6 h-6 text-primary" />
+                    </div>
+                    <CardTitle className="text-2xl">Análise Comparativa</CardTitle>
+                  </div>
+                  <CardDescription className="text-base">
+                    Compare automaticamente os dados entre Dezembro 2025 e Janeiro 2026. Todas as consultas retornam resultados lado a lado com gráficos comparativos.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium text-foreground">Comparação Automática:</p>
+                      <ul className="text-sm text-muted-foreground space-y-1">
+                        <li>• Todas as queries comparam ambos os decks</li>
+                        <li>• Resultados lado a lado</li>
+                        <li>• Gráficos comparativos automáticos</li>
+                      </ul>
+                    </div>
+                    <Button
+                      onClick={() => router.push("/comparison")}
+                      className="w-full"
+                      size="lg"
+                      variant="default"
+                    >
+                      Acessar Análise Comparativa
+                      <ArrowRight className="w-4 h-4 ml-2" />
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+          </div>
+
+          {/* Footer Info */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.5, delay: 0.5 }}
+            className="text-center text-sm text-muted-foreground"
+          >
+            <p>
+              Os decks estão disponíveis no repositório e serão carregados automaticamente
+            </p>
+          </motion.div>
+        </div>
+      </main>
+    </div>
   );
 }

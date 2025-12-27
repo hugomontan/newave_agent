@@ -20,6 +20,7 @@ import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { DataTable } from "./DataTable";
+import { ComparisonView } from "./ComparisonView";
 import { motion } from "framer-motion";
 import { Copy, Check, Download, User, Bot } from "lucide-react";
 
@@ -34,6 +35,37 @@ interface Message {
   retryCount?: number;
   error?: string | null;
   timestamp: Date;
+  comparisonData?: {
+    deck_1: {
+      name: string;
+      success: boolean;
+      data: Record<string, unknown>[];
+      summary?: Record<string, unknown>;
+      error?: string;
+    };
+    deck_2: {
+      name: string;
+      success: boolean;
+      data: Record<string, unknown>[];
+      summary?: Record<string, unknown>;
+      error?: string;
+    };
+    chart_data?: {
+      labels: string[];
+      datasets: Array<{
+        label: string;
+        data: (number | null)[];
+      }>;
+    } | null;
+    differences?: Array<{
+      field: string;
+      period: string;
+      deck_1_value: number;
+      deck_2_value: number;
+      difference: number;
+      difference_percent: number;
+    }>;
+  };
   disambiguationData?: {
     type: string;
     question: string;
@@ -262,8 +294,15 @@ export function ChatMessage({ message, onOptionClick }: ChatMessageProps) {
                 )}
               </div>
 
+              {/* Comparison View */}
+              {message.comparisonData && (
+                <div className="w-full -mx-4 sm:-mx-6 md:-mx-8 px-4 sm:px-6 md:px-8">
+                  <ComparisonView comparison={message.comparisonData} />
+                </div>
+              )}
+
               {/* Raw Data Table */}
-              {message.rawData && message.rawData.length > 0 && (
+              {message.rawData && message.rawData.length > 0 && !message.comparisonData && (
                 <DataTable 
                   data={message.rawData} 
                   title="📊 Dados Extraídos"

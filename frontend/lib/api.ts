@@ -10,6 +10,37 @@ export interface QueryResponse {
   raw_data: Record<string, unknown>[] | null;
   retry_count: number;
   error: string | null;
+  comparison_data?: {
+    deck_1: {
+      name: string;
+      success: boolean;
+      data: Record<string, unknown>[];
+      summary?: Record<string, unknown>;
+      error?: string;
+    };
+    deck_2: {
+      name: string;
+      success: boolean;
+      data: Record<string, unknown>[];
+      summary?: Record<string, unknown>;
+      error?: string;
+    };
+    chart_data?: {
+      labels: string[];
+      datasets: Array<{
+        label: string;
+        data: (number | null)[];
+      }>;
+    } | null;
+    differences?: Array<{
+      field: string;
+      period: string;
+      deck_1_value: number;
+      deck_2_value: number;
+      difference: number;
+      difference_percent: number;
+    }>;
+  } | null;
 }
 
 export interface UploadResponse {
@@ -59,6 +90,37 @@ export interface StreamEvent {
   stderr?: string;
   chunk?: string;
   response?: string;
+  comparison_data?: {
+    deck_1: {
+      name: string;
+      success: boolean;
+      data: Record<string, unknown>[];
+      summary?: Record<string, unknown>;
+      error?: string;
+    };
+    deck_2: {
+      name: string;
+      success: boolean;
+      data: Record<string, unknown>[];
+      summary?: Record<string, unknown>;
+      error?: string;
+    };
+    chart_data?: {
+      labels: string[];
+      datasets: Array<{
+        label: string;
+        data: (number | null)[];
+      }>;
+    } | null;
+    differences?: Array<{
+      field: string;
+      period: string;
+      deck_1_value: number;
+      deck_2_value: number;
+      difference: number;
+      difference_percent: number;
+    }>;
+  } | null;
   retry_count?: number;
   max_retries?: number;
   retry?: number;
@@ -117,7 +179,8 @@ export async function sendQuery(
 
 export async function* sendQueryStream(
   sessionId: string,
-  query: string
+  query: string,
+  analysisMode?: "single" | "comparison"
 ): AsyncGenerator<StreamEvent> {
   const response = await fetch(`${API_URL}/query/stream`, {
     method: "POST",
@@ -127,6 +190,7 @@ export async function* sendQueryStream(
     body: JSON.stringify({
       session_id: sessionId,
       query: query,
+      analysis_mode: analysisMode || "single",
     }),
   });
 

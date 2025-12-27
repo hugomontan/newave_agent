@@ -9,7 +9,7 @@ matplotlib.use('Agg')  # Usar backend não-interativo
 import matplotlib.pyplot as plt
 import base64
 import io
-from typing import Optional
+from typing import Optional, Dict, Any
 
 
 INTERPRETER_SYSTEM_PROMPT = """Você é um especialista em análise de dados do setor elétrico brasileiro, 
@@ -292,6 +292,29 @@ def interpreter_node(state: AgentState) -> dict:
         if tool_result:
             print(f"[INTERPRETER] Processando resultado de tool: {tool_used}")
             print(f"[INTERPRETER]   Success: {tool_result.get('success', False)}")
+            
+            # Verificar se é uma comparação multi-deck
+            if tool_result.get("is_comparison"):
+                print(f"[INTERPRETER] ✅ Resultado é comparação multi-deck")
+                query = state.get("query", "")
+                # A tool retorna os dados de comparação diretamente no tool_result
+                # Criar estrutura comparison_data a partir do tool_result
+                comparison_data = {
+                    "deck_1": tool_result.get("deck_1", {}),
+                    "deck_2": tool_result.get("deck_2", {}),
+                    "chart_data": tool_result.get("chart_data"),
+                    "tool_name": tool_result.get("tool_used", tool_used),
+                    "query": tool_result.get("query", query),
+                    "differences": tool_result.get("differences", [])  # Incluir todas as diferenças
+                }
+                result = _format_comparison_response(tool_result, tool_used, query)
+                print(f"[INTERPRETER]   Resposta de comparação gerada")
+                # Incluir comparison_data no resultado
+                return {
+                    **result,
+                    "comparison_data": comparison_data
+                }
+            
             print(f"[INTERPRETER]   Data count: {len(tool_result.get('data', [])) if tool_result.get('data') else 0}")
             query = state.get("query", "")
             print(f"[INTERPRETER]   Query original: {query[:100]}")
@@ -393,6 +416,99 @@ Não encontrei arquivos de dados adequados para responder sua pergunta.
         error_msg = f"## Erro ao interpretar resultados\n\nOcorreu um erro ao gerar a resposta: {str(e)}\n\nConsulte a saída da execução do código para ver os dados."
         error_msg = clean_response_text(error_msg, max_emojis=2)
         return {"final_response": error_msg}
+
+
+def _format_comparison_response(
+    tool_result: Dict[str, Any], 
+    tool_used: str, 
+    query: str
+) -> Dict[str, Any]:
+    """
+    Formata a resposta para o frontend quando é uma comparação multi-deck.
+    
+    Args:
+        tool_result: Resultado da tool de comparação (já contém deck_1, deck_2, chart_data)
+        tool_used: Nome da tool usada
+        query: Query original do usuário
+        
+    Returns:
+        Dict com final_response formatado e comparison_data
+    """
+    # A tool retorna os dados diretamente no tool_result
+    # Construir comparison_data a partir do tool_result
+    chart_data = tool_result.get("chart_data")
+    differences = tool_result.get("differences", [])
+    
+    # Debug: verificar se chart_data está presente
+    if chart_data:
+        print(f"[INTERPRETER] ✅ Chart data presente: {len(chart_data.get('labels', []))} labels, {len(chart_data.get('datasets', []))} datasets")
+    else:
+        print(f"[INTERPRETER] ⚠️ Chart data NÃO presente no tool_result")
+        print(f"[INTERPRETER]   Keys disponíveis no tool_result: {list(tool_result.keys())}")
+    
+    comparison_data = {
+        "deck_1": tool_result.get("deck_1", {}),
+        "deck_2": tool_result.get("deck_2", {}),
+        "chart_data": chart_data,
+        "tool_name": tool_result.get("tool_used", tool_used),
+        "query": tool_result.get("query", query),
+        "differences": differences  # Incluir todas as diferenças
+    }
+    
+    # Verificar se há dados de comparação
+    if not tool_result.get("deck_1") and not tool_result.get("deck_2"):
+        return {
+            "final_response": "## ❌ Erro na Comparação\n\nNão foi possível obter dados de comparação.",
+            "comparison_data": None
+        }
+    
+    deck_1_name = tool_result.get("deck_1", {}).get("name", "Deck 1")
+    deck_2_name = tool_result.get("deck_2", {}).get("name", "Deck 2")
+    
+    response_parts = []
+    response_parts.append(f"## 📊 Comparação Multi-Deck: {query}\n\n")
+    response_parts.append(f"Análise comparativa entre **{deck_1_name}** e **{deck_2_name}** usando a tool `{tool_used}`.\n\n")
+    
+    # Verificar se ambos os decks tiveram sucesso
+    deck_1_success = tool_result.get("deck_1", {}).get("success", False)
+    deck_2_success = tool_result.get("deck_2", {}).get("success", False)
+    
+    if not deck_1_success or not deck_2_success:
+        response_parts.append("### ⚠️ Erro na Comparação\n\n")
+        if not deck_1_success:
+            error_1 = tool_result.get("deck_1", {}).get("error", "Erro desconhecido")
+            response_parts.append(f"- **{deck_1_name}**: {error_1}\n")
+        if not deck_2_success:
+            error_2 = tool_result.get("deck_2", {}).get("error", "Erro desconhecido")
+            response_parts.append(f"- **{deck_2_name}**: {error_2}\n")
+        response_parts.append("\n")
+    else:
+        # Resumo das diferenças (se houver)
+        differences = tool_result.get("differences", [])
+        if differences:
+            response_parts.append("### ⚠️ Discrepâncias Encontradas\n\n")
+            response_parts.append(f"**Total de diferenças significativas:** {len(differences)}\n\n")
+            response_parts.append("| Período | Dezembro 2025 | Janeiro 2026 | Diferença Nominal | Diferença % |\n")
+            response_parts.append("|---------|--------------|--------------|-------------------|-------------|\n")
+            
+            # Mostrar TODAS as diferenças (sem limite)
+            # A tabela completa será exibida no componente DifferencesTable no frontend
+            # Aqui apenas mostramos um resumo
+            response_parts.append(f"*Todas as {len(differences)} diferenças estão disponíveis na tabela interativa abaixo.*\n\n")
+            response_parts.append("\n**Nota:** Diferenças são consideradas significativas quando excedem 0.1% de diferença relativa ou 0.01 de diferença absoluta. A diferença nominal é calculada como Janeiro 2026 - Dezembro 2025, e a diferença percentual mantém o sinal (valores positivos indicam aumento, negativos indicam redução).\n\n")
+        else:
+            response_parts.append("### ✅ Nenhuma Discrepância Significativa Encontrada\n\n")
+            response_parts.append("Os dados são idênticos ou as diferenças estão dentro da tolerância (0.1% relativa ou 0.01 absoluta).\n\n")
+    
+    response_parts.append("---\n\n")
+    response_parts.append(f"*Os dados completos para cada deck e o gráfico comparativo estão disponíveis abaixo.*\n")
+    
+    final_response = "".join(response_parts)
+    final_response = clean_response_text(final_response, max_emojis=2)
+    return {
+        "final_response": final_response,
+        "comparison_data": comparison_data
+    }
 
 
 def _format_tool_response_summary(tool_result: dict, tool_used: str) -> str:

@@ -31,6 +31,7 @@ sessions: dict[str, Path] = {}
 class QueryRequest(BaseModel):
     session_id: str
     query: str
+    analysis_mode: str = "single"  # "single" ou "comparison"
 
 
 class QueryResponse(BaseModel):
@@ -43,6 +44,7 @@ class QueryResponse(BaseModel):
     raw_data: dict | list | None = None  # Dados brutos para download
     retry_count: int = 0
     error: str | None = None
+    comparison_data: dict | None = None  # Dados de comparação multi-deck
 
 
 class UploadResponse(BaseModel):
@@ -171,7 +173,8 @@ async def query_deck(request: QueryRequest):
             execution_output=clean_output,
             raw_data=raw_data,
             retry_count=result.get("retry_count", 0),
-            error=result.get("error")
+            error=result.get("error"),
+            comparison_data=result.get("comparison_data")
         )
     except Exception as e:
         raise HTTPException(
@@ -187,6 +190,7 @@ async def query_deck_stream(request: QueryRequest):
     Retorna Server-Sent Events (SSE) com o progresso da execução.
     """
     session_id = request.session_id
+    analysis_mode = request.analysis_mode or "single"
     
     if session_id not in sessions:
         session_path = UPLOADS_DIR / session_id
@@ -202,7 +206,7 @@ async def query_deck_stream(request: QueryRequest):
     
     def event_generator():
         try:
-            yield from run_query_stream(request.query, deck_path, session_id=session_id)
+            yield from run_query_stream(request.query, deck_path, session_id=session_id, analysis_mode=analysis_mode)
         except Exception as e:
             import json
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
@@ -277,6 +281,90 @@ async def reindex_docs():
         raise HTTPException(
             status_code=500,
             detail=f"Erro ao reindexar: {str(e)}"
+        )
+
+
+class LoadDeckRequest(BaseModel):
+    deck_name: str
+
+
+@app.post("/load-deck", response_model=UploadResponse)
+async def load_deck_from_repo(request: LoadDeckRequest):
+    """
+    Carrega um deck do repositório (decks/).
+    """
+    from app.utils.deck_loader import load_deck
+    import uuid
+    
+    try:
+        deck_path = load_deck(request.deck_name)
+        
+        # Criar sessão para o deck carregado
+        session_id = str(uuid.uuid4())
+        session_path = UPLOADS_DIR / session_id
+        session_path.mkdir(parents=True, exist_ok=True)
+        
+        # Copiar arquivos do deck para a sessão
+        import shutil
+        for item in deck_path.iterdir():
+            if item.is_file():
+                shutil.copy2(item, session_path / item.name)
+        
+        files_count = len(list(session_path.glob("*")))
+        sessions[session_id] = session_path
+        
+        return UploadResponse(
+            session_id=session_id,
+            message=f"Deck {request.deck_name} carregado do repositório",
+            files_count=files_count
+        )
+    except FileNotFoundError as e:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Deck {request.deck_name} não encontrado no repositório: {str(e)}"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Erro ao carregar deck: {str(e)}"
+        )
+
+
+@app.post("/init-comparison", response_model=UploadResponse)
+async def init_comparison_mode():
+    """
+    Inicializa o modo comparação usando os decks do repositório.
+    """
+    from app.utils.deck_loader import get_december_deck_path
+    import uuid
+    import shutil
+    
+    try:
+        # Usar deck de dezembro como base para a sessão
+        deck_path = get_december_deck_path()
+        
+        # Criar sessão para comparação
+        session_id = str(uuid.uuid4())
+        session_path = UPLOADS_DIR / session_id
+        session_path.mkdir(parents=True, exist_ok=True)
+        
+        # Copiar arquivos do deck de dezembro para a sessão
+        for item in deck_path.iterdir():
+            if item.is_file():
+                shutil.copy2(item, session_path / item.name)
+        
+        files_count = len(list(session_path.glob("*")))
+        sessions[session_id] = session_path
+        
+        return UploadResponse(
+            session_id=session_id,
+            message="Modo comparação inicializado (usando decks do repositório)",
+            files_count=files_count
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Erro ao inicializar modo comparação: {str(e)}"
         )
 
 
