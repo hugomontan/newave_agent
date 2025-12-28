@@ -4,7 +4,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from app.agents.state import AgentState
 from app.rag.vectorstore import similarity_search
 from app.rag.indexer import load_specific_documentation, NEWAVE_FILES
-from app.config import RAG_TOP_K, OPENAI_API_KEY, OPENAI_MODEL
+from app.config import RAG_TOP_K, OPENAI_API_KEY, OPENAI_MODEL, safe_print
 
 
 # Prompt para seleção inicial de arquivos candidatos
@@ -288,24 +288,24 @@ def rag_simple_node(state: AgentState) -> dict:
     """
     query = state["query"]
     
-    print("[RAG SIMPLE] ===== INÍCIO: rag_simple_node =====")
-    print(f"[RAG SIMPLE] Query: {query[:100]}")
+    safe_print("[RAG SIMPLE] ===== INÍCIO: rag_simple_node =====")
+    safe_print(f"[RAG SIMPLE] Query: {query[:100]}")
     
     try:
         # Apenas busca semântica no abstract (sem validação iterativa)
         abstract_docs = similarity_search(query, k=RAG_TOP_K)
         abstract_context = "\n\n".join([doc.page_content for doc in abstract_docs])
         
-        print(f"[RAG SIMPLE] ✅ {len(abstract_docs)} documentos do abstract encontrados")
-        print(f"[RAG SIMPLE] Contexto preparado para Coder ({len(abstract_context)} caracteres)")
-        print("[RAG SIMPLE] ===== FIM: rag_simple_node =====")
+        safe_print(f"[RAG SIMPLE] ✅ {len(abstract_docs)} documentos do abstract encontrados")
+        safe_print(f"[RAG SIMPLE] Contexto preparado para Coder ({len(abstract_context)} caracteres)")
+        safe_print("[RAG SIMPLE] ===== FIM: rag_simple_node =====")
         
         return {
             "relevant_docs": [abstract_context],
             "rag_status": "success"
         }
     except Exception as e:
-        print(f"[RAG SIMPLE] ❌ Erro ao buscar no abstract: {e}")
+        safe_print(f"[RAG SIMPLE] ❌ Erro ao buscar no abstract: {e}")
         import traceback
         traceback.print_exc()
         # Retornar vazio em caso de erro - coder pode tentar sem contexto

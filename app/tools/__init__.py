@@ -17,10 +17,8 @@ from app.tools.restricao_eletrica_tool import RestricaoEletricaTool
 from app.tools.term_cadastro_tool import TermCadastroTool
 from app.tools.multi_deck_comparison_tool import MultiDeckComparisonTool
 
-# Registry de todas as tools disponíveis
-# MultiDeckComparisonTool deve ser a primeira para ter prioridade
-TOOLS_REGISTRY = [
-    MultiDeckComparisonTool,  # Primeira para interceptar todas as queries
+# Registry de tools para modo single (sem comparacao multi-deck)
+TOOLS_REGISTRY_SINGLE = [
     CargaMensalTool,
     ClastValoresTool,
     ExptOperacaoTool,
@@ -35,18 +33,32 @@ TOOLS_REGISTRY = [
     UsinasNaoSimuladasTool,
     RestricaoEletricaTool,
     TermCadastroTool,
-    # Adicionar outras tools aqui conforme forem criadas
 ]
 
-def get_available_tools(deck_path: str):
+# Registry de tools para modo comparison (inclui MultiDeckComparisonTool)
+TOOLS_REGISTRY_COMPARISON = [
+    MultiDeckComparisonTool,  # Primeira para interceptar todas as queries em modo comparison
+] + TOOLS_REGISTRY_SINGLE
+
+# Alias para compatibilidade
+TOOLS_REGISTRY = TOOLS_REGISTRY_SINGLE
+
+
+def get_available_tools(deck_path: str, analysis_mode: str = "single"):
     """
-    Retorna instâncias de todas as tools disponíveis.
+    Retorna instancias de todas as tools disponiveis.
     
     Args:
-        deck_path: Caminho do diretório do deck NEWAVE
+        deck_path: Caminho do diretorio do deck NEWAVE
+        analysis_mode: Modo de analise ("single" ou "comparison")
         
     Returns:
-        Lista de instâncias de tools
+        Lista de instancias de tools
     """
-    return [ToolClass(deck_path) for ToolClass in TOOLS_REGISTRY]
+    if analysis_mode == "comparison":
+        registry = TOOLS_REGISTRY_COMPARISON
+    else:
+        registry = TOOLS_REGISTRY_SINGLE
+    
+    return [ToolClass(deck_path) for ToolClass in registry]
 

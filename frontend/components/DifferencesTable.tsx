@@ -21,24 +21,35 @@ interface DifferencesTableProps {
 }
 
 function formatNumber(value: number): string {
-  if (value === 0) return "0.00";
+  if (value === null || value === undefined) return "-";
   return value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function formatPercent(value: number): string {
-  if (value === 0) return "0.00%";
+  if (value === null || value === undefined) return "-";
   const sign = value >= 0 ? "+" : "";
   return `${sign}${value.toFixed(2)}%`;
 }
 
 export function DifferencesTable({ differences, deck1Name, deck2Name }: DifferencesTableProps) {
-  const [isExpanded, setIsExpanded] = useState(true); // Iniciar expandido por padrão
+  const [isExpanded, setIsExpanded] = useState(true);
   const maxInitial = 50;
   const hasMore = differences.length > maxInitial;
   const displayedDifferences = isExpanded ? differences : differences.slice(0, maxInitial);
 
-  if (differences.length === 0) {
-    return null;
+  console.log("[DifferencesTable] Renderizando:", differences?.length || 0, "diferenças");
+
+  if (!differences || differences.length === 0) {
+    return (
+      <div className="bg-card border border-border rounded-lg p-4 sm:p-6 mt-4">
+        <h3 className="text-base sm:text-lg font-semibold text-card-foreground mb-2">
+          📊 Comparação de Dados
+        </h3>
+        <p className="text-sm text-muted-foreground">
+          Nenhuma diferença encontrada entre os decks.
+        </p>
+      </div>
+    );
   }
 
   return (
@@ -49,10 +60,10 @@ export function DifferencesTable({ differences, deck1Name, deck2Name }: Differen
     >
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-base sm:text-lg font-semibold text-card-foreground">
-          ⚠️ Discrepâncias Encontradas
+          📊 Comparação Mensal
         </h3>
         <span className="text-sm text-muted-foreground">
-          Total: {differences.length}
+          {differences.length} registros
         </span>
       </div>
 
@@ -60,21 +71,21 @@ export function DifferencesTable({ differences, deck1Name, deck2Name }: Differen
         <div className="inline-block min-w-full align-middle px-4 sm:px-0">
           <table className="min-w-full border-collapse">
             <thead>
-              <tr className="border-b border-border">
-                <th className="px-3 sm:px-4 py-2 text-left text-xs font-medium text-card-foreground uppercase tracking-wider bg-background whitespace-nowrap">
+              <tr className="border-b border-border bg-background/50">
+                <th className="px-3 sm:px-4 py-3 text-left text-xs font-semibold text-card-foreground uppercase tracking-wider whitespace-nowrap">
                   Período
                 </th>
-                <th className="px-3 sm:px-4 py-2 text-left text-xs font-medium text-card-foreground uppercase tracking-wider bg-background whitespace-nowrap">
+                <th className="px-3 sm:px-4 py-3 text-right text-xs font-semibold text-blue-400 uppercase tracking-wider whitespace-nowrap">
                   {deck1Name}
                 </th>
-                <th className="px-3 sm:px-4 py-2 text-left text-xs font-medium text-card-foreground uppercase tracking-wider bg-background whitespace-nowrap">
+                <th className="px-3 sm:px-4 py-3 text-right text-xs font-semibold text-purple-400 uppercase tracking-wider whitespace-nowrap">
                   {deck2Name}
                 </th>
-                <th className="px-3 sm:px-4 py-2 text-left text-xs font-medium text-card-foreground uppercase tracking-wider bg-background whitespace-nowrap">
-                  Diferença Nominal
+                <th className="px-3 sm:px-4 py-3 text-right text-xs font-semibold text-card-foreground uppercase tracking-wider whitespace-nowrap">
+                  Diferença (MWmed)
                 </th>
-                <th className="px-3 sm:px-4 py-2 text-left text-xs font-medium text-card-foreground uppercase tracking-wider bg-background whitespace-nowrap">
-                  Diferença %
+                <th className="px-3 sm:px-4 py-3 text-right text-xs font-semibold text-card-foreground uppercase tracking-wider whitespace-nowrap">
+                  Variação %
                 </th>
               </tr>
             </thead>
@@ -82,27 +93,27 @@ export function DifferencesTable({ differences, deck1Name, deck2Name }: Differen
               <AnimatePresence>
                 {displayedDifferences.map((diff, index) => (
                   <motion.tr
-                    key={index}
+                    key={`${diff.period}-${index}`}
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
-                    className="border-b border-border hover:bg-background transition-colors"
+                    className="border-b border-border/50 hover:bg-background/30 transition-colors"
                   >
-                    <td className="px-3 sm:px-4 py-2 text-xs sm:text-sm text-card-foreground/90 whitespace-nowrap">
+                    <td className="px-3 sm:px-4 py-2.5 text-sm text-card-foreground font-medium whitespace-nowrap">
                       {diff.period}
                     </td>
-                    <td className="px-3 sm:px-4 py-2 text-xs sm:text-sm text-card-foreground/90 whitespace-nowrap">
+                    <td className="px-3 sm:px-4 py-2.5 text-sm text-blue-400 text-right whitespace-nowrap font-mono">
                       {formatNumber(diff.deck_1_value)}
                     </td>
-                    <td className="px-3 sm:px-4 py-2 text-xs sm:text-sm text-card-foreground/90 whitespace-nowrap">
+                    <td className="px-3 sm:px-4 py-2.5 text-sm text-purple-400 text-right whitespace-nowrap font-mono">
                       {formatNumber(diff.deck_2_value)}
                     </td>
-                    <td className="px-3 sm:px-4 py-2 text-xs sm:text-sm whitespace-nowrap">
+                    <td className="px-3 sm:px-4 py-2.5 text-sm text-right whitespace-nowrap font-mono">
                       <span className={diff.difference >= 0 ? "text-green-400" : "text-red-400"}>
-                        {formatNumber(diff.difference)}
+                        {diff.difference >= 0 ? "+" : ""}{formatNumber(diff.difference)}
                       </span>
                     </td>
-                    <td className="px-3 sm:px-4 py-2 text-xs sm:text-sm whitespace-nowrap">
+                    <td className="px-3 sm:px-4 py-2.5 text-sm text-right whitespace-nowrap font-mono">
                       <span className={diff.difference_percent >= 0 ? "text-green-400" : "text-red-400"}>
                         {formatPercent(diff.difference_percent)}
                       </span>
@@ -126,23 +137,22 @@ export function DifferencesTable({ differences, deck1Name, deck2Name }: Differen
             {isExpanded ? (
               <>
                 <ChevronUp className="w-4 h-4 mr-2" />
-                Ocultar Diferenças ({differences.length - maxInitial} ocultas)
+                Mostrar menos
               </>
             ) : (
               <>
                 <ChevronDown className="w-4 h-4 mr-2" />
-                Expandir Todas as Diferenças ({differences.length - maxInitial} adicionais)
+                Mostrar todos ({differences.length - maxInitial} restantes)
               </>
             )}
           </Button>
         </div>
       )}
 
-      <p className="text-xs text-muted-foreground mt-4">
-        Nota: Diferenças são consideradas significativas quando excedem 0.1% de diferença relativa ou 0.01 de diferença absoluta. 
-        A diferença nominal é calculada como {deck2Name} - {deck1Name}, e a diferença percentual mantém o sinal (valores positivos indicam aumento, negativos indicam redução).
+      <p className="text-xs text-muted-foreground mt-4 pt-3 border-t border-border/50">
+        <strong>Nota:</strong> A diferença é calculada como {deck2Name} − {deck1Name}. 
+        Valores positivos indicam aumento, negativos indicam redução.
       </p>
     </motion.div>
   );
 }
-

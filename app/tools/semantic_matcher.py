@@ -7,7 +7,7 @@ import re
 import hashlib
 from app.tools.base import NEWAVETool
 from app.rag.vectorstore import get_embeddings
-from app.config import QUERY_EXPANSION_ENABLED, SEMANTIC_MATCH_MIN_SCORE
+from app.config import QUERY_EXPANSION_ENABLED, SEMANTIC_MATCH_MIN_SCORE, safe_print
 
 # Cache global de embeddings das tools
 # Estrutura: {tool_name: {'description_hash': str, 'embedding': list[float]}}
@@ -21,7 +21,7 @@ def clear_tool_embeddings_cache():
     """
     global _tool_embeddings_cache
     _tool_embeddings_cache.clear()
-    print("[SEMANTIC MATCHER] 🗑️ Cache de embeddings das tools limpo")
+    safe_print("[SEMANTIC MATCHER] 🗑️ Cache de embeddings das tools limpo")
 
 
 def get_cache_stats() -> Dict[str, int]:
@@ -48,17 +48,17 @@ def preload_tool_embeddings(tools: list[NEWAVETool]) -> None:
     if not tools:
         return
     
-    print(f"[SEMANTIC MATCHER] 🔄 Pré-carregando embeddings de {len(tools)} tools...")
+    safe_print(f"[SEMANTIC MATCHER] 🔄 Pré-carregando embeddings de {len(tools)} tools...")
     embeddings_model = get_embeddings()
     
     for tool in tools:
         try:
             _get_tool_embedding(tool, embeddings_model)
         except Exception as e:
-            print(f"[SEMANTIC MATCHER] ⚠️ Erro ao pré-carregar embedding de {tool.get_name()}: {e}")
+            safe_print(f"[SEMANTIC MATCHER] ⚠️ Erro ao pré-carregar embedding de {tool.get_name()}: {e}")
     
     cache_stats = get_cache_stats()
-    print(f"[SEMANTIC MATCHER] ✅ Pré-carregamento concluído: {cache_stats['cached_tools']} embeddings cacheados")
+    safe_print(f"[SEMANTIC MATCHER] ✅ Pré-carregamento concluído: {cache_stats['cached_tools']} embeddings cacheados")
 
 
 def expand_query(query: str) -> str:
@@ -191,13 +191,13 @@ def _get_tool_embedding(tool: NEWAVETool, embeddings_model) -> list[float]:
     if tool_name in _tool_embeddings_cache:
         cached = _tool_embeddings_cache[tool_name]
         if cached['description_hash'] == description_hash:
-            print(f"[SEMANTIC MATCHER]   └─ ✅ Embedding em cache (tool: {tool_name})")
+            safe_print(f"[SEMANTIC MATCHER]   └─ ✅ Embedding em cache (tool: {tool_name})")
             return cached['embedding']
         else:
-            print(f"[SEMANTIC MATCHER]   └─ ⚠️ Descrição mudou, regenerando embedding (tool: {tool_name})")
+            safe_print(f"[SEMANTIC MATCHER]   └─ ⚠️ Descrição mudou, regenerando embedding (tool: {tool_name})")
     
     # Gerar novo embedding
-    print(f"[SEMANTIC MATCHER]   └─ 🔄 Gerando novo embedding (tool: {tool_name})")
+    safe_print(f"[SEMANTIC MATCHER]   └─ 🔄 Gerando novo embedding (tool: {tool_name})")
     embedding = embeddings_model.embed_query(tool_description)
     
     # Armazenar no cache
@@ -262,55 +262,55 @@ def find_best_tool_semantic(
         Tupla (tool, score) se encontrada tool acima do threshold, ou None
     """
     if not tools:
-        print("[SEMANTIC MATCHER] ⚠️ Nenhuma tool disponível")
+        safe_print("[SEMANTIC MATCHER] ⚠️ Nenhuma tool disponível")
         return None
     
-    print("[SEMANTIC MATCHER] ===== INÍCIO: Semantic Matching =====")
-    print(f"[SEMANTIC MATCHER] Query original: \"{query}\"")
+    safe_print("[SEMANTIC MATCHER] ===== INÍCIO: Semantic Matching =====")
+    safe_print(f"[SEMANTIC MATCHER] Query original: \"{query}\"")
     
     # Aplicar query expansion se habilitado
     expanded_query = expand_query(query)
     if expanded_query != query:
-        print(f"[SEMANTIC MATCHER] 🔍 Query Expansion aplicada:")
-        print(f"[SEMANTIC MATCHER]   Original: \"{query}\"")
-        print(f"[SEMANTIC MATCHER]   Expandida: \"{expanded_query}\"")
+        safe_print(f"[SEMANTIC MATCHER] 🔍 Query Expansion aplicada:")
+        safe_print(f"[SEMANTIC MATCHER]   Original: \"{query}\"")
+        safe_print(f"[SEMANTIC MATCHER]   Expandida: \"{expanded_query}\"")
     else:
-        print(f"[SEMANTIC MATCHER] ⚠️ Query Expansion desabilitada ou sem expansões aplicadas")
+        safe_print(f"[SEMANTIC MATCHER] ⚠️ Query Expansion desabilitada ou sem expansões aplicadas")
     
-    print(f"[SEMANTIC MATCHER] Threshold (ranking): {threshold:.3f}")
-    print(f"[SEMANTIC MATCHER] Score mínimo para executar: {SEMANTIC_MATCH_MIN_SCORE:.3f}")
-    print(f"[SEMANTIC MATCHER] Tools disponíveis: {len(tools)}")
+    safe_print(f"[SEMANTIC MATCHER] Threshold (ranking): {threshold:.3f}")
+    safe_print(f"[SEMANTIC MATCHER] Score mínimo para executar: {SEMANTIC_MATCH_MIN_SCORE:.3f}")
+    safe_print(f"[SEMANTIC MATCHER] Tools disponíveis: {len(tools)}")
     
     # Mostrar estatísticas do cache
     cache_stats = get_cache_stats()
-    print(f"[SEMANTIC MATCHER] 📦 Cache: {cache_stats['cached_tools']} tools com embeddings cacheados")
+    safe_print(f"[SEMANTIC MATCHER] 📦 Cache: {cache_stats['cached_tools']} tools com embeddings cacheados")
     
     try:
         # Obter modelo de embeddings
-        print("[SEMANTIC MATCHER] Gerando embedding da query...")
+        safe_print("[SEMANTIC MATCHER] Gerando embedding da query...")
         embeddings_model = get_embeddings()
         
         # Gerar embedding da query expandida (ou original se expansion desabilitada)
         query_embedding = embeddings_model.embed_query(expanded_query)
-        print(f"[SEMANTIC MATCHER] ✅ Embedding da query gerado (dimensão: {len(query_embedding)})")
+        safe_print(f"[SEMANTIC MATCHER] ✅ Embedding da query gerado (dimensão: {len(query_embedding)})")
         
         # Calcular similaridade com cada tool
         best_tool = None
         best_score = 0.0
         all_scores = []  # Para ranking completo
         
-        print("[SEMANTIC MATCHER] Calculando similaridades com cada tool...")
-        print("[SEMANTIC MATCHER] " + "=" * 70)
+        safe_print("[SEMANTIC MATCHER] Calculando similaridades com cada tool...")
+        safe_print("[SEMANTIC MATCHER] " + "=" * 70)
         
         for idx, tool in enumerate(tools, 1):
             try:
                 tool_name = tool.get_name()
-                print(f"[SEMANTIC MATCHER] [{idx}/{len(tools)}] Processando: {tool_name}")
+                safe_print(f"[SEMANTIC MATCHER] [{idx}/{len(tools)}] Processando: {tool_name}")
                 
                 # Obter descrição da tool
                 tool_description = tool.get_description()
                 desc_length = len(tool_description)
-                print(f"[SEMANTIC MATCHER]   └─ Descrição: {desc_length} caracteres")
+                safe_print(f"[SEMANTIC MATCHER]   └─ Descrição: {desc_length} caracteres")
                 
                 # Obter embedding da descrição (usando cache se disponível)
                 tool_embedding = _get_tool_embedding(tool, embeddings_model)
@@ -328,7 +328,7 @@ def find_best_tool_semantic(
                 # Atualizar melhor match se necessário
                 status = "✅ MELHOR" if similarity > best_score else "  "
                 threshold_status = "✅ ACIMA" if similarity >= threshold else "❌ ABAIXO"
-                print(f"[SEMANTIC MATCHER]   └─ Similaridade: {similarity:.4f} {status} | Threshold: {threshold_status}")
+                safe_print(f"[SEMANTIC MATCHER]   └─ Similaridade: {similarity:.4f} {status} | Threshold: {threshold_status}")
                 
                 if similarity > best_score:
                     best_score = similarity
@@ -336,7 +336,7 @@ def find_best_tool_semantic(
                     
             except Exception as e:
                 # Se houver erro ao processar uma tool, continuar com as outras
-                print(f"[SEMANTIC MATCHER]   └─ ❌ Erro ao processar: {e}")
+                safe_print(f"[SEMANTIC MATCHER]   └─ ❌ Erro ao processar: {e}")
                 all_scores.append({
                     'tool': tool.get_name(),
                     'score': 0.0,
@@ -345,52 +345,52 @@ def find_best_tool_semantic(
                 })
                 continue
         
-        print("[SEMANTIC MATCHER] " + "=" * 70)
+        safe_print("[SEMANTIC MATCHER] " + "=" * 70)
         
         # Mostrar ranking completo
-        print("[SEMANTIC MATCHER] 📊 RANKING DE SIMILARIDADE:")
+        safe_print("[SEMANTIC MATCHER] 📊 RANKING DE SIMILARIDADE:")
         all_scores_sorted = sorted(all_scores, key=lambda x: x['score'], reverse=True)
         for rank, item in enumerate(all_scores_sorted, 1):
             tool_name = item['tool']
             score = item['score']
             above = "✅" if item['above_threshold'] else "❌"
             marker = "🏆" if rank == 1 else "  "
-            print(f"[SEMANTIC MATCHER]   {marker} {rank}. {tool_name}: {score:.4f} {above} (threshold: {threshold:.3f})")
+            safe_print(f"[SEMANTIC MATCHER]   {marker} {rank}. {tool_name}: {score:.4f} {above} (threshold: {threshold:.3f})")
         
         # Nova regra: Se score >= 0.4, sempre executar a tool com maior score
         # Se score < 0.4, nenhuma tool é executada (fluxo normal assume)
-        print("[SEMANTIC MATCHER] " + "=" * 70)
-        print(f"[SEMANTIC MATCHER] 📋 REGRA DE DECISÃO:")
-        print(f"[SEMANTIC MATCHER]   - Score >= {SEMANTIC_MATCH_MIN_SCORE:.3f}: Tool será executada")
-        print(f"[SEMANTIC MATCHER]   - Score < {SEMANTIC_MATCH_MIN_SCORE:.3f}: Nenhuma tool (fluxo normal)")
+        safe_print("[SEMANTIC MATCHER] " + "=" * 70)
+        safe_print(f"[SEMANTIC MATCHER] 📋 REGRA DE DECISÃO:")
+        safe_print(f"[SEMANTIC MATCHER]   - Score >= {SEMANTIC_MATCH_MIN_SCORE:.3f}: Tool será executada")
+        safe_print(f"[SEMANTIC MATCHER]   - Score < {SEMANTIC_MATCH_MIN_SCORE:.3f}: Nenhuma tool (fluxo normal)")
         
         if best_tool and best_score >= SEMANTIC_MATCH_MIN_SCORE:
-            print(f"[SEMANTIC MATCHER] ✅ TOOL SELECIONADA PARA EXECUÇÃO!")
-            print(f"[SEMANTIC MATCHER]   Tool: {best_tool.get_name()}")
-            print(f"[SEMANTIC MATCHER]   Score: {best_score:.4f}")
-            print(f"[SEMANTIC MATCHER]   Score mínimo: {SEMANTIC_MATCH_MIN_SCORE:.3f}")
-            print(f"[SEMANTIC MATCHER]   Status: ✅ ACIMA DO MÍNIMO (tool será executada)")
-            print("[SEMANTIC MATCHER] ===== FIM: Semantic Matching (TOOL SELECIONADA) =====")
+            safe_print(f"[SEMANTIC MATCHER] ✅ TOOL SELECIONADA PARA EXECUÇÃO!")
+            safe_print(f"[SEMANTIC MATCHER]   Tool: {best_tool.get_name()}")
+            safe_print(f"[SEMANTIC MATCHER]   Score: {best_score:.4f}")
+            safe_print(f"[SEMANTIC MATCHER]   Score mínimo: {SEMANTIC_MATCH_MIN_SCORE:.3f}")
+            safe_print(f"[SEMANTIC MATCHER]   Status: ✅ ACIMA DO MÍNIMO (tool será executada)")
+            safe_print("[SEMANTIC MATCHER] ===== FIM: Semantic Matching (TOOL SELECIONADA) =====")
             return (best_tool, best_score)
         else:
             if best_tool:
-                print(f"[SEMANTIC MATCHER] ❌ NENHUMA TOOL SERÁ EXECUTADA")
-                print(f"[SEMANTIC MATCHER]   Melhor tool: {best_tool.get_name()}")
-                print(f"[SEMANTIC MATCHER]   Melhor score: {best_score:.4f}")
-                print(f"[SEMANTIC MATCHER]   Score mínimo necessário: {SEMANTIC_MATCH_MIN_SCORE:.3f}")
-                print(f"[SEMANTIC MATCHER]   Diferença: {best_score - SEMANTIC_MATCH_MIN_SCORE:.4f} (faltam {SEMANTIC_MATCH_MIN_SCORE - best_score:.4f})")
-                print(f"[SEMANTIC MATCHER]   → Fluxo normal (coder/executor) assumirá")
+                safe_print(f"[SEMANTIC MATCHER] ❌ NENHUMA TOOL SERÁ EXECUTADA")
+                safe_print(f"[SEMANTIC MATCHER]   Melhor tool: {best_tool.get_name()}")
+                safe_print(f"[SEMANTIC MATCHER]   Melhor score: {best_score:.4f}")
+                safe_print(f"[SEMANTIC MATCHER]   Score mínimo necessário: {SEMANTIC_MATCH_MIN_SCORE:.3f}")
+                safe_print(f"[SEMANTIC MATCHER]   Diferença: {best_score - SEMANTIC_MATCH_MIN_SCORE:.4f} (faltam {SEMANTIC_MATCH_MIN_SCORE - best_score:.4f})")
+                safe_print(f"[SEMANTIC MATCHER]   → Fluxo normal (coder/executor) assumirá")
             else:
-                print(f"[SEMANTIC MATCHER] ❌ NENHUMA TOOL PROCESSADA COM SUCESSO")
-                print(f"[SEMANTIC MATCHER]   → Fluxo normal (coder/executor) assumirá")
-            print("[SEMANTIC MATCHER] ===== FIM: Semantic Matching (FLUXO NORMAL) =====")
+                safe_print(f"[SEMANTIC MATCHER] ❌ NENHUMA TOOL PROCESSADA COM SUCESSO")
+                safe_print(f"[SEMANTIC MATCHER]   → Fluxo normal (coder/executor) assumirá")
+            safe_print("[SEMANTIC MATCHER] ===== FIM: Semantic Matching (FLUXO NORMAL) =====")
             return None
             
     except Exception as e:
-        print(f"[SEMANTIC MATCHER] ❌ Erro no matching semântico: {e}")
+        safe_print(f"[SEMANTIC MATCHER] ❌ Erro no matching semântico: {e}")
         import traceback
         traceback.print_exc()
-        print("[SEMANTIC MATCHER] ===== FIM: Semantic Matching (ERRO) =====")
+        safe_print("[SEMANTIC MATCHER] ===== FIM: Semantic Matching (ERRO) =====")
         return None
 
 
@@ -414,11 +414,11 @@ def find_top_tools_semantic(
         Lista de tuplas (tool, score) ordenadas por score decrescente
     """
     if not tools:
-        print("[SEMANTIC MATCHER] ⚠️ Nenhuma tool disponível")
+        safe_print("[SEMANTIC MATCHER] ⚠️ Nenhuma tool disponível")
         return []
     
-    print(f"[SEMANTIC MATCHER] ===== INÍCIO: find_top_tools_semantic (top_n={top_n}) =====")
-    print(f"[SEMANTIC MATCHER] Query: \"{query}\"")
+    safe_print(f"[SEMANTIC MATCHER] ===== INÍCIO: find_top_tools_semantic (top_n={top_n}) =====")
+    safe_print(f"[SEMANTIC MATCHER] Query: \"{query}\"")
     
     # Aplicar query expansion se habilitado
     expanded_query = expand_query(query)
@@ -447,37 +447,37 @@ def find_top_tools_semantic(
                 all_scores.append((tool, similarity))
                     
             except Exception as e:
-                print(f"[SEMANTIC MATCHER]   └─ ❌ Erro ao processar {tool.get_name()}: {e}")
+                safe_print(f"[SEMANTIC MATCHER]   └─ ❌ Erro ao processar {tool.get_name()}: {e}")
                 continue
         
         # Ordenar por score decrescente
         all_scores.sort(key=lambda x: x[1], reverse=True)
         
         # Mostrar ranking completo de scores
-        print(f"[SEMANTIC MATCHER] 📊 RANKING COMPLETO DE SCORES ({len(all_scores)} tools):")
+        safe_print(f"[SEMANTIC MATCHER] 📊 RANKING COMPLETO DE SCORES ({len(all_scores)} tools):")
         for idx, (tool, score) in enumerate(all_scores[:10], 1):  # Mostrar top 10
             status = "✅" if score >= threshold else "❌"
-            print(f"[SEMANTIC MATCHER]   {idx}. {tool.get_name()}: {score:.4f} {status} (threshold: {threshold:.3f})")
+            safe_print(f"[SEMANTIC MATCHER]   {idx}. {tool.get_name()}: {score:.4f} {status} (threshold: {threshold:.3f})")
         if len(all_scores) > 10:
-            print(f"[SEMANTIC MATCHER]   ... ({len(all_scores) - 10} tools restantes)")
+            safe_print(f"[SEMANTIC MATCHER]   ... ({len(all_scores) - 10} tools restantes)")
         
         # Filtrar por threshold e retornar top N
         filtered_scores = [(tool, score) for tool, score in all_scores if score >= threshold]
         top_tools = filtered_scores[:top_n]
         
-        print(f"[SEMANTIC MATCHER] ✅ Top {len(top_tools)} tools encontradas (após filtro threshold={threshold:.3f}):")
+        safe_print(f"[SEMANTIC MATCHER] ✅ Top {len(top_tools)} tools encontradas (após filtro threshold={threshold:.3f}):")
         for idx, (tool, score) in enumerate(top_tools, 1):
-            print(f"[SEMANTIC MATCHER]   {idx}. {tool.get_name()}: {score:.4f}")
+            safe_print(f"[SEMANTIC MATCHER]   {idx}. {tool.get_name()}: {score:.4f}")
         
         if len(top_tools) >= 2:
             score_diff = top_tools[0][1] - top_tools[1][1]
-            print(f"[SEMANTIC MATCHER]   📏 Diferença 1º-2º: {score_diff:.4f}")
+            safe_print(f"[SEMANTIC MATCHER]   📏 Diferença 1º-2º: {score_diff:.4f}")
         
-        print("[SEMANTIC MATCHER] ===== FIM: find_top_tools_semantic =====")
+        safe_print("[SEMANTIC MATCHER] ===== FIM: find_top_tools_semantic =====")
         return top_tools
             
     except Exception as e:
-        print(f"[SEMANTIC MATCHER] ❌ Erro no find_top_tools_semantic: {e}")
+        safe_print(f"[SEMANTIC MATCHER] ❌ Erro no find_top_tools_semantic: {e}")
         import traceback
         traceback.print_exc()
         return []

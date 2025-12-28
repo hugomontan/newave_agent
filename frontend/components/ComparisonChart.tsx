@@ -52,6 +52,32 @@ export function ComparisonChart({ data }: ComparisonChartProps) {
     return point;
   });
 
+  // Calcular min e max dos dados para ajustar o eixo Y automaticamente
+  let minValue: number | null = null;
+  let maxValue: number | null = null;
+  
+  data.datasets.forEach((dataset) => {
+    dataset.data.forEach((value) => {
+      if (value !== null && typeof value === 'number') {
+        if (minValue === null || value < minValue) {
+          minValue = value;
+        }
+        if (maxValue === null || value > maxValue) {
+          maxValue = value;
+        }
+      }
+    });
+  });
+
+  // Calcular domain do eixo Y com uma margem de 5%
+  const yAxisDomain: [number | string, number | string] = 
+    minValue !== null && maxValue !== null
+      ? [
+          Math.max(0, minValue - (maxValue - minValue) * 0.05), // Margem de 5% abaixo, mínimo 0
+          maxValue + (maxValue - minValue) * 0.05 // Margem de 5% acima
+        ]
+      : ['auto', 'auto'];
+
   // Cores para as linhas
   const colors = ["#8884d8", "#82ca9d", "#ffc658", "#ff7300"];
 
@@ -88,7 +114,12 @@ export function ComparisonChart({ data }: ComparisonChartProps) {
             <YAxis 
               stroke="#9ca3af"
               tick={{ fill: "#9ca3af", fontSize: 12 }}
-              width={60}
+              width={80}
+              domain={yAxisDomain}
+              tickFormatter={(value) => {
+                // Formatar valores grandes com separador de milhar
+                return value.toLocaleString('pt-BR');
+              }}
             />
             <Tooltip
               contentStyle={{

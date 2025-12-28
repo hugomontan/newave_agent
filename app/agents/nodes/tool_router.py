@@ -1,9 +1,13 @@
 """
-Node que verifica se a query pode ser atendida por uma tool pré-programada.
-Se sim, executa a tool diretamente. Se não, retorna para o fluxo normal.
-Se houver ambiguidade (múltiplas tools com scores similares), gera disambiguation.
+Node que verifica se a query pode ser atendida por uma tool pre-programada.
+Se sim, executa a tool diretamente. Se nao, retorna para o fluxo normal.
+Se houver ambiguidade (multiplas tools com scores similares), gera disambiguation.
+
+No modo "comparison", a tool selecionada e executada em ambos os decks (dezembro e janeiro)
+e os resultados sao retornados para o interpreter formatar a comparacao.
 """
-from typing import Optional
+from typing import Optional, Dict, Any, List
+from concurrent.futures import ThreadPoolExecutor
 from app.agents.state import AgentState
 from app.tools import get_available_tools
 from app.tools.semantic_matcher import find_best_tool_semantic, find_top_tools_semantic
@@ -15,7 +19,8 @@ from app.config import (
     USE_HYBRID_MATCHING,
     DISAMBIGUATION_SCORE_DIFF_THRESHOLD,
     DISAMBIGUATION_MAX_OPTIONS,
-    DISAMBIGUATION_MIN_SCORE
+    DISAMBIGUATION_MIN_SCORE,
+    safe_print
 )
 
 
@@ -34,41 +39,41 @@ def tool_router_node(state: AgentState) -> dict:
     deck_path = state.get("deck_path", "")
     analysis_mode = state.get("analysis_mode", "single")
     
-    print("[TOOL ROUTER] ===== INÍCIO: tool_router_node =====")
-    print(f"[TOOL ROUTER] Query: {query[:100]}")
-    print(f"[TOOL ROUTER] Deck path: {deck_path}")
-    print(f"[TOOL ROUTER] Analysis mode: {analysis_mode}")
+    safe_print("[TOOL ROUTER] ===== INÍCIO: tool_router_node =====")
+    safe_print(f"[TOOL ROUTER] Query: {query[:100]}")
+    safe_print(f"[TOOL ROUTER] Deck path: {deck_path}")
+    safe_print(f"[TOOL ROUTER] Analysis mode: {analysis_mode}")
     
     if not deck_path:
-        print("[TOOL ROUTER] ❌ Deck path não especificado")
+        safe_print("[TOOL ROUTER] ❌ Deck path não especificado")
         return {"tool_route": False}
     
     # Obter todas as tools disponíveis
-    print("[TOOL ROUTER] Obtendo tools disponíveis...")
+    safe_print("[TOOL ROUTER] Obtendo tools disponiveis...")
     try:
-        tools = get_available_tools(deck_path)
-        print(f"[TOOL ROUTER] ✅ {len(tools)} tools disponíveis")
+        tools = get_available_tools(deck_path, analysis_mode)
+        safe_print(f"[TOOL ROUTER] [OK] {len(tools)} tools disponiveis (modo: {analysis_mode})")
     except Exception as e:
-        print(f"[TOOL ROUTER] ❌ Erro ao obter tools: {e}")
+        safe_print(f"[TOOL ROUTER] ❌ Erro ao obter tools: {e}")
         import traceback
         traceback.print_exc()
         return {"tool_route": False}
     
-    # Função auxiliar para executar uma tool e retornar resultado
+    # Funcao auxiliar para executar uma tool e retornar resultado
     def _execute_tool(tool, tool_name: str, query_to_use: str = None):
         """Executa uma tool e retorna o resultado formatado."""
         if query_to_use is None:
             query_to_use = query
-        print(f"[TOOL ROUTER] Executando tool {tool_name}...")
-        print(f"[TOOL ROUTER]   Query usada: {query_to_use[:100]}")
+        safe_print(f"[TOOL ROUTER] Executando tool {tool_name}...")
+        safe_print(f"[TOOL ROUTER]   Query usada: {query_to_use[:100]}")
         
         try:
             result = tool.execute(query_to_use)
             
             if result.get("success"):
-                print(f"[TOOL ROUTER] ✅ Tool {tool_name} executada com sucesso")
+                safe_print(f"[TOOL ROUTER] [OK] Tool {tool_name} executada com sucesso")
                 data_count = len(result.get('data', [])) if result.get('data') else 0
-                print(f"[TOOL ROUTER] Registros retornados: {data_count}")
+                safe_print(f"[TOOL ROUTER] Registros retornados: {data_count}")
                 
                 return {
                     "tool_result": result,
@@ -82,8 +87,8 @@ def tool_router_node(state: AgentState) -> dict:
                     }
                 }
             else:
-                print(f"[TOOL ROUTER] ⚠️ Tool {tool_name} executada mas retornou erro: {result.get('error')}")
-                # Mesmo com erro, a tool foi tentada, então não usar coder
+                safe_print(f"[TOOL ROUTER] [AVISO] Tool {tool_name} executada mas retornou erro: {result.get('error')}")
+                # Mesmo com erro, a tool foi tentada, entao nao usar coder
                 return {
                     "tool_result": result,
                     "tool_used": tool_name,
@@ -96,7 +101,7 @@ def tool_router_node(state: AgentState) -> dict:
                     }
                 }
         except Exception as e:
-            print(f"[TOOL ROUTER] ❌ Erro ao executar tool {tool_name}: {e}")
+            safe_print(f"[TOOL ROUTER] [ERRO] Erro ao executar tool {tool_name}: {e}")
             import traceback
             traceback.print_exc()
             return {
@@ -107,6 +112,99 @@ def tool_router_node(state: AgentState) -> dict:
                     "success": False,
                     "stdout": "",
                     "stderr": f"Erro ao executar tool: {str(e)}",
+                    "return_code": -1
+                }
+            }
+    
+    # Funcao para executar tool em ambos os decks (modo comparison)
+    def _execute_tool_comparison(tool_class, tool_name: str, query_to_use: str = None):
+        """
+        Executa uma tool em ambos os decks e retorna resultado de comparacao.
+        
+        NAO tenta calcular diferencas automaticamente - passa os dados brutos
+        para o LLM interpretar livremente (pode ser por periodo, usina, tipo, etc).
+        """
+        from app.utils.deck_loader import get_december_deck_path, get_january_deck_path
+        
+        if query_to_use is None:
+            query_to_use = query
+        
+        safe_print(f"[TOOL ROUTER] [COMPARISON] Executando {tool_name} em ambos os decks...")
+        safe_print(f"[TOOL ROUTER]   Query usada: {query_to_use[:100]}")
+        
+        try:
+            # Obter caminhos dos decks
+            deck_december = get_december_deck_path()
+            deck_january = get_january_deck_path()
+            
+            safe_print(f"[TOOL ROUTER]   Deck Dezembro: {deck_december}")
+            safe_print(f"[TOOL ROUTER]   Deck Janeiro: {deck_january}")
+            
+            # Executar em paralelo
+            def execute_in_deck(deck_path: str) -> Dict[str, Any]:
+                try:
+                    tool_instance = tool_class(str(deck_path))
+                    return tool_instance.execute(query_to_use)
+                except Exception as e:
+                    return {"success": False, "error": str(e)}
+            
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                future_dec = executor.submit(execute_in_deck, deck_december)
+                future_jan = executor.submit(execute_in_deck, deck_january)
+                result_dec = future_dec.result()
+                result_jan = future_jan.result()
+            
+            safe_print(f"[TOOL ROUTER]   Dezembro: success={result_dec.get('success', False)}")
+            safe_print(f"[TOOL ROUTER]   Janeiro: success={result_jan.get('success', False)}")
+            
+            # Construir resultado de comparacao com dados BRUTOS
+            # O LLM vai interpretar livremente - nao forcamos calculo de diferencas
+            comparison_result = {
+                "success": result_dec.get("success", False) or result_jan.get("success", False),
+                "is_comparison": True,
+                "tool_used": tool_name,
+                "query": query_to_use,
+                "deck_1": {
+                    "name": "Dezembro 2025",
+                    "success": result_dec.get("success", False),
+                    "full_result": result_dec  # Resultado COMPLETO para o LLM interpretar
+                },
+                "deck_2": {
+                    "name": "Janeiro 2026",
+                    "success": result_jan.get("success", False),
+                    "full_result": result_jan  # Resultado COMPLETO para o LLM interpretar
+                },
+                # Campos opcionais - serao None, LLM interpreta os dados brutos
+                "differences": None,
+                "chart_data": None
+            }
+            
+            safe_print(f"[TOOL ROUTER] [OK] Comparacao concluida - dados brutos passados ao LLM")
+            
+            return {
+                "tool_result": comparison_result,
+                "tool_used": tool_name,
+                "tool_route": True,
+                "execution_result": {
+                    "success": comparison_result["success"],
+                    "stdout": f"Comparacao executada com {tool_name}",
+                    "stderr": "",
+                    "return_code": 0 if comparison_result["success"] else -1
+                }
+            }
+            
+        except Exception as e:
+            safe_print(f"[TOOL ROUTER] [ERRO] Erro na comparacao: {e}")
+            import traceback
+            traceback.print_exc()
+            return {
+                "tool_result": {"success": False, "error": str(e), "is_comparison": True},
+                "tool_used": tool_name,
+                "tool_route": True,
+                "execution_result": {
+                    "success": False,
+                    "stdout": "",
+                    "stderr": f"Erro na comparacao: {str(e)}",
                     "return_code": -1
                 }
             }
@@ -128,47 +226,57 @@ def tool_router_node(state: AgentState) -> dict:
                 direct_tool_match = tool_name
                 break
     
+    # Flag para indicar se estamos no modo comparison
+    # Definida ANTES de processar disambiguation para ser usada em todos os fluxos
+    is_comparison_mode = analysis_mode == "comparison"
+    if is_comparison_mode:
+        safe_print("[TOOL ROUTER] [COMPARISON] Modo comparacao ativo - tool sera executada em ambos os decks")
+    
     if is_from_disambiguation or direct_tool_match:
         if is_from_disambiguation:
-            print("[TOOL ROUTER] 🔍 Query detectada como escolha de disambiguation (contém ' - ')")
-            print("[TOOL ROUTER]   → Identificando tool diretamente sem semantic matching")
+            safe_print("[TOOL ROUTER] Query detectada como escolha de disambiguation (contem ' - ')")
+            safe_print("[TOOL ROUTER]   -> Identificando tool diretamente sem semantic matching")
             
-            # Extrair contexto após o " - "
+            # Extrair contexto apos o " - "
             parts = query.split(" - ", 1)
             original_query = parts[0].strip()
-            context = parts[1].strip() if len(parts) > 1 else ""  # Não fazer lower aqui, fazer na função
+            context = parts[1].strip() if len(parts) > 1 else ""
             
-            print(f"[TOOL ROUTER]   Query completa: {query}")
-            print(f"[TOOL ROUTER]   Query original: {original_query}")
-            print(f"[TOOL ROUTER]   Contexto escolhido: '{context}'")
+            safe_print(f"[TOOL ROUTER]   Query completa: {query}")
+            safe_print(f"[TOOL ROUTER]   Query original: {original_query}")
+            safe_print(f"[TOOL ROUTER]   Contexto escolhido: '{context}'")
             
             if not context:
-                print(f"[TOOL ROUTER] ⚠️ Contexto vazio após ' - ', continuando com fluxo normal")
+                safe_print(f"[TOOL ROUTER] [AVISO] Contexto vazio apos ' - ', continuando com fluxo normal")
             else:
                 # Identificar tool diretamente pelo contexto
-                print(f"[TOOL ROUTER]   Buscando tool para contexto: '{context}'")
-                print(f"[TOOL ROUTER]   Tools disponíveis: {[t.get_name() for t in tools]}")
+                safe_print(f"[TOOL ROUTER]   Buscando tool para contexto: '{context}'")
+                safe_print(f"[TOOL ROUTER]   Tools disponiveis: {[t.get_name() for t in tools]}")
                 selected_tool = _identify_tool_from_context(context, tools)
                 
                 if selected_tool:
                     tool_name = selected_tool.get_name()
-                    print(f"[TOOL ROUTER] ✅ Tool identificada diretamente: {tool_name}")
-                    print(f"[TOOL ROUTER]   → Executando tool sem semantic matching")
-                    print(f"[TOOL ROUTER]   Query que será usada na tool: {original_query}")
-                    # Usar query original (sem o contexto) para executar a tool
-                    result = _execute_tool(selected_tool, tool_name, original_query)
-                    # Marcar que veio de disambiguation para evitar mensagem "Processamento concluído"
+                    safe_print(f"[TOOL ROUTER] [OK] Tool identificada diretamente: {tool_name}")
+                    safe_print(f"[TOOL ROUTER]   -> Executando tool sem semantic matching")
+                    safe_print(f"[TOOL ROUTER]   Query que sera usada na tool: {original_query}")
+                    
+                    # IMPORTANTE: Verificar modo comparison
+                    if is_comparison_mode:
+                        safe_print(f"[TOOL ROUTER]   [COMPARISON] Executando em ambos os decks...")
+                        result = _execute_tool_comparison(selected_tool.__class__, tool_name, original_query)
+                    else:
+                        result = _execute_tool(selected_tool, tool_name, original_query)
+                    
                     result["from_disambiguation"] = True
-                    print(f"[TOOL ROUTER] ✅ Resultado da tool retornado: success={result.get('tool_result', {}).get('success', False)}")
+                    safe_print(f"[TOOL ROUTER] [OK] Resultado da tool retornado: success={result.get('tool_result', {}).get('success', False)}")
                     return result
                 else:
-                    print(f"[TOOL ROUTER] ⚠️ Não foi possível identificar tool pelo contexto")
-                    print(f"[TOOL ROUTER]   → Continuando com fluxo normal (semantic matching)")
-                    print(f"[TOOL ROUTER]   ⚠️ ATENÇÃO: Tool não encontrada, pode não retornar resultado!")
+                    safe_print(f"[TOOL ROUTER] [AVISO] Nao foi possivel identificar tool pelo contexto")
+                    safe_print(f"[TOOL ROUTER]   -> Continuando com fluxo normal (semantic matching)")
         
         elif direct_tool_match:
-            print(f"[TOOL ROUTER] 🔍 Query detectada como escolha de disambiguation (contém nome da tool: {direct_tool_match})")
-            print(f"[TOOL ROUTER]   → Executando tool diretamente sem semantic matching")
+            safe_print(f"[TOOL ROUTER] Query detectada como escolha de disambiguation (contem nome da tool: {direct_tool_match})")
+            safe_print(f"[TOOL ROUTER]   -> Executando tool diretamente sem semantic matching")
             
             # Encontrar a tool correspondente
             selected_tool = None
@@ -180,72 +288,28 @@ def tool_router_node(state: AgentState) -> dict:
             if selected_tool:
                 # Tentar extrair a query original (remover o nome da tool)
                 original_query = query.replace(direct_tool_match, "").strip()
-                # Se não sobrou nada, usar a query completa
                 if not original_query:
                     original_query = query
                 
-                print(f"[TOOL ROUTER] ✅ Tool identificada diretamente: {direct_tool_match}")
-                print(f"[TOOL ROUTER]   Query que será usada na tool: {original_query}")
-                result = _execute_tool(selected_tool, direct_tool_match, original_query)
+                safe_print(f"[TOOL ROUTER] [OK] Tool identificada diretamente: {direct_tool_match}")
+                safe_print(f"[TOOL ROUTER]   Query que sera usada na tool: {original_query}")
+                
+                # IMPORTANTE: Verificar modo comparison
+                if is_comparison_mode:
+                    safe_print(f"[TOOL ROUTER]   [COMPARISON] Executando em ambos os decks...")
+                    result = _execute_tool_comparison(selected_tool.__class__, direct_tool_match, original_query)
+                else:
+                    result = _execute_tool(selected_tool, direct_tool_match, original_query)
+                
                 result["from_disambiguation"] = True
-                print(f"[TOOL ROUTER] ✅ Resultado da tool retornado: success={result.get('tool_result', {}).get('success', False)}")
+                safe_print(f"[TOOL ROUTER] [OK] Resultado da tool retornado: success={result.get('tool_result', {}).get('success', False)}")
                 return result
             else:
-                print(f"[TOOL ROUTER] ⚠️ Tool {direct_tool_match} não encontrada na lista de tools")
+                safe_print(f"[TOOL ROUTER] [AVISO] Tool {direct_tool_match} nao encontrada na lista de tools")
     
-    # 0. Se modo é "comparison", SEMPRE usar MultiDeckComparisonTool
-    if analysis_mode == "comparison":
-        print("[TOOL ROUTER] 🔍 Modo comparação ativo - buscando MultiDeckComparisonTool...")
-        multi_deck_tool = None
-        for tool in tools:
-            if tool.get_name() == "MultiDeckComparisonTool":
-                multi_deck_tool = tool
-                break
-        
-        if multi_deck_tool:
-            if multi_deck_tool.can_handle(query):
-                print("[TOOL ROUTER] ✅ MultiDeckComparisonTool pode processar - executando comparação")
-                return _execute_tool(multi_deck_tool, "MultiDeckComparisonTool")
-            else:
-                print("[TOOL ROUTER] ⚠️ MultiDeckComparisonTool disponível mas não pode processar (decks não encontrados)")
-                # Retornar erro se modo comparison mas decks não disponíveis
-                return {
-                    "tool_route": True,
-                    "tool_result": {
-                        "success": False,
-                        "error": "Modo comparação ativo mas decks de comparação não encontrados.",
-                        "is_comparison": True
-                    },
-                    "tool_used": "MultiDeckComparisonTool",
-                    "execution_result": {
-                        "success": False,
-                        "stdout": "",
-                        "stderr": "Decks de comparação (Dezembro/Janeiro) não encontrados ou não carregados.",
-                        "return_code": -1
-                    }
-                }
-        else:
-            print("[TOOL ROUTER] ⚠️ Modo comparação ativo mas MultiDeckComparisonTool não encontrada")
-    
-    # 0. Verificar MultiDeckComparisonTool PRIMEIRO (se disponível e modo single)
-    # Ela intercepta todas as queries quando os decks estão disponíveis
-    if analysis_mode == "single":
-        print("[TOOL ROUTER] 🔍 Verificando MultiDeckComparisonTool (modo single)...")
-        multi_deck_tool = None
-        for tool in tools:
-            if tool.get_name() == "MultiDeckComparisonTool":
-                multi_deck_tool = tool
-                break
-        
-        if multi_deck_tool and multi_deck_tool.can_handle(query):
-            print("[TOOL ROUTER] ✅ MultiDeckComparisonTool pode processar - executando comparação")
-            return _execute_tool(multi_deck_tool, "MultiDeckComparisonTool")
-        elif multi_deck_tool:
-            print("[TOOL ROUTER] ⚠️ MultiDeckComparisonTool disponível mas não pode processar (decks não encontrados)")
-    
-    # 1. Verificar palavras-chave prioritárias ANTES do semantic matching
+    # 1. Verificar palavras-chave prioritarias ANTES do semantic matching
     # Isso garante que tools com palavras-chave prioritárias sejam executadas diretamente
-    print("[TOOL ROUTER] 🔍 Verificando palavras-chave prioritárias...")
+    safe_print("[TOOL ROUTER] 🔍 Verificando palavras-chave prioritárias...")
     query_lower = query.lower()
     
     # Mapeamento de palavras-chave prioritárias para nomes de tools
@@ -266,35 +330,35 @@ def tool_router_node(state: AgentState) -> dict:
     # Verificar se alguma palavra-chave prioritária está presente
     for tool_name, keywords in priority_keywords.items():
         if any(kw in query_lower for kw in keywords):
-            print(f"[TOOL ROUTER] ✅ PALAVRA-CHAVE PRIORITÁRIA DETECTADA para {tool_name}")
-            print(f"[TOOL ROUTER]   → Executando tool diretamente (sem semantic matching)")
+            safe_print(f"[TOOL ROUTER] ✅ PALAVRA-CHAVE PRIORITÁRIA DETECTADA para {tool_name}")
+            safe_print(f"[TOOL ROUTER]   → Executando tool diretamente (sem semantic matching)")
             
             # Encontrar a tool correspondente
             for tool in tools:
                 if tool.get_name() == tool_name:
-                    print(f"[TOOL ROUTER]   Tool encontrada: {tool_name}")
+                    safe_print(f"[TOOL ROUTER]   Tool encontrada: {tool_name}")
                     result = _execute_tool(tool, tool_name)
-                    print(f"[TOOL ROUTER] ✅ Tool executada diretamente por palavra-chave prioritária")
+                    safe_print(f"[TOOL ROUTER] ✅ Tool executada diretamente por palavra-chave prioritária")
                     return result
             
-            print(f"[TOOL ROUTER] ⚠️ Tool {tool_name} não encontrada na lista de tools disponíveis")
+            safe_print(f"[TOOL ROUTER] ⚠️ Tool {tool_name} não encontrada na lista de tools disponíveis")
     
     # 1. Tentar match semântico primeiro (se habilitado)
     if SEMANTIC_MATCHING_ENABLED:
-        print("[TOOL ROUTER] 🔍 SEMANTIC MATCHING HABILITADO")
-        print(f"[TOOL ROUTER]   Threshold para busca (disambiguation): {DISAMBIGUATION_MIN_SCORE:.3f} (captura todas tools >= 0.4)")
-        print(f"[TOOL ROUTER]   Threshold ranking (legado): {SEMANTIC_MATCH_THRESHOLD:.3f}")
-        print(f"[TOOL ROUTER]   Score mínimo para executar: {SEMANTIC_MATCH_MIN_SCORE:.3f}")
-        print(f"[TOOL ROUTER]   Disambiguation diff threshold: {DISAMBIGUATION_SCORE_DIFF_THRESHOLD:.3f} (diferença < 0.1 = ambiguidade)")
-        print(f"[TOOL ROUTER]   Regra: Score >= {SEMANTIC_MATCH_MIN_SCORE:.3f} → Tool executada | Score < {SEMANTIC_MATCH_MIN_SCORE:.3f} → Fluxo normal")
-        print(f"[TOOL ROUTER]   Hybrid matching: {USE_HYBRID_MATCHING}")
-        print("[TOOL ROUTER] Tentando match semântico...")
+        safe_print("[TOOL ROUTER] 🔍 SEMANTIC MATCHING HABILITADO")
+        safe_print(f"[TOOL ROUTER]   Threshold para busca (disambiguation): {DISAMBIGUATION_MIN_SCORE:.3f} (captura todas tools >= 0.4)")
+        safe_print(f"[TOOL ROUTER]   Threshold ranking (legado): {SEMANTIC_MATCH_THRESHOLD:.3f}")
+        safe_print(f"[TOOL ROUTER]   Score mínimo para executar: {SEMANTIC_MATCH_MIN_SCORE:.3f}")
+        safe_print(f"[TOOL ROUTER]   Disambiguation diff threshold: {DISAMBIGUATION_SCORE_DIFF_THRESHOLD:.3f} (diferença < 0.1 = ambiguidade)")
+        safe_print(f"[TOOL ROUTER]   Regra: Score >= {SEMANTIC_MATCH_MIN_SCORE:.3f} → Tool executada | Score < {SEMANTIC_MATCH_MIN_SCORE:.3f} → Fluxo normal")
+        safe_print(f"[TOOL ROUTER]   Hybrid matching: {USE_HYBRID_MATCHING}")
+        safe_print("[TOOL ROUTER] Tentando match semântico...")
         try:
             # Obter top N tools para verificar ambiguidade
             # IMPORTANTE: Usar DISAMBIGUATION_MIN_SCORE (0.4) como threshold, não SEMANTIC_MATCH_THRESHOLD (0.55)
             # Isso garante que capturamos TODAS as tools com score >= 0.4 para detectar ambiguidade
             # Exemplo: se temos scores 0.55 e 0.53, ambos devem ser capturados para comparação
-            print(f"[TOOL ROUTER]   Buscando top {DISAMBIGUATION_MAX_OPTIONS} tools com threshold >= {DISAMBIGUATION_MIN_SCORE:.3f}...")
+            safe_print(f"[TOOL ROUTER]   Buscando top {DISAMBIGUATION_MAX_OPTIONS} tools com threshold >= {DISAMBIGUATION_MIN_SCORE:.3f}...")
             semantic_results = find_top_tools_semantic(
                 query, 
                 tools, 
@@ -306,8 +370,8 @@ def tool_router_node(state: AgentState) -> dict:
                 top_tool, top_score = semantic_results[0]
                 tool_name = top_tool.get_name()
                 
-                print(f"[TOOL ROUTER] ✅ Top tool encontrada: {tool_name} (score: {top_score:.4f})")
-                print(f"[TOOL ROUTER]   Total de tools retornadas: {len(semantic_results)}")
+                safe_print(f"[TOOL ROUTER] ✅ Top tool encontrada: {tool_name} (score: {top_score:.4f})")
+                safe_print(f"[TOOL ROUTER]   Total de tools retornadas: {len(semantic_results)}")
                 
                 # Verificar se score está acima do mínimo
                 if top_score >= SEMANTIC_MATCH_MIN_SCORE:
@@ -316,70 +380,79 @@ def tool_router_node(state: AgentState) -> dict:
                         second_tool, second_score = semantic_results[1]
                         score_diff = top_score - second_score
                         
-                        print(f"[TOOL ROUTER] 📊 ANÁLISE DE AMBIGUIDADE:")
-                        print(f"[TOOL ROUTER]   1º lugar: {tool_name} (score: {top_score:.4f})")
-                        print(f"[TOOL ROUTER]   2º lugar: {second_tool.get_name()} (score: {second_score:.4f})")
-                        print(f"[TOOL ROUTER]   Diferença 1º-2º: {score_diff:.4f}")
-                        print(f"[TOOL ROUTER]   Threshold ambiguidade: {DISAMBIGUATION_SCORE_DIFF_THRESHOLD:.3f}")
+                        safe_print(f"[TOOL ROUTER] 📊 ANÁLISE DE AMBIGUIDADE:")
+                        safe_print(f"[TOOL ROUTER]   1º lugar: {tool_name} (score: {top_score:.4f})")
+                        safe_print(f"[TOOL ROUTER]   2º lugar: {second_tool.get_name()} (score: {second_score:.4f})")
+                        safe_print(f"[TOOL ROUTER]   Diferença 1º-2º: {score_diff:.4f}")
+                        safe_print(f"[TOOL ROUTER]   Threshold ambiguidade: {DISAMBIGUATION_SCORE_DIFF_THRESHOLD:.3f}")
                         
                         # Detectar ambiguidade baseado em análise empírica
                         if score_diff < DISAMBIGUATION_SCORE_DIFF_THRESHOLD:
-                            print(f"[TOOL ROUTER] ⚠️ AMBIGUIDADE DETECTADA!")
-                            print(f"[TOOL ROUTER]   Diferença {score_diff:.4f} < {DISAMBIGUATION_SCORE_DIFF_THRESHOLD} → Gerando disambiguation")
-                            print(f"[TOOL ROUTER]   Gerando disambiguation com {len(semantic_results)} opções...")
+                            safe_print(f"[TOOL ROUTER] ⚠️ AMBIGUIDADE DETECTADA!")
+                            safe_print(f"[TOOL ROUTER]   Diferença {score_diff:.4f} < {DISAMBIGUATION_SCORE_DIFF_THRESHOLD} → Gerando disambiguation")
+                            safe_print(f"[TOOL ROUTER]   Gerando disambiguation com {len(semantic_results)} opções...")
                             return _generate_disambiguation_response(query, semantic_results)
                         else:
-                            print(f"[TOOL ROUTER] ✅ Sem ambiguidade (diferença {score_diff:.4f} >= {DISAMBIGUATION_SCORE_DIFF_THRESHOLD})")
-                            print(f"[TOOL ROUTER]   → Executando tool diretamente: {tool_name}")
+                            safe_print(f"[TOOL ROUTER] ✅ Sem ambiguidade (diferença {score_diff:.4f} >= {DISAMBIGUATION_SCORE_DIFF_THRESHOLD})")
+                            safe_print(f"[TOOL ROUTER]   → Executando tool diretamente: {tool_name}")
                     elif is_from_disambiguation:
-                        print(f"[TOOL ROUTER] ✅ Query veio de disambiguation, executando tool diretamente (sem nova disambiguation)")
-                        print(f"[TOOL ROUTER]   Tool selecionada: {tool_name} (score: {top_score:.4f})")
+                        safe_print(f"[TOOL ROUTER] ✅ Query veio de disambiguation, executando tool diretamente (sem nova disambiguation)")
+                        safe_print(f"[TOOL ROUTER]   Tool selecionada: {tool_name} (score: {top_score:.4f})")
                     else:
-                        print(f"[TOOL ROUTER] ✅ Apenas 1 tool encontrada, executando diretamente")
+                        safe_print(f"[TOOL ROUTER] ✅ Apenas 1 tool encontrada, executando diretamente")
                     
                     # Sem ambiguidade ou veio de disambiguation, executar tool diretamente
-                    print(f"[TOOL ROUTER]   Status: ✅ Score >= {SEMANTIC_MATCH_MIN_SCORE:.3f} (tool será executada)")
-                    return _execute_tool(top_tool, tool_name)
+                    safe_print(f"[TOOL ROUTER]   Status: [OK] Score >= {SEMANTIC_MATCH_MIN_SCORE:.3f} (tool sera executada)")
+                    
+                    # Se modo comparison, executar em ambos os decks
+                    if is_comparison_mode:
+                        return _execute_tool_comparison(top_tool.__class__, tool_name)
+                    else:
+                        return _execute_tool(top_tool, tool_name)
                 else:
-                    print(f"[TOOL ROUTER] ⚠️ Match semântico: melhor score {top_score:.4f} < {SEMANTIC_MATCH_MIN_SCORE:.3f}")
-                    print(f"[TOOL ROUTER]   → Nenhuma tool será executada, fluxo normal (coder/executor) assumirá")
+                    safe_print(f"[TOOL ROUTER] ⚠️ Match semântico: melhor score {top_score:.4f} < {SEMANTIC_MATCH_MIN_SCORE:.3f}")
+                    safe_print(f"[TOOL ROUTER]   → Nenhuma tool será executada, fluxo normal (coder/executor) assumirá")
                     if USE_HYBRID_MATCHING:
-                        print("[TOOL ROUTER]   → Continuando para keyword matching (fallback)...")
+                        safe_print("[TOOL ROUTER]   → Continuando para keyword matching (fallback)...")
             else:
-                print(f"[TOOL ROUTER] ⚠️ Match semântico: nenhuma tool encontrada acima do threshold")
-                print(f"[TOOL ROUTER]   → Nenhuma tool será executada, fluxo normal (coder/executor) assumirá")
+                safe_print(f"[TOOL ROUTER] ⚠️ Match semântico: nenhuma tool encontrada acima do threshold")
+                safe_print(f"[TOOL ROUTER]   → Nenhuma tool será executada, fluxo normal (coder/executor) assumirá")
                 if USE_HYBRID_MATCHING:
-                    print("[TOOL ROUTER]   → Continuando para keyword matching (fallback)...")
+                    safe_print("[TOOL ROUTER]   → Continuando para keyword matching (fallback)...")
         except Exception as e:
-            print(f"[TOOL ROUTER] ⚠️ Erro no match semântico: {e}")
+            safe_print(f"[TOOL ROUTER] ⚠️ Erro no match semântico: {e}")
             import traceback
             traceback.print_exc()
             if USE_HYBRID_MATCHING:
-                print("[TOOL ROUTER]   → Continuando para keyword matching (fallback após erro)...")
+                safe_print("[TOOL ROUTER]   → Continuando para keyword matching (fallback após erro)...")
             # Continuar para fallback keyword matching
     
     # 2. Fallback para keyword matching (se híbrido habilitado ou se semântico desabilitado)
     if USE_HYBRID_MATCHING or not SEMANTIC_MATCHING_ENABLED:
-        print("[TOOL ROUTER] Verificando qual tool pode processar a query (keyword matching)...")
+        safe_print("[TOOL ROUTER] Verificando qual tool pode processar a query (keyword matching)...")
         for tool in tools:
             tool_name = tool.get_name()
-            print(f"[TOOL ROUTER] Testando tool: {tool_name}")
+            safe_print(f"[TOOL ROUTER] Testando tool: {tool_name}")
             
             try:
                 if tool.can_handle(query):
-                    print(f"[TOOL ROUTER] ✅ Tool {tool_name} pode processar a query!")
-                    return _execute_tool(tool, tool_name)
+                    safe_print(f"[TOOL ROUTER] [OK] Tool {tool_name} pode processar a query!")
+                    # Se modo comparison, executar em ambos os decks
+                    if is_comparison_mode:
+                        return _execute_tool_comparison(tool.__class__, tool_name)
+                    else:
+                        return _execute_tool(tool, tool_name)
                 else:
-                    print(f"[TOOL ROUTER] ❌ Tool {tool_name} não pode processar")
+                    safe_print(f"[TOOL ROUTER] [X] Tool {tool_name} nao pode processar")
             except Exception as e:
-                print(f"[TOOL ROUTER] ❌ Erro ao testar/executar tool {tool_name}: {e}")
+                safe_print(f"[TOOL ROUTER] ❌ Erro ao testar/executar tool {tool_name}: {e}")
                 import traceback
                 traceback.print_exc()
                 continue
     
     # Nenhuma tool pode processar, continuar fluxo normal
-    print("[TOOL ROUTER] ⚠️ Nenhuma tool pode processar, continuando fluxo normal")
-    print("[TOOL ROUTER] ===== FIM: tool_router_node (retornando tool_route=False) =====")
+    safe_print("[TOOL ROUTER] ⚠️ Nenhuma tool pode processar, continuando fluxo normal")
+    safe_print("[TOOL ROUTER] ===== FIM: tool_router_node (retornando tool_route=False) =====")
     return {
         "tool_route": False
     }
@@ -404,7 +477,7 @@ def _generate_disambiguation_response(
     from langchain_core.prompts import ChatPromptTemplate
     from app.config import OPENAI_API_KEY, OPENAI_MODEL, DISAMBIGUATION_MAX_OPTIONS
     
-    print("[TOOL ROUTER] Gerando resposta de disambiguation...")
+    safe_print("[TOOL ROUTER] Gerando resposta de disambiguation...")
     
     # Limitar a máximo de opções
     tools_to_show = top_tools[:DISAMBIGUATION_MAX_OPTIONS]
@@ -507,7 +580,7 @@ Cada opção deve ser uma query expandida que deixe claro qual tool deve ser usa
                 json_str = json_match.group(0)
             else:
                 # Fallback: criar opções manualmente
-                print("[TOOL ROUTER] ⚠️ LLM não retornou JSON válido, usando fallback")
+                safe_print("[TOOL ROUTER] ⚠️ LLM não retornou JSON válido, usando fallback")
                 return _create_fallback_disambiguation(query, tools_to_show)
         
         try:
@@ -516,13 +589,13 @@ Cada opção deve ser uma query expandida que deixe claro qual tool deve ser usa
             
             # Validar que temos opções
             if not options or len(options) != len(tools_to_show):
-                print("[TOOL ROUTER] ⚠️ LLM retornou opções inválidas, usando fallback")
+                safe_print("[TOOL ROUTER] ⚠️ LLM retornou opções inválidas, usando fallback")
                 return _create_fallback_disambiguation(query, tools_to_show)
             
             # Pergunta padrão única
             question = "Preciso de mais informações, escolha a opção que se refere melhor a sua consulta:"
             
-            print(f"[TOOL ROUTER] ✅ Disambiguation gerada com {len(options)} opções")
+            safe_print(f"[TOOL ROUTER] ✅ Disambiguation gerada com {len(options)} opções")
             
             return {
                 "tool_route": False,  # Não executar tool ainda
@@ -536,11 +609,11 @@ Cada opção deve ser uma query expandida que deixe claro qual tool deve ser usa
             }
             
         except json.JSONDecodeError as e:
-            print(f"[TOOL ROUTER] ⚠️ Erro ao parsear JSON de disambiguation: {e}")
+            safe_print(f"[TOOL ROUTER] ⚠️ Erro ao parsear JSON de disambiguation: {e}")
             return _create_fallback_disambiguation(query, tools_to_show)
             
     except Exception as e:
-        print(f"[TOOL ROUTER] ⚠️ Erro ao gerar disambiguation com LLM: {e}")
+        safe_print(f"[TOOL ROUTER] ⚠️ Erro ao gerar disambiguation com LLM: {e}")
         import traceback
         traceback.print_exc()
         return _create_fallback_disambiguation(query, tools_to_show)
@@ -554,7 +627,7 @@ def _create_fallback_disambiguation(
     Cria disambiguation de fallback usando mapeamento de descrições amigáveis.
     Usado quando LLM falha ou retorna formato inválido.
     """
-    print("[TOOL ROUTER] Usando fallback para disambiguation...")
+    safe_print("[TOOL ROUTER] Usando fallback para disambiguation...")
     
     # Mapear nomes de tools para descrições amigáveis
     tool_descriptions = {
@@ -659,27 +732,27 @@ def _identify_tool_from_context(context: str, tools: list[NEWAVETool]) -> Option
     # Normalizar contexto (remover espaços extras, lowercase)
     context_normalized = context.strip().lower()
     
-    print(f"[TOOL ROUTER]   Buscando tool para contexto: '{context_normalized}'")
-    print(f"[TOOL ROUTER]   Contextos disponíveis: {list(context_to_tool.keys())}")
+    safe_print(f"[TOOL ROUTER]   Buscando tool para contexto: '{context_normalized}'")
+    safe_print(f"[TOOL ROUTER]   Contextos disponíveis: {list(context_to_tool.keys())}")
     
     # PRIMEIRO: Verificar se o contexto contém diretamente o nome de uma tool
     # Isso pode acontecer se o LLM retornar "TermCadastroTool" diretamente
     tool_names = [t.get_name() for t in tools]
     for tool_name in tool_names:
         if tool_name.lower() == context_normalized or tool_name.lower() in context_normalized.split():
-            print(f"[TOOL ROUTER]   ✅ Contexto contém nome da tool diretamente: {tool_name}")
+            safe_print(f"[TOOL ROUTER]   ✅ Contexto contém nome da tool diretamente: {tool_name}")
             for tool in tools:
                 if tool.get_name() == tool_name:
-                    print(f"[TOOL ROUTER]   ✅ Tool encontrada: {tool.get_name()}")
+                    safe_print(f"[TOOL ROUTER]   ✅ Tool encontrada: {tool.get_name()}")
                     return tool
     
     # Buscar match exato primeiro
     tool_name = context_to_tool.get(context_normalized)
     if tool_name:
-        print(f"[TOOL ROUTER]   ✅ Match exato encontrado: {tool_name}")
+        safe_print(f"[TOOL ROUTER]   ✅ Match exato encontrado: {tool_name}")
         for tool in tools:
             if tool.get_name() == tool_name:
-                print(f"[TOOL ROUTER]   ✅ Tool encontrada: {tool.get_name()}")
+                safe_print(f"[TOOL ROUTER]   ✅ Tool encontrada: {tool.get_name()}")
                 return tool
     
     # Se não encontrou match exato, buscar por palavras-chave
@@ -688,10 +761,10 @@ def _identify_tool_from_context(context: str, tools: list[NEWAVETool]) -> Option
         key_normalized = key.lower()
         # Verificar se o contexto contém a chave ou vice-versa
         if key_normalized in context_normalized or context_normalized in key_normalized:
-            print(f"[TOOL ROUTER]   ✅ Match parcial encontrado: {tool_name} (chave: '{key}')")
+            safe_print(f"[TOOL ROUTER]   ✅ Match parcial encontrado: {tool_name} (chave: '{key}')")
             for tool in tools:
                 if tool.get_name() == tool_name:
-                    print(f"[TOOL ROUTER]   ✅ Tool encontrada: {tool.get_name()}")
+                    safe_print(f"[TOOL ROUTER]   ✅ Tool encontrada: {tool.get_name()}")
                     return tool
     
     # Se ainda não encontrou, buscar por palavras-chave importantes
@@ -716,13 +789,13 @@ def _identify_tool_from_context(context: str, tools: list[NEWAVETool]) -> Option
     
     if best_match:
         tool_name, matched_key = best_match
-        print(f"[TOOL ROUTER]   ✅ Match por palavras-chave encontrado: {tool_name} (chave: '{matched_key}', score: {best_score:.2f})")
+        safe_print(f"[TOOL ROUTER]   ✅ Match por palavras-chave encontrado: {tool_name} (chave: '{matched_key}', score: {best_score:.2f})")
         for tool in tools:
             if tool.get_name() == tool_name:
-                print(f"[TOOL ROUTER]   ✅ Tool encontrada: {tool.get_name()}")
+                safe_print(f"[TOOL ROUTER]   ✅ Tool encontrada: {tool.get_name()}")
                 return tool
     
-    print(f"[TOOL ROUTER]   ❌ Nenhuma tool encontrada para contexto: '{context_normalized}'")
-    print(f"[TOOL ROUTER]   Palavras do contexto: {context_words}")
+    safe_print(f"[TOOL ROUTER]   ❌ Nenhuma tool encontrada para contexto: '{context_normalized}'")
+    safe_print(f"[TOOL ROUTER]   Palavras do contexto: {context_words}")
     return None
 

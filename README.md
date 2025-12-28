@@ -1,53 +1,68 @@
 # NEWAVE Agent
 
-Sistema inteligente de consultas em decks NEWAVE usando **LangGraph**, **RAG (Retrieval-Augmented Generation)** e **LLMs**. Permite fazer perguntas em linguagem natural sobre dados de planejamento energético e receber respostas precisas com código Python gerado automaticamente.
+Sistema inteligente de consultas em decks NEWAVE usando **LangGraph**, **RAG (Retrieval-Augmented Generation)** e **LLMs**. Permite fazer perguntas em linguagem natural sobre dados de planejamento energetico e receber respostas precisas com codigo Python gerado automaticamente.
 
-## Visão Geral
+## Visao Geral
 
-O NEWAVE Agent é uma plataforma que combina:
-- **Agentes Autônomos** (LangGraph) para orquestração de tarefas complexas
-- **RAG** para busca semântica na documentação NEWAVE
-- **Tools Pré-programadas** para consultas frequentes (13 tools especializadas)
-- **Geração de Código** para consultas customizadas
+O NEWAVE Agent e uma plataforma que combina:
+- **Agentes Autonomos** (LangGraph) para orquestracao de tarefas complexas
+- **RAG** para busca semantica na documentacao NEWAVE
+- **Tools Pre-programadas** para consultas frequentes (13 tools especializadas)
+- **Geracao de Codigo** para consultas customizadas
 - **Interface Web** moderna e interativa
+- **Modo Comparativo** para analise entre dois decks (Dezembro vs Janeiro)
 
-##  Funcionalidades Principais
+## Funcionalidades Principais
 
-###  Consultas Inteligentes
-- **Linguagem Natural**: Faça perguntas em português sobre dados NEWAVE
-- **Geração Automática de Código**: O sistema gera código Python usando a biblioteca `inewave`
-- **Execução Segura**: Código executado em ambiente isolado com validações
-- **Retry Automático**: Sistema tenta corrigir erros automaticamente
+### Modos de Analise
 
-###  Tools Pré-programadas (13 tools)
+| Modo | Descricao |
+|------|-----------|
+| **Single Deck** | Analise de um unico deck NEWAVE |
+| **Multi-Deck** | Comparacao automatica entre dois decks (Dez/Jan) |
+
+### Consultas Inteligentes
+- **Linguagem Natural**: Faca perguntas em portugues sobre dados NEWAVE
+- **Geracao Automatica de Codigo**: O sistema gera codigo Python usando a biblioteca `inewave`
+- **Execucao Segura**: Codigo executado em ambiente isolado com validacoes
+- **Retry Automatico**: Sistema tenta corrigir erros automaticamente
+
+### Tools Pre-programadas (13 tools)
 1. **CargaMensalTool** - Demanda mensal por submercado
-2. **ClastValoresTool** - Custos de classes térmicas (CVU)
-3. **ExptOperacaoTool** - Operação térmica (expansões/modificações)
-4. **ModifOperacaoTool** - Modificações hídricas (volumes/vazões)
-5. **LimitesIntercambioTool** - Limites de intercâmbio entre subsistemas
-6. **AgrintTool** - Agrupamentos de intercâmbio
-7. **VazoesTool** - Vazões históricas de postos fluviométricos
+2. **ClastValoresTool** - Custos de classes termicas (CVU)
+3. **ExptOperacaoTool** - Operacao termica (expansoes/modificacoes)
+4. **ModifOperacaoTool** - Modificacoes hidricas (volumes/vazoes)
+5. **LimitesIntercambioTool** - Limites de intercambio entre subsistemas
+6. **AgrintTool** - Agrupamentos de intercambio
+7. **VazoesTool** - Vazoes historicas de postos fluviometricos
 8. **CadicTool** - Cargas e ofertas adicionais
-9. **HidrCadastroTool** - Cadastro de usinas hidrelétricas
-10. **ConfhdTool** - Configuração de usinas (REE/status)
-11. **DsvaguaTool** - Desvios de água consuntivos
-12. **UsinasNaoSimuladasTool** - Geração de pequenas usinas (PCH/EOL/UFV)
-13. **RestricaoEletricaTool** - Restrições elétricas do sistema
+9. **HidrCadastroTool** - Cadastro de usinas hidreletricas
+10. **ConfhdTool** - Configuracao de usinas (REE/status)
+11. **DsvaguaTool** - Desvios de agua consuntivos
+12. **UsinasNaoSimuladasTool** - Geracao de pequenas usinas (PCH/EOL/UFV)
+13. **RestricaoEletricaTool** - Restricoes eletricas do sistema
 
-###  RAG (Retrieval-Augmented Generation)
-- **Busca Semântica**: Encontra documentação relevante usando embeddings
-- **Self-Reflection**: Validação iterativa de arquivos candidatos
-- **Query Expansion**: Expansão de sinônimos para melhor matching
+### Modo Multi-Deck (Comparativo)
+- **Execucao Paralela**: Mesma tool executada em ambos os decks simultaneamente
+- **Interpretacao por LLM**: Analise comparativa gerada por IA
+- **Deteccao de Diferencas**: Identifica alteracoes entre decks automaticamente
+- **Visualizacao Rica**: Tabelas e graficos comparativos no frontend
+
+### RAG (Retrieval-Augmented Generation)
+- **Busca Semantica**: Encontra documentacao relevante usando embeddings
+- **Self-Reflection**: Validacao iterativa de arquivos candidatos
+- **Query Expansion**: Expansao de sinonimos para melhor matching
 - **Vector Store**: ChromaDB para armazenamento de embeddings
 
-###  Interface Web
+### Interface Web
 - **Upload de Decks**: Arraste e solte arquivos .zip
+- **Decks Pre-carregados**: Use decks do repositorio sem upload
 - **Chat Interativo**: Interface conversacional em tempo real
-- **Streaming de Eventos**: Acompanhe o progresso da execução
-- **Visualização de Código**: Veja o código Python gerado
+- **Streaming de Eventos**: Acompanhe o progresso da execucao
+- **Visualizacao de Codigo**: Veja o codigo Python gerado
 - **Download de Dados**: Exporte resultados em JSON/CSV
 
-##  Arquitetura
+## Arquitetura
 
 ```
 ┌─────────────────┐
@@ -64,64 +79,65 @@ O NEWAVE Agent é uma plataforma que combina:
          ▼
 ┌─────────────────────────────────────┐
 │      LangGraph Agent                │
-│  ┌──────────────────────────────┐  │
-│  │  Tool Router (Semantic Match) │  │
-│  └──────────────┬─────────────────┘  │
-│                 │                    │
-│  ┌──────────────▼─────────────────┐  │
-│  │  RAG Node (Document Search)   │  │
-│  └──────────────┬─────────────────┘  │
-│                 │                    │
-│  ┌──────────────▼─────────────────┐  │
-│  │  Coder Node (Code Generation)  │  │
-│  └──────────────┬─────────────────┘  │
-│                 │                    │
-│  ┌──────────────▼─────────────────┐  │
-│  │  Executor Node (Code Execution)│  │
-│  └──────────────┬─────────────────┘  │
-│                 │                    │
-│  ┌──────────────▼─────────────────┐  │
-│  │ Interpreter Node (Response)    │  │
-│  └────────────────────────────────┘  │
+│  ┌──────────────────────────────┐   │
+│  │  Tool Router (Semantic Match)│   │
+│  └──────────────┬───────────────┘   │
+│                 │                   │
+│  ┌──────────────▼───────────────┐   │
+│  │  RAG Node (Document Search)  │   │
+│  └──────────────┬───────────────┘   │
+│                 │                   │
+│  ┌──────────────▼───────────────┐   │
+│  │  Coder Node (Code Generation)│   │
+│  └──────────────┬───────────────┘   │
+│                 │                   │
+│  ┌──────────────▼───────────────┐   │
+│  │  Executor Node (Execution)   │   │
+│  └──────────────┬───────────────┘   │
+│                 │                   │
+│  ┌──────────────▼───────────────┐   │
+│  │ Interpreter Node (Response)  │   │
+│  └──────────────────────────────┘   │
 └─────────────────────────────────────┘
          │
          ▼
 ┌─────────────────┐
-│   Tools (13)    │  Pré-programadas
+│   Tools (13)    │  Pre-programadas
 │   + inewave     │  Biblioteca NEWAVE
 └─────────────────┘
 ```
 
-##  Tecnologias
+## Tecnologias
 
 ### Backend
 - **Python 3.10+**
-- **FastAPI** - Framework web assíncrono
-- **LangGraph** - Orquestração de agentes
-- **LangChain** - Integração com LLMs
+- **FastAPI** - Framework web assincrono
+- **LangGraph** - Orquestracao de agentes
+- **LangChain** - Integracao com LLMs
 - **OpenAI** - GPT-4o-mini (LLM) + text-embedding-3-large (embeddings)
 - **ChromaDB** - Vector store para RAG
 - **inewave** - Biblioteca para leitura de arquivos NEWAVE
-- **pandas** - Manipulação de dados
+- **pandas** - Manipulacao de dados
 - **Langfuse** - Observabilidade e monitoramento
 
 ### Frontend
 - **Next.js 14+** - Framework React
-- **TypeScript** - Tipagem estática
-- **Tailwind CSS** - Estilização
+- **TypeScript** - Tipagem estatica
+- **Tailwind CSS** - Estilizacao
 - **shadcn/ui** - Componentes UI
+- **Framer Motion** - Animacoes
 - **Server-Sent Events (SSE)** - Streaming de eventos
 
-##  Instalação
+## Instalacao
 
-### Pré-requisitos
+### Pre-requisitos
 - Python 3.10 ou superior
 - Node.js 18+ (para o frontend)
 - OpenAI API Key
 
 ### Backend
 
-1. **Clone o repositório**
+1. **Clone o repositorio**
 ```bash
 git clone <repository-url>
 cd nw-new-new
@@ -135,12 +151,12 @@ source venv/bin/activate  # Linux/Mac
 venv\Scripts\activate  # Windows
 ```
 
-3. **Instale as dependências**
+3. **Instale as dependencias**
 ```bash
 pip install -r requirements.txt
 ```
 
-4. **Configure as variáveis de ambiente**
+4. **Configure as variaveis de ambiente**
 ```bash
 cp .env.example .env  # Se existir
 ```
@@ -162,8 +178,8 @@ LANGFUSE_HOST=https://us.cloud.langfuse.com
 python run.py
 ```
 
-O servidor estará disponível em `http://localhost:8000`
-Documentação da API em `http://localhost:8000/docs`
+O servidor estara disponivel em `http://localhost:8000`
+Documentacao da API em `http://localhost:8000/docs`
 
 ### Frontend
 
@@ -172,7 +188,7 @@ Documentação da API em `http://localhost:8000/docs`
 cd frontend
 ```
 
-2. **Instale as dependências**
+2. **Instale as dependencias**
 ```bash
 npm install
 ```
@@ -188,38 +204,62 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 npm run dev
 ```
 
-A interface estará disponível em `http://localhost:3000`
+A interface estara disponivel em `http://localhost:3000`
 
-##  Uso
+## Uso
 
-### 1. Upload de Deck
+### 1. Escolha o Modo de Analise
 
-Faça upload de um arquivo `.zip` contendo o deck NEWAVE através da interface web ou API:
+Na tela inicial, selecione:
+- **Single Deck Analysis** - Para analisar um deck individual
+- **Multi-Deck Analysis** - Para comparar dois decks
+
+### 2. Modos de Carregamento
+
+#### Decks do Repositorio (Recomendado)
+Os decks ja estao disponiveis na pasta `decks/`:
+- `dezembro/` - Deck de dezembro
+- `janeiro/` - Deck de janeiro
+
+O sistema carrega automaticamente sem necessidade de upload.
+
+#### Upload Manual
+Faca upload de um arquivo `.zip` contendo o deck NEWAVE:
 
 ```bash
 curl -X POST "http://localhost:8000/upload" \
   -F "file=@seu_deck.zip"
 ```
 
-Você receberá um `session_id` para usar nas consultas.
-
-### 2. Fazer Consultas
+### 3. Fazer Consultas
 
 #### Via Interface Web
 1. Acesse `http://localhost:3000`
-2. Faça upload do deck
+2. Selecione o modo de analise
 3. Digite sua pergunta no chat
 4. Aguarde a resposta
 
 #### Via API
 
-**Consulta Simples:**
+**Consulta Single Deck:**
 ```bash
 curl -X POST "http://localhost:8000/query" \
   -H "Content-Type: application/json" \
   -d '{
     "session_id": "seu-session-id",
-    "query": "Quais são as cargas mensais do Sudeste em 2025?"
+    "query": "Quais sao as cargas mensais do Sudeste em 2025?",
+    "analysis_mode": "single"
+  }'
+```
+
+**Consulta Multi-Deck (Comparacao):**
+```bash
+curl -X POST "http://localhost:8000/query" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "session_id": "seu-session-id",
+    "query": "Compare os CVUs de Angra entre os decks",
+    "analysis_mode": "comparison"
   }'
 ```
 
@@ -229,85 +269,94 @@ curl -X POST "http://localhost:8000/query/stream" \
   -H "Content-Type: application/json" \
   -d '{
     "session_id": "seu-session-id",
-    "query": "Mostre os CVUs de todas as classes térmicas"
+    "query": "Mostre os CVUs de todas as classes termicas",
+    "analysis_mode": "single"
   }'
 ```
 
-### 3. Exemplos de Consultas
+### 4. Exemplos de Consultas
 
-#### Consultas que usam Tools Pré-programadas:
-- "Quais são as cargas mensais por submercado?"
+#### Consultas que usam Tools Pre-programadas:
+- "Quais sao as cargas mensais por submercado?"
 - "CVU da classe ANGRA 1"
-- "Vazões históricas de Itaipu"
-- "Modificações hídricas da usina Furnas"
-- "Limites de intercâmbio entre Sudeste e Sul"
+- "Vazoes historicas de Itaipu"
+- "Modificacoes hidricas da usina Furnas"
+- "Limites de intercambio entre Sudeste e Sul"
 
-#### Consultas que geram código:
-- "Qual a potência instalada total de todas as hidrelétricas?"
-- "Mostre a evolução mensal da demanda do Nordeste"
-- "Compare os custos térmicos entre 2024 e 2025"
+#### Consultas Comparativas (Multi-Deck):
+- "Compare a carga do Sudeste entre os decks"
+- "Quais modificacoes hidricas mudaram entre dezembro e janeiro?"
+- "Diferenca nos CVUs entre os decks"
 
-##  API Endpoints
+#### Consultas que geram codigo:
+- "Qual a potencia instalada total de todas as hidreletricas?"
+- "Mostre a evolucao mensal da demanda do Nordeste"
+- "Compare os custos termicos entre 2024 e 2025"
 
-### `POST /upload`
-Upload de deck NEWAVE (.zip)
-- **Retorna**: `session_id`, `files_count`
+## API Endpoints
 
-### `POST /query`
-Consulta síncrona
-- **Body**: `{ "session_id": string, "query": string }`
-- **Retorna**: Resposta completa com código gerado e resultados
+### Upload e Sessoes
 
-### `POST /query/stream`
-Consulta com streaming (SSE)
-- **Body**: `{ "session_id": string, "query": string }`
-- **Retorna**: Eventos em tempo real (Server-Sent Events)
+| Endpoint | Metodo | Descricao |
+|----------|--------|-----------|
+| `/upload` | POST | Upload de deck NEWAVE (.zip) |
+| `/load-deck` | POST | Carrega deck do repositorio |
+| `/init-comparison` | POST | Inicializa modo comparativo |
+| `/sessions/{id}` | GET | Informacoes da sessao |
+| `/sessions/{id}` | DELETE | Remove sessao |
 
-### `GET /sessions/{session_id}`
-Informações da sessão
-- **Retorna**: Lista de arquivos carregados
+### Consultas
 
-### `DELETE /sessions/{session_id}`
-Remove sessão e arquivos
+| Endpoint | Metodo | Descricao |
+|----------|--------|-----------|
+| `/query` | POST | Consulta sincrona |
+| `/query/stream` | POST | Consulta com streaming (SSE) |
 
-### `POST /index`
-Reindexa a documentação NEWAVE
+### Sistema
 
-##  Estrutura do Projeto
+| Endpoint | Metodo | Descricao |
+|----------|--------|-----------|
+| `/index` | POST | Reindexa documentacao NEWAVE |
+| `/health` | GET | Status do servidor |
+
+## Estrutura do Projeto
 
 ```
 nw-new-new/
 ├── app/
 │   ├── agents/           # Agente LangGraph
-│   │   ├── graph.py      # Definição do grafo
+│   │   ├── graph.py      # Definicao do grafo
 │   │   ├── state.py      # Estado do agente
-│   │   └── nodes/        # Nós do grafo
+│   │   └── nodes/        # Nos do grafo
 │   │       ├── tool_router.py    # Roteamento de tools
-│   │       ├── rag.py            # Busca semântica
-│   │       ├── coder.py          # Geração de código
-│   │       ├── executor.py       # Execução de código
-│   │       └── interpreter.py    # Interpretação de resultados
-│   ├── tools/            # Tools pré-programadas (13 tools)
+│   │       ├── rag.py            # Busca semantica
+│   │       ├── coder.py          # Geracao de codigo
+│   │       ├── executor.py       # Execucao de codigo
+│   │       └── interpreter.py    # Interpretacao de resultados
+│   ├── tools/            # Tools pre-programadas (13 tools)
 │   ├── rag/              # Sistema RAG
 │   │   ├── vectorstore.py    # ChromaDB
-│   │   └── indexer.py        # Indexação de docs
-│   ├── utils/            # Utilitários
-│   ├── config.py         # Configurações
+│   │   └── indexer.py        # Indexacao de docs
+│   ├── utils/            # Utilitarios
+│   │   └── deck_loader.py    # Carregador de decks
+│   ├── config.py         # Configuracoes
 │   └── main.py           # API FastAPI
 ├── frontend/             # Interface Next.js
-├── docs/                 # Documentação NEWAVE
+├── decks/                # Decks pre-carregados
+│   ├── dezembro/         # Deck dezembro
+│   └── janeiro/          # Deck janeiro
+├── docs/                 # Documentacao NEWAVE
 ├── data/                 # Dados e vector store
-├── uploads/              # Decks carregados
-└── requirements.txt      # Dependências Python
+└── requirements.txt      # Dependencias Python
 ```
 
-##  Configuração Avançada
+## Configuracao Avancada
 
-### Variáveis de Ambiente
+### Variaveis de Ambiente
 
 ```env
 # OpenAI
-OPENAI_API_KEY=obrigatório
+OPENAI_API_KEY=obrigatorio
 OPENAI_MODEL=gpt-4o-mini
 OPENAI_EMBEDDING_MODEL=text-embedding-3-large
 
@@ -337,21 +386,29 @@ LANGFUSE_PUBLIC_KEY=
 LANGFUSE_HOST=https://us.cloud.langfuse.com
 ```
 
-## Segurança
+## Seguranca
 
-- **Execução Isolada**: Código Python executado em ambiente controlado
-- **Validação de Código**: Verificação de imports e operações permitidas
-- **Timeout**: Limite de tempo para execução de código
-- **Sanitização**: Validação de inputs e outputs
+- **Execucao Isolada**: Codigo Python executado em ambiente controlado
+- **Validacao de Codigo**: Verificacao de imports e operacoes permitidas
+- **Timeout**: Limite de tempo para execucao de codigo
+- **Sanitizacao**: Validacao de inputs e outputs
 
-##  Observabilidade
+## Observabilidade
 
 O projeto integra com **Langfuse** para monitoramento:
 - Rastreamento de queries
-- Métricas de performance
-- Análise de erros
-- Logs de execução
+- Metricas de performance
+- Analise de erros
+- Logs de execucao
 
 Configure as chaves no `.env` para habilitar.
 
+## Changelog Recente
 
+### v2.0 - Modo Multi-Deck
+- Novo modo de analise comparativa entre dois decks
+- Execucao paralela de tools em ambos os decks
+- Interpretacao por LLM para comparacoes
+- Otimizacao: decks usados diretamente sem copia de arquivos
+- Endpoints `/load-deck` e `/init-comparison`
+- Interface atualizada com selecao de modo

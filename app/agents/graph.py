@@ -11,46 +11,48 @@ from app.agents.nodes import (
     interpreter_node,
 )
 from app.utils.observability import get_langfuse_handler
+from app.config import safe_print
 
 
 # Constantes
 MAX_RETRIES = 3
 
-# Descrições dos nodes para streaming
+# Descricoes dos nodes para streaming
+# Nota: Emojis removidos para compatibilidade com Windows (cp1252)
 NODE_DESCRIPTIONS = {
     "rag": {
         "name": "RAG Retriever",
-        "icon": "📚",
-        "description": "Buscando documentação e validando arquivos relevantes..."
+        "icon": "[DOCS]",
+        "description": "Buscando documentacao e validando arquivos relevantes..."
     },
     "rag_simple": {
         "name": "RAG Simplificado",
-        "icon": "📖",
-        "description": "Buscando documentação no abstract..."
+        "icon": "[DOC]",
+        "description": "Buscando documentacao no abstract..."
     },
     "tool_router": {
         "name": "Tool Router",
-        "icon": "🔧",
-        "description": "Verificando se há tool pré-programada disponível..."
+        "icon": "[TOOL]",
+        "description": "Verificando se ha tool pre-programada disponivel..."
     },
     "coder": {
         "name": "Code Generator", 
-        "icon": "💻",
-        "description": "Gerando código Python para analisar o deck NEWAVE..."
+        "icon": "[CODE]",
+        "description": "Gerando codigo Python para analisar o deck NEWAVE..."
     },
     "executor": {
         "name": "Code Executor",
-        "icon": "⚡",
-        "description": "Executando o código gerado..."
+        "icon": "[EXEC]",
+        "description": "Executando o codigo gerado..."
     },
     "interpreter": {
         "name": "Interpreter",
-        "icon": "🧠",
+        "icon": "[AI]",
         "description": "Analisando resultados e gerando resposta..."
     },
     "retry_check": {
         "name": "Retry Check",
-        "icon": "🔄",
+        "icon": "[RETRY]",
         "description": "Verificando se precisa tentar novamente..."
     }
 }
@@ -265,10 +267,10 @@ def run_query(query: str, deck_path: str, session_id: Optional[str] = None) -> d
     initial_state = get_initial_state(query, deck_path)
     
     # Configurar Langfuse para observabilidade
-    print("[LANGFUSE DEBUG] ===== INÍCIO: run_query =====")
-    print(f"[LANGFUSE DEBUG] Query: {query[:100]}")
-    print(f"[LANGFUSE DEBUG] Deck path: {deck_path}")
-    print(f"[LANGFUSE DEBUG] Session ID: {session_id}")
+    safe_print("[LANGFUSE DEBUG] ===== INÍCIO: run_query =====")
+    safe_print(f"[LANGFUSE DEBUG] Query: {query[:100]}")
+    safe_print(f"[LANGFUSE DEBUG] Deck path: {deck_path}")
+    safe_print(f"[LANGFUSE DEBUG] Session ID: {session_id}")
     
     langfuse_handler = get_langfuse_handler(
         session_id=session_id or deck_path,
@@ -276,47 +278,47 @@ def run_query(query: str, deck_path: str, session_id: Optional[str] = None) -> d
         metadata={"query": query[:100]}  # Primeiros 100 chars da query
     )
     
-    print("[LANGFUSE DEBUG] Configurando callbacks para agent.invoke...")
+    safe_print("[LANGFUSE DEBUG] Configurando callbacks para agent.invoke...")
     config = {"callbacks": [langfuse_handler]} if langfuse_handler else {}
-    print(f"[LANGFUSE DEBUG] Config criado: {bool(config.get('callbacks'))}")
+    safe_print(f"[LANGFUSE DEBUG] Config criado: {bool(config.get('callbacks'))}")
     if config.get("callbacks"):
-        print(f"[LANGFUSE DEBUG] Número de callbacks: {len(config['callbacks'])}")
-        print(f"[LANGFUSE DEBUG] Tipo do callback: {type(config['callbacks'][0])}")
+        safe_print(f"[LANGFUSE DEBUG] Número de callbacks: {len(config['callbacks'])}")
+        safe_print(f"[LANGFUSE DEBUG] Tipo do callback: {type(config['callbacks'][0])}")
     
     if langfuse_handler:
-        print(f"[LANGFUSE DEBUG] ✅ Iniciando query com rastreamento Langfuse")
+        safe_print(f"[LANGFUSE DEBUG] ✅ Iniciando query com rastreamento Langfuse")
     else:
-        print(f"[LANGFUSE DEBUG] ⚠️ Executando query SEM rastreamento Langfuse")
+        safe_print(f"[LANGFUSE DEBUG] ⚠️ Executando query SEM rastreamento Langfuse")
     
-    print("[LANGFUSE DEBUG] Chamando agent.invoke...")
+    safe_print("[LANGFUSE DEBUG] Chamando agent.invoke...")
     result = agent.invoke(initial_state, config=config)
-    print("[LANGFUSE DEBUG] ✅ agent.invoke concluído")
+    safe_print("[LANGFUSE DEBUG] ✅ agent.invoke concluído")
     
     # Fazer flush do Langfuse para garantir envio
     if langfuse_handler:
-        print("[LANGFUSE DEBUG] Iniciando flush do Langfuse...")
+        safe_print("[LANGFUSE DEBUG] Iniciando flush do Langfuse...")
         try:
             # Verificar se o handler tem método flush
             if hasattr(langfuse_handler, 'flush'):
-                print("[LANGFUSE DEBUG] Handler possui método flush, chamando...")
+                safe_print("[LANGFUSE DEBUG] Handler possui método flush, chamando...")
                 langfuse_handler.flush()
-                print("[LANGFUSE DEBUG] ✅ Flush do handler concluído")
+                safe_print("[LANGFUSE DEBUG] ✅ Flush do handler concluído")
             else:
-                print("[LANGFUSE DEBUG] ⚠️ Handler não possui método flush")
+                safe_print("[LANGFUSE DEBUG] ⚠️ Handler não possui método flush")
             
             # Também fazer flush do cliente Langfuse global
             from app.utils.observability import flush_langfuse
-            print("[LANGFUSE DEBUG] Chamando flush_langfuse global...")
+            safe_print("[LANGFUSE DEBUG] Chamando flush_langfuse global...")
             flush_langfuse()
-            print("[LANGFUSE DEBUG] ✅ Flush global concluído")
+            safe_print("[LANGFUSE DEBUG] ✅ Flush global concluído")
         except Exception as e:
-            print(f"[LANGFUSE DEBUG] ❌ Erro ao fazer flush: {e}")
+            safe_print(f"[LANGFUSE DEBUG] ❌ Erro ao fazer flush: {e}")
             import traceback
             traceback.print_exc()
     else:
-        print("[LANGFUSE DEBUG] ⚠️ Sem handler, pulando flush")
+        safe_print("[LANGFUSE DEBUG] ⚠️ Sem handler, pulando flush")
     
-    print("[LANGFUSE DEBUG] ===== FIM: run_query =====")
+    safe_print("[LANGFUSE DEBUG] ===== FIM: run_query =====")
     return result
 
 
@@ -326,10 +328,10 @@ def run_query_stream(query: str, deck_path: str, session_id: Optional[str] = Non
     initial_state = get_initial_state(query, deck_path, analysis_mode)
     
     # Configurar Langfuse para observabilidade
-    print("[LANGFUSE DEBUG] ===== INÍCIO: run_query_stream =====")
-    print(f"[LANGFUSE DEBUG] Query: {query[:100]}")
-    print(f"[LANGFUSE DEBUG] Deck path: {deck_path}")
-    print(f"[LANGFUSE DEBUG] Session ID: {session_id}")
+    safe_print("[LANGFUSE DEBUG] ===== INÍCIO: run_query_stream =====")
+    safe_print(f"[LANGFUSE DEBUG] Query: {query[:100]}")
+    safe_print(f"[LANGFUSE DEBUG] Deck path: {deck_path}")
+    safe_print(f"[LANGFUSE DEBUG] Session ID: {session_id}")
     
     langfuse_handler = get_langfuse_handler(
         session_id=session_id or deck_path,
@@ -337,16 +339,16 @@ def run_query_stream(query: str, deck_path: str, session_id: Optional[str] = Non
         metadata={"query": query[:100], "streaming": True}
     )
     
-    print("[LANGFUSE DEBUG] Configurando callbacks para agent.stream...")
+    safe_print("[LANGFUSE DEBUG] Configurando callbacks para agent.stream...")
     config = {"callbacks": [langfuse_handler]} if langfuse_handler else {}
-    print(f"[LANGFUSE DEBUG] Config criado: {bool(config.get('callbacks'))}")
+    safe_print(f"[LANGFUSE DEBUG] Config criado: {bool(config.get('callbacks'))}")
     if config.get("callbacks"):
-        print(f"[LANGFUSE DEBUG] Número de callbacks: {len(config['callbacks'])}")
+        safe_print(f"[LANGFUSE DEBUG] Número de callbacks: {len(config['callbacks'])}")
     
     if langfuse_handler:
-        print(f"[LANGFUSE DEBUG] ✅ Iniciando query stream com rastreamento Langfuse")
+        safe_print(f"[LANGFUSE DEBUG] ✅ Iniciando query stream com rastreamento Langfuse")
     else:
-        print(f"[LANGFUSE DEBUG] ⚠️ Executando query stream SEM rastreamento Langfuse")
+        safe_print(f"[LANGFUSE DEBUG] ⚠️ Executando query stream SEM rastreamento Langfuse")
     
     yield f"data: {json.dumps({'type': 'start', 'message': 'Iniciando processamento...'})}\n\n"
     
@@ -443,11 +445,11 @@ def run_query_stream(query: str, deck_path: str, session_id: Optional[str] = Non
                 elif node_name == "interpreter":
                     response = node_output.get("final_response") if node_output else None
                     comparison_data = node_output.get("comparison_data") if node_output else None
-                    print(f"[GRAPH] Interpreter retornou resposta: {len(response) if response else 0} caracteres")
+                    safe_print(f"[GRAPH] Interpreter retornou resposta: {len(response) if response else 0} caracteres")
                     # SEMPRE emitir resposta se houver conteúdo, mesmo que venha de disambiguation
                     # A diferença é que não emitimos mensagem "Processamento concluído" no final
                     if response and response.strip():
-                        print(f"[GRAPH] Emitindo resposta do interpreter ({len(response)} caracteres)")
+                        safe_print(f"[GRAPH] Emitindo resposta do interpreter ({len(response)} caracteres)")
                         yield f"data: {json.dumps({'type': 'response_start', 'is_fallback': is_fallback})}\n\n"
                         chunk_size = 50
                         for i in range(0, len(response), chunk_size):
@@ -455,11 +457,11 @@ def run_query_stream(query: str, deck_path: str, session_id: Optional[str] = Non
                         yield f"data: {json.dumps({'type': 'response_complete', 'response': response, 'comparison_data': comparison_data})}\n\n"
                     else:
                         # Resposta vazia - pode ser disambiguation ou erro
-                        print(f"[GRAPH] ⚠️ Resposta vazia do interpreter")
+                        safe_print(f"[GRAPH] ⚠️ Resposta vazia do interpreter")
                         if has_disambiguation:
-                            print(f"[GRAPH]   (Disambiguation já processada, pulando)")
+                            safe_print(f"[GRAPH]   (Disambiguation já processada, pulando)")
                         else:
-                            print(f"[GRAPH]   (Pode ser erro ou resposta vazia)")
+                            safe_print(f"[GRAPH]   (Pode ser erro ou resposta vazia)")
                 
                 # IMPORTANTE: Não emitir node_complete para tool_router quando há disambiguation
                 # Isso evita que o frontend mostre o tool como "executado" rapidamente
@@ -476,27 +478,27 @@ def run_query_stream(query: str, deck_path: str, session_id: Optional[str] = Non
         
         # Fazer flush do Langfuse após streaming
         if langfuse_handler:
-            print("[LANGFUSE DEBUG] Iniciando flush do Langfuse (stream)...")
+            safe_print("[LANGFUSE DEBUG] Iniciando flush do Langfuse (stream)...")
             try:
                 if hasattr(langfuse_handler, 'flush'):
-                    print("[LANGFUSE DEBUG] Handler possui método flush, chamando...")
+                    safe_print("[LANGFUSE DEBUG] Handler possui método flush, chamando...")
                     langfuse_handler.flush()
-                    print("[LANGFUSE DEBUG] ✅ Flush do handler concluído (stream)")
+                    safe_print("[LANGFUSE DEBUG] ✅ Flush do handler concluído (stream)")
                 else:
-                    print("[LANGFUSE DEBUG] ⚠️ Handler não possui método flush")
+                    safe_print("[LANGFUSE DEBUG] ⚠️ Handler não possui método flush")
                 
                 from app.utils.observability import flush_langfuse
-                print("[LANGFUSE DEBUG] Chamando flush_langfuse global (stream)...")
+                safe_print("[LANGFUSE DEBUG] Chamando flush_langfuse global (stream)...")
                 flush_langfuse()
-                print("[LANGFUSE DEBUG] ✅ Flush global concluído (stream)")
+                safe_print("[LANGFUSE DEBUG] ✅ Flush global concluído (stream)")
             except Exception as e:
-                print(f"[LANGFUSE DEBUG] ❌ Erro ao fazer flush (stream): {e}")
+                safe_print(f"[LANGFUSE DEBUG] ❌ Erro ao fazer flush (stream): {e}")
                 import traceback
                 traceback.print_exc()
         else:
-            print("[LANGFUSE DEBUG] ⚠️ Sem handler, pulando flush (stream)")
+            safe_print("[LANGFUSE DEBUG] ⚠️ Sem handler, pulando flush (stream)")
         
-        print("[LANGFUSE DEBUG] ===== FIM: run_query_stream =====")
+        safe_print("[LANGFUSE DEBUG] ===== FIM: run_query_stream =====")
         
     except Exception as e:
         yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"

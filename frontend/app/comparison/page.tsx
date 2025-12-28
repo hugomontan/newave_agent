@@ -64,6 +64,14 @@ interface Message {
         data: (number | null)[];
       }>;
     } | null;
+    differences?: Array<{
+      field: string;
+      period: string;
+      deck_1_value: number;
+      deck_2_value: number;
+      difference: number;
+      difference_percent: number;
+    }>;
   };
 }
 

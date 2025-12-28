@@ -223,7 +223,7 @@ export async function* sendQueryStream(
           const data = JSON.parse(line.slice(6));
           yield data as StreamEvent;
         } catch (e) {
-          // Ignora linhas malformadas
+          console.error("[SSE] Erro ao parsear evento:", e);
         }
       }
     }

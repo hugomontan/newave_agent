@@ -1,6 +1,72 @@
 import os
+import sys
 from pathlib import Path
 from dotenv import load_dotenv
+
+# ======================================
+# SAFE PRINT PARA WINDOWS
+# Usado em modulos que podem ser importados antes do main.py
+# ======================================
+
+# Mapeamento de emojis para texto ASCII seguro
+_EMOJI_TO_ASCII = {
+    '✅': '[OK]',
+    '❌': '[ERRO]',
+    '⚠️': '[AVISO]',
+    '❗': '[AVISO]',
+    '❓': '[?]',
+    '🔍': '[BUSCA]',
+    '📊': '[DADOS]',
+    '📚': '[DOCS]',
+    '📖': '[DOC]',
+    '📈': '[GRAF]',
+    '📋': '[LISTA]',
+    '🔧': '[TOOL]',
+    '💻': '[CODE]',
+    '⚡': '[EXEC]',
+    '🧠': '[AI]',
+    '🔄': '[RETRY]',
+    '🎉': '[SUCESSO]',
+    '🏭': '[USINA]',
+    '→': '->',
+    '←': '<-',
+    '↔': '<->',
+    '└': ' ',
+    '─': '-',
+    '├': ' ',
+    '│': '|',
+}
+
+def safe_print(*args, **kwargs):
+    """
+    Print seguro que substitui caracteres problematicos no Windows.
+    Evita erros de encoding (OSError: [Errno 22] Invalid argument).
+    
+    Uso:
+        from app.config import safe_print
+        safe_print("Mensagem com emoji ✅")  # Funciona no Windows
+    """
+    try:
+        # Primeira tentativa: substituir emojis conhecidos
+        safe_args = []
+        for arg in args:
+            s = str(arg)
+            for emoji, ascii_text in _EMOJI_TO_ASCII.items():
+                s = s.replace(emoji, ascii_text)
+            safe_args.append(s)
+        print(*safe_args, **kwargs)
+    except (UnicodeEncodeError, OSError):
+        # Fallback: converter para ASCII com substituicao
+        try:
+            safe_args = []
+            for arg in args:
+                s = str(arg)
+                # Remover todos os caracteres nao-ASCII
+                s = s.encode('ascii', errors='replace').decode('ascii')
+                safe_args.append(s)
+            print(*safe_args, **kwargs)
+        except Exception:
+            pass  # Silenciosamente ignora se ainda falhar
 
 load_dotenv()
 

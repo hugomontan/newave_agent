@@ -1,3 +1,44 @@
+import sys
+import os
+import builtins
+
+# ======================================
+# PATCH GLOBAL DE PRINT PARA WINDOWS
+# Deve ser executado ANTES de qualquer outro import
+# Resolve: OSError: [Errno 22] Invalid argument
+# ======================================
+
+# Configurar encoding UTF-8 no Windows
+if sys.platform == 'win32':
+    os.environ['PYTHONIOENCODING'] = 'utf-8'
+
+# Patch global do print para Windows
+_original_print = builtins.print
+
+def _safe_print(*args, **kwargs):
+    """Print seguro que substitui caracteres problematicos no Windows."""
+    try:
+        _original_print(*args, **kwargs)
+    except (UnicodeEncodeError, OSError):
+        # Fallback: converter para ASCII com substituicao
+        safe_args = []
+        for arg in args:
+            if isinstance(arg, str):
+                safe_args.append(arg.encode('ascii', errors='replace').decode('ascii'))
+            else:
+                safe_args.append(str(arg).encode('ascii', errors='replace').decode('ascii'))
+        try:
+            _original_print(*safe_args, **kwargs)
+        except Exception:
+            pass  # Silenciosamente ignora se ainda falhar
+
+if sys.platform == 'win32':
+    builtins.print = _safe_print
+
+# ======================================
+# Imports originais do main.py abaixo
+# ======================================
+
 import uuid
 import shutil
 import zipfile
@@ -291,7 +332,8 @@ class LoadDeckRequest(BaseModel):
 @app.post("/load-deck", response_model=UploadResponse)
 async def load_deck_from_repo(request: LoadDeckRequest):
     """
-    Carrega um deck do repositório (decks/).
+    Carrega um deck do repositorio (decks/).
+    Versao otimizada: usa o deck diretamente sem copiar arquivos.
     """
     from app.utils.deck_loader import load_deck
     import uuid
@@ -299,29 +341,21 @@ async def load_deck_from_repo(request: LoadDeckRequest):
     try:
         deck_path = load_deck(request.deck_name)
         
-        # Criar sessão para o deck carregado
+        # Criar sessao referenciando o deck original (sem copiar)
         session_id = str(uuid.uuid4())
-        session_path = UPLOADS_DIR / session_id
-        session_path.mkdir(parents=True, exist_ok=True)
+        sessions[session_id] = deck_path
         
-        # Copiar arquivos do deck para a sessão
-        import shutil
-        for item in deck_path.iterdir():
-            if item.is_file():
-                shutil.copy2(item, session_path / item.name)
-        
-        files_count = len(list(session_path.glob("*")))
-        sessions[session_id] = session_path
+        files_count = len(list(deck_path.glob("*")))
         
         return UploadResponse(
             session_id=session_id,
-            message=f"Deck {request.deck_name} carregado do repositório",
+            message=f"Deck {request.deck_name} carregado",
             files_count=files_count
         )
     except FileNotFoundError as e:
         raise HTTPException(
             status_code=404,
-            detail=f"Deck {request.deck_name} não encontrado no repositório: {str(e)}"
+            detail=f"Deck {request.deck_name} nao encontrado: {str(e)}"
         )
     except Exception as e:
         raise HTTPException(
@@ -333,38 +367,31 @@ async def load_deck_from_repo(request: LoadDeckRequest):
 @app.post("/init-comparison", response_model=UploadResponse)
 async def init_comparison_mode():
     """
-    Inicializa o modo comparação usando os decks do repositório.
+    Inicializa o modo comparacao usando os decks do repositorio.
+    Versao otimizada: usa o deck diretamente sem copiar arquivos.
     """
     from app.utils.deck_loader import get_december_deck_path
     import uuid
-    import shutil
     
     try:
-        # Usar deck de dezembro como base para a sessão
+        # Usar deck de dezembro diretamente (sem copiar arquivos)
         deck_path = get_december_deck_path()
         
-        # Criar sessão para comparação
+        # Criar sessao referenciando o deck original
         session_id = str(uuid.uuid4())
-        session_path = UPLOADS_DIR / session_id
-        session_path.mkdir(parents=True, exist_ok=True)
+        sessions[session_id] = deck_path
         
-        # Copiar arquivos do deck de dezembro para a sessão
-        for item in deck_path.iterdir():
-            if item.is_file():
-                shutil.copy2(item, session_path / item.name)
-        
-        files_count = len(list(session_path.glob("*")))
-        sessions[session_id] = session_path
+        files_count = len(list(deck_path.glob("*")))
         
         return UploadResponse(
             session_id=session_id,
-            message="Modo comparação inicializado (usando decks do repositório)",
+            message="Modo comparacao inicializado",
             files_count=files_count
         )
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Erro ao inicializar modo comparação: {str(e)}"
+            detail=f"Erro ao inicializar modo comparacao: {str(e)}"
         )
 
 

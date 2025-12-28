@@ -1,7 +1,7 @@
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from app.agents.state import AgentState
-from app.config import OPENAI_API_KEY, OPENAI_MODEL
+from app.config import OPENAI_API_KEY, OPENAI_MODEL, safe_print
 from app.utils.text_utils import clean_response_text
 import pandas as pd
 import matplotlib
@@ -64,8 +64,94 @@ INTERPRETER_USER_PROMPT = """Pergunta original do usuário: {query}
 
 Por favor, interprete os resultados e forneça uma resposta completa e bem formatada em Markdown."""
 
+
+# ============================================================================
+# PROMPT PARA COMPARACAO MULTI-DECK
+# ============================================================================
+COMPARISON_INTERPRETER_SYSTEM_PROMPT = """Voce e um especialista em analise de dados do setor eletrico brasileiro,
+especialmente do modelo NEWAVE e do sistema interligado nacional.
+
+Voce recebeu dados de comparacao entre DOIS decks NEWAVE:
+- **Deck 1**: {deck_1_name}
+- **Deck 2**: {deck_2_name}
+
+PERGUNTA ORIGINAL: {query}
+
+=====================================================================
+REGRAS CRITICAS - SIGA OBRIGATORIAMENTE:
+=====================================================================
+
+1. COMPARE OS DADOS - Nao apenas liste. Identifique:
+   - O que MUDOU entre os decks (valores diferentes para o mesmo item)
+   - O que foi ADICIONADO (existe em Deck 2 mas nao em Deck 1)
+   - O que foi REMOVIDO (existe em Deck 1 mas nao em Deck 2)
+   - O que PERMANECEU IGUAL
+
+2. SE NAO HA DIFERENCAS:
+   - Diga claramente: "Os dados sao IDENTICOS entre os dois decks"
+   - NAO liste todos os dados - apenas confirme que sao iguais
+   - Mencione brevemente o que existe (ex: "3 modificacoes, 2 expansoes")
+   - VA DIRETO PARA A CONCLUSAO
+
+3. SE HA DIFERENCAS:
+   - Liste APENAS as diferencas, nao todos os dados
+   - Para cada diferenca, explique o IMPACTO
+   - Use tabela comparativa quando apropriado:
+     | Item | {deck_1_name} | {deck_2_name} | Diferenca |
+   - Destaque diferencas significativas (>1% ou valores novos/removidos)
+
+4. CONCLUSAO OBRIGATORIA:
+   - Sempre termine com uma conclusao clara e acionavel
+   - Responda: "O que isso significa para o planejamento/operacao?"
+   - Se nao ha diferencas, confirme que os decks estao alinhados
+
+=====================================================================
+PROIBICOES ABSOLUTAS:
+=====================================================================
+- NAO liste todos os dados se forem iguais entre os decks
+- NAO faca tabelas gigantes sem analise
+- NAO responda sem uma conclusao
+- NAO repita dados identicos entre os decks
+- NAO apenas descreva os dados - COMPARE e CONCLUA
+- NAO use frases vagas como "os dados mostram..." sem especificar O QUE
+
+=====================================================================
+FORMATO OBRIGATORIO:
+=====================================================================
+
+## Analise Comparativa
+
+### Resultado
+[OBRIGATORIO: Diga claramente se ha diferencas ou nao. Uma frase direta.]
+
+### Diferencas Encontradas
+[Se houver: liste APENAS o que mudou/adicionou/removeu]
+[Se NAO houver: escreva "Nenhuma diferenca encontrada" e pule para Conclusao]
+
+### Conclusao
+[OBRIGATORIO: O que isso significa? Qual o impacto pratico?]
+"""
+
+COMPARISON_INTERPRETER_USER_PROMPT = """DADOS DO DECK 1 ({deck_1_name}):
+{deck_1_summary}
+
+DADOS DO DECK 2 ({deck_2_name}):
+{deck_2_summary}
+
+INFORMACOES ADICIONAIS:
+{differences_summary}
+
+INSTRUCAO FINAL:
+1. Compare os dados acima entre os dois decks
+2. Identifique DIFERENCAS (valores diferentes, itens adicionados/removidos)
+3. Se os dados forem IDENTICOS, diga isso claramente e NAO liste tudo
+4. Forneca uma CONCLUSAO sobre o impacto das diferencas (ou ausencia delas)
+
+Responda de forma CONCISA e ACIONAVEL."""
+
+
 # Prompt para interpretar e filtrar resultados de tools
-TOOL_INTERPRETER_SYSTEM_PROMPT = """Você é um especialista em análise de dados do setor elétrico brasileiro, 
+TOOL_INTERPRETER_SYSTEM_PROMPT = """Voce e um especialista em analise de dados do setor eletrico brasileiro, 
 especialmente do modelo NEWAVE e do sistema interligado nacional.
 
 Sua tarefa é analisar a pergunta do usuário e o resultado completo de uma tool pré-programada,
@@ -290,12 +376,12 @@ def interpreter_node(state: AgentState) -> dict:
         tool_used = state.get("tool_used")
         
         if tool_result:
-            print(f"[INTERPRETER] Processando resultado de tool: {tool_used}")
-            print(f"[INTERPRETER]   Success: {tool_result.get('success', False)}")
+            safe_print(f"[INTERPRETER] Processando resultado de tool: {tool_used}")
+            safe_print(f"[INTERPRETER]   Success: {tool_result.get('success', False)}")
             
             # Verificar se é uma comparação multi-deck
             if tool_result.get("is_comparison"):
-                print(f"[INTERPRETER] ✅ Resultado é comparação multi-deck")
+                safe_print(f"[INTERPRETER] ✅ Resultado é comparação multi-deck")
                 query = state.get("query", "")
                 # A tool retorna os dados de comparação diretamente no tool_result
                 # Criar estrutura comparison_data a partir do tool_result
@@ -308,18 +394,18 @@ def interpreter_node(state: AgentState) -> dict:
                     "differences": tool_result.get("differences", [])  # Incluir todas as diferenças
                 }
                 result = _format_comparison_response(tool_result, tool_used, query)
-                print(f"[INTERPRETER]   Resposta de comparação gerada")
+                safe_print(f"[INTERPRETER]   Resposta de comparação gerada")
                 # Incluir comparison_data no resultado
                 return {
                     **result,
                     "comparison_data": comparison_data
                 }
             
-            print(f"[INTERPRETER]   Data count: {len(tool_result.get('data', [])) if tool_result.get('data') else 0}")
+            safe_print(f"[INTERPRETER]   Data count: {len(tool_result.get('data', [])) if tool_result.get('data') else 0}")
             query = state.get("query", "")
-            print(f"[INTERPRETER]   Query original: {query[:100]}")
+            safe_print(f"[INTERPRETER]   Query original: {query[:100]}")
             result = _format_tool_response_with_llm(tool_result, tool_used, query)
-            print(f"[INTERPRETER]   Resposta gerada: {len(result.get('final_response', ''))} caracteres")
+            safe_print(f"[INTERPRETER]   Resposta gerada: {len(result.get('final_response', ''))} caracteres")
             return result
         
         # Verificar se há disambiguation (apenas se não há tool_result)
@@ -327,7 +413,7 @@ def interpreter_node(state: AgentState) -> dict:
         if disambiguation:
             # Para disambiguation, não retornar mensagem - o frontend já cria
             # Apenas retornar vazio para evitar duplicação
-            print(f"[INTERPRETER] Processando disambiguation com {len(disambiguation.get('options', []))} opções")
+            safe_print(f"[INTERPRETER] Processando disambiguation com {len(disambiguation.get('options', []))} opções")
             return {"final_response": ""}  # Vazio - frontend já cria a mensagem
         
         # Verificar se é um caso de fallback
@@ -410,7 +496,7 @@ Não encontrei arquivos de dados adequados para responder sua pergunta.
         return {"final_response": final_response}
         
     except Exception as e:
-        print(f"[INTERPRETER ERROR] {str(e)}")
+        safe_print(f"[INTERPRETER ERROR] {str(e)}")
         import traceback
         traceback.print_exc()
         error_msg = f"## Erro ao interpretar resultados\n\nOcorreu um erro ao gerar a resposta: {str(e)}\n\nConsulte a saída da execução do código para ver os dados."
@@ -424,27 +510,30 @@ def _format_comparison_response(
     query: str
 ) -> Dict[str, Any]:
     """
-    Formata a resposta para o frontend quando é uma comparação multi-deck.
+    Formata a resposta para o frontend quando e uma comparacao multi-deck.
+    Usa LLM para interpretar os dados livremente.
     
     Args:
-        tool_result: Resultado da tool de comparação (já contém deck_1, deck_2, chart_data)
+        tool_result: Resultado da tool de comparacao (ja contem deck_1, deck_2, chart_data)
         tool_used: Nome da tool usada
-        query: Query original do usuário
+        query: Query original do usuario
         
     Returns:
         Dict com final_response formatado e comparison_data
     """
+    import json
+    
     # A tool retorna os dados diretamente no tool_result
     # Construir comparison_data a partir do tool_result
     chart_data = tool_result.get("chart_data")
     differences = tool_result.get("differences", [])
     
-    # Debug: verificar se chart_data está presente
+    # Debug: verificar se chart_data esta presente
     if chart_data:
-        print(f"[INTERPRETER] ✅ Chart data presente: {len(chart_data.get('labels', []))} labels, {len(chart_data.get('datasets', []))} datasets")
+        safe_print(f"[INTERPRETER] [OK] Chart data presente: {len(chart_data.get('labels', []))} labels, {len(chart_data.get('datasets', []))} datasets")
     else:
-        print(f"[INTERPRETER] ⚠️ Chart data NÃO presente no tool_result")
-        print(f"[INTERPRETER]   Keys disponíveis no tool_result: {list(tool_result.keys())}")
+        safe_print(f"[INTERPRETER] [AVISO] Chart data NAO presente no tool_result")
+        safe_print(f"[INTERPRETER]   Keys disponiveis no tool_result: {list(tool_result.keys())}")
     
     comparison_data = {
         "deck_1": tool_result.get("deck_1", {}),
@@ -452,63 +541,255 @@ def _format_comparison_response(
         "chart_data": chart_data,
         "tool_name": tool_result.get("tool_used", tool_used),
         "query": tool_result.get("query", query),
-        "differences": differences  # Incluir todas as diferenças
+        "differences": differences  # Incluir todas as diferencas
     }
     
-    # Verificar se há dados de comparação
+    # Verificar se ha dados de comparacao
     if not tool_result.get("deck_1") and not tool_result.get("deck_2"):
         return {
-            "final_response": "## ❌ Erro na Comparação\n\nNão foi possível obter dados de comparação.",
+            "final_response": "## Erro na Comparacao\n\nNao foi possivel obter dados de comparacao.",
             "comparison_data": None
         }
     
     deck_1_name = tool_result.get("deck_1", {}).get("name", "Deck 1")
     deck_2_name = tool_result.get("deck_2", {}).get("name", "Deck 2")
     
-    response_parts = []
-    response_parts.append(f"## 📊 Comparação Multi-Deck: {query}\n\n")
-    response_parts.append(f"Análise comparativa entre **{deck_1_name}** e **{deck_2_name}** usando a tool `{tool_used}`.\n\n")
-    
     # Verificar se ambos os decks tiveram sucesso
     deck_1_success = tool_result.get("deck_1", {}).get("success", False)
     deck_2_success = tool_result.get("deck_2", {}).get("success", False)
     
     if not deck_1_success or not deck_2_success:
-        response_parts.append("### ⚠️ Erro na Comparação\n\n")
+        # Se houve erro, retornar mensagem de erro sem chamar LLM
+        response_parts = []
+        response_parts.append(f"## Erro na Comparacao\n\n")
         if not deck_1_success:
             error_1 = tool_result.get("deck_1", {}).get("error", "Erro desconhecido")
             response_parts.append(f"- **{deck_1_name}**: {error_1}\n")
         if not deck_2_success:
             error_2 = tool_result.get("deck_2", {}).get("error", "Erro desconhecido")
             response_parts.append(f"- **{deck_2_name}**: {error_2}\n")
-        response_parts.append("\n")
-    else:
-        # Resumo das diferenças (se houver)
-        differences = tool_result.get("differences", [])
-        if differences:
-            response_parts.append("### ⚠️ Discrepâncias Encontradas\n\n")
-            response_parts.append(f"**Total de diferenças significativas:** {len(differences)}\n\n")
-            response_parts.append("| Período | Dezembro 2025 | Janeiro 2026 | Diferença Nominal | Diferença % |\n")
-            response_parts.append("|---------|--------------|--------------|-------------------|-------------|\n")
-            
-            # Mostrar TODAS as diferenças (sem limite)
-            # A tabela completa será exibida no componente DifferencesTable no frontend
-            # Aqui apenas mostramos um resumo
-            response_parts.append(f"*Todas as {len(differences)} diferenças estão disponíveis na tabela interativa abaixo.*\n\n")
-            response_parts.append("\n**Nota:** Diferenças são consideradas significativas quando excedem 0.1% de diferença relativa ou 0.01 de diferença absoluta. A diferença nominal é calculada como Janeiro 2026 - Dezembro 2025, e a diferença percentual mantém o sinal (valores positivos indicam aumento, negativos indicam redução).\n\n")
+        
+        final_response = "".join(response_parts)
+        return {
+            "final_response": final_response,
+            "comparison_data": comparison_data
+        }
+    
+    # Usar LLM para interpretar a comparacao
+    try:
+        safe_print(f"[INTERPRETER] [COMPARISON] Gerando interpretacao com LLM...")
+        
+        # Preparar resumos dos dados para o LLM
+        deck_1_summary = _summarize_deck_data(tool_result.get("deck_1", {}))
+        deck_2_summary = _summarize_deck_data(tool_result.get("deck_2", {}))
+        differences_summary = _summarize_differences(differences)
+        
+        llm = ChatOpenAI(
+            api_key=OPENAI_API_KEY,
+            model=OPENAI_MODEL,
+            temperature=0.3
+        )
+        
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", COMPARISON_INTERPRETER_SYSTEM_PROMPT.format(
+                deck_1_name=deck_1_name,
+                deck_2_name=deck_2_name,
+                query=query
+            )),
+            ("human", COMPARISON_INTERPRETER_USER_PROMPT)
+        ])
+        
+        chain = prompt | llm
+        
+        response = chain.invoke({
+            "deck_1_name": deck_1_name,
+            "deck_2_name": deck_2_name,
+            "deck_1_summary": deck_1_summary,
+            "deck_2_summary": deck_2_summary,
+            "differences_summary": differences_summary
+        })
+        
+        final_response = getattr(response, 'content', None)
+        
+        if final_response:
+            safe_print(f"[INTERPRETER] [OK] Interpretacao gerada ({len(final_response)} caracteres)")
+            final_response = clean_response_text(final_response, max_emojis=2)
         else:
-            response_parts.append("### ✅ Nenhuma Discrepância Significativa Encontrada\n\n")
-            response_parts.append("Os dados são idênticos ou as diferenças estão dentro da tolerância (0.1% relativa ou 0.01 absoluta).\n\n")
+            # Fallback se LLM nao retornar conteudo
+            safe_print(f"[INTERPRETER] [AVISO] LLM nao retornou conteudo, usando resposta padrao")
+            final_response = _generate_fallback_comparison_response(
+                query, deck_1_name, deck_2_name, tool_used, differences
+            )
+        
+    except Exception as e:
+        safe_print(f"[INTERPRETER] [ERRO] Erro ao gerar interpretacao com LLM: {e}")
+        import traceback
+        traceback.print_exc()
+        # Fallback para resposta padrao
+        final_response = _generate_fallback_comparison_response(
+            query, deck_1_name, deck_2_name, tool_used, differences
+        )
     
-    response_parts.append("---\n\n")
-    response_parts.append(f"*Os dados completos para cada deck e o gráfico comparativo estão disponíveis abaixo.*\n")
-    
-    final_response = "".join(response_parts)
-    final_response = clean_response_text(final_response, max_emojis=2)
     return {
         "final_response": final_response,
         "comparison_data": comparison_data
     }
+
+
+def _summarize_deck_data(deck_info: Dict[str, Any]) -> str:
+    """
+    Gera um resumo dos dados de um deck para passar ao LLM.
+    Funciona com qualquer estrutura de dados (por periodo, por usina, por tipo, etc).
+    """
+    import json
+    
+    if not deck_info:
+        return "Sem dados disponiveis"
+    
+    summary_parts = []
+    
+    # Resultado completo (principal fonte de dados)
+    full_result = deck_info.get("full_result", {})
+    
+    if not full_result:
+        return "Sem dados disponiveis"
+    
+    # Verificar se houve sucesso
+    if not full_result.get("success", False):
+        error = full_result.get("error", "Erro desconhecido")
+        return f"ERRO: {error}"
+    
+    # Extrair dados de diferentes formatos possiveis
+    # 1. dados_por_tipo (ModifOperacaoTool, etc)
+    dados_por_tipo = full_result.get("dados_por_tipo", {})
+    if dados_por_tipo:
+        summary_parts.append("=== DADOS POR TIPO ===")
+        for tipo, dados in dados_por_tipo.items():
+            if isinstance(dados, list):
+                summary_parts.append(f"\n[{tipo}] - {len(dados)} registros:")
+                # Mostrar primeiros registros
+                for record in dados[:5]:
+                    summary_parts.append(f"  {json.dumps(record, ensure_ascii=False, default=str)}")
+                if len(dados) > 5:
+                    summary_parts.append(f"  ... e mais {len(dados) - 5} registros")
+    
+    # 2. dados_estruturais / dados_conjunturais (ClastValoresTool)
+    for key in ["dados_estruturais", "dados_conjunturais"]:
+        dados = full_result.get(key, [])
+        if dados:
+            summary_parts.append(f"\n=== {key.upper()} === ({len(dados)} registros)")
+            for record in dados[:10]:
+                summary_parts.append(f"  {json.dumps(record, ensure_ascii=False, default=str)}")
+            if len(dados) > 10:
+                summary_parts.append(f"  ... e mais {len(dados) - 10} registros")
+    
+    # 3. dados_expansoes (ExptOperacaoTool)
+    dados_expansoes = full_result.get("dados_expansoes", [])
+    if dados_expansoes:
+        summary_parts.append(f"\n=== DADOS EXPANSOES === ({len(dados_expansoes)} registros)")
+        for record in dados_expansoes[:10]:
+            summary_parts.append(f"  {json.dumps(record, ensure_ascii=False, default=str)}")
+        if len(dados_expansoes) > 10:
+            summary_parts.append(f"  ... e mais {len(dados_expansoes) - 10} registros")
+    
+    # 4. data (formato padrao)
+    data = full_result.get("data", [])
+    if data and not dados_por_tipo and not dados_expansoes:
+        summary_parts.append(f"\n=== DADOS === ({len(data)} registros)")
+        for record in data[:10]:
+            summary_parts.append(f"  {json.dumps(record, ensure_ascii=False, default=str)}")
+        if len(data) > 10:
+            summary_parts.append(f"  ... e mais {len(data) - 10} registros")
+    
+    # 5. Estatisticas gerais
+    for key in ["stats_geral", "summary", "filtros"]:
+        if key in full_result and full_result[key]:
+            summary_parts.append(f"\n{key}: {json.dumps(full_result[key], ensure_ascii=False, default=str)}")
+    
+    return "\n".join(summary_parts) if summary_parts else "Sem dados disponiveis"
+
+
+def _summarize_differences(differences) -> str:
+    """
+    Gera um resumo das diferencas para passar ao LLM.
+    Retorna mensagem informativa se nao houver diferencas pre-calculadas.
+    """
+    if differences is None:
+        return "(Diferencas nao pre-calculadas - compare os dados brutos de cada deck acima)"
+    
+    if not differences:
+        return "Nenhuma diferenca encontrada nos dados temporais"
+    
+    summary_parts = []
+    summary_parts.append(f"Total de {len(differences)} diferencas encontradas:\n")
+    
+    # Ordenar por diferenca percentual absoluta (maiores primeiro)
+    sorted_diffs = sorted(differences, key=lambda x: abs(x.get("difference_percent", 0)), reverse=True)
+    
+    # Mostrar top 10 diferencas mais significativas
+    for diff in sorted_diffs[:10]:
+        period = diff.get("period", "N/A")
+        val_1 = diff.get("deck_1_value", 0)
+        val_2 = diff.get("deck_2_value", 0)
+        diff_nominal = diff.get("difference", 0)
+        diff_percent = diff.get("difference_percent", 0)
+        
+        summary_parts.append(
+            f"- {period}: Deck1={val_1:.2f}, Deck2={val_2:.2f}, "
+            f"Diff={diff_nominal:+.2f} ({diff_percent:+.2f}%)"
+        )
+    
+    if len(differences) > 10:
+        summary_parts.append(f"\n... e mais {len(differences) - 10} diferencas")
+    
+    return "\n".join(summary_parts)
+
+
+def _generate_fallback_comparison_response(
+    query: str,
+    deck_1_name: str,
+    deck_2_name: str,
+    tool_used: str,
+    differences
+) -> str:
+    """
+    Gera resposta de comparacao de fallback quando LLM falha.
+    Segue o formato obrigatorio com resultado claro e conclusao.
+    """
+    response_parts = []
+    response_parts.append(f"## Analise Comparativa\n\n")
+    
+    # Resultado claro
+    response_parts.append(f"### Resultado\n\n")
+    
+    if differences and len(differences) > 0:
+        response_parts.append(f"Foram encontradas **{len(differences)} diferencas** entre {deck_1_name} e {deck_2_name}.\n\n")
+        
+        response_parts.append(f"### Diferencas Encontradas\n\n")
+        # Mostrar top 5 diferencas
+        sorted_diffs = sorted(differences, key=lambda x: abs(x.get("difference_percent", 0)), reverse=True)
+        for diff in sorted_diffs[:5]:
+            period = diff.get("period", "N/A")
+            val_1 = diff.get("deck_1_value", 0)
+            val_2 = diff.get("deck_2_value", 0)
+            diff_percent = diff.get("difference_percent", 0)
+            response_parts.append(f"- **{period}**: {val_1:.2f} -> {val_2:.2f} ({diff_percent:+.2f}%)\n")
+        
+        if len(differences) > 5:
+            response_parts.append(f"\n*... e mais {len(differences) - 5} diferencas*\n")
+        
+        response_parts.append(f"\n### Conclusao\n\n")
+        response_parts.append(f"Os decks apresentam diferencas que devem ser analisadas. ")
+        response_parts.append(f"Consulte os dados detalhados para avaliar o impacto no planejamento.\n")
+    else:
+        response_parts.append(f"Os dados sao **IDENTICOS** entre {deck_1_name} e {deck_2_name}.\n\n")
+        response_parts.append(f"### Diferencas Encontradas\n\n")
+        response_parts.append(f"Nenhuma diferenca encontrada.\n\n")
+        response_parts.append(f"### Conclusao\n\n")
+        response_parts.append(f"Os decks estao alinhados para esta consulta. ")
+        response_parts.append(f"Nao ha divergencias que impactem o planejamento.\n")
+    
+    return "".join(response_parts)
 
 
 def _format_tool_response_summary(tool_result: dict, tool_used: str) -> str:
@@ -803,7 +1084,7 @@ def _format_tool_response_with_llm(tool_result: dict, tool_used: str, query: str
         }
     
     try:
-        print(f"[TOOL INTERPRETER LLM] Gerando resposta focada para query: {query[:100]}")
+        safe_print(f"[TOOL INTERPRETER LLM] Gerando resposta focada para query: {query[:100]}")
         
         # Adicionar query ao tool_result para uso na formatação
         tool_result_with_query = tool_result.copy()
@@ -842,17 +1123,17 @@ def _format_tool_response_with_llm(tool_result: dict, tool_used: str, query: str
         final_response = getattr(response, 'content', None)
         
         if final_response:
-            print(f"[TOOL INTERPRETER LLM] ✅ Resposta focada gerada ({len(final_response)} caracteres)")
+            safe_print(f"[TOOL INTERPRETER LLM] ✅ Resposta focada gerada ({len(final_response)} caracteres)")
             # Limitar emojis na resposta
             final_response = clean_response_text(final_response, max_emojis=2)
             return {"final_response": final_response}
         else:
             # Fallback para resposta formatada original
-            print(f"[TOOL INTERPRETER LLM] ⚠️ LLM não retornou conteúdo, usando resposta formatada original")
+            safe_print(f"[TOOL INTERPRETER LLM] ⚠️ LLM não retornou conteúdo, usando resposta formatada original")
             return formatted_response
             
     except Exception as e:
-        print(f"[TOOL INTERPRETER LLM] ❌ Erro ao processar com LLM: {e}")
+        safe_print(f"[TOOL INTERPRETER LLM] ❌ Erro ao processar com LLM: {e}")
         import traceback
         traceback.print_exc()
         # Fallback para formatação original em caso de erro
@@ -1074,7 +1355,7 @@ def _generate_cvu_chart(dados_estruturais: list, classe_nome: str = None) -> Opt
         return image_base64
         
     except Exception as e:
-        print(f"[INTERPRETER] ⚠️ Erro ao gerar gráfico CVU: {e}")
+        safe_print(f"[INTERPRETER] ⚠️ Erro ao gerar gráfico CVU: {e}")
         import traceback
         traceback.print_exc()
         return None
