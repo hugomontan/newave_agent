@@ -649,7 +649,8 @@ def _format_comparison_response(
         final_response = _format_clast_simple_comparison(
             formatted.get("comparison_table", []),
             deck_1_name,
-            deck_2_name
+            deck_2_name,
+            query
         )
     elif tool_used in ["CargaMensalTool", "CadicTool"]:
         tool_label = "Carga Mensal" if tool_used == "CargaMensalTool" else "Carga Adicional"
@@ -662,7 +663,8 @@ def _format_comparison_response(
             formatted.get("comparison_table", []),
             deck_1_name,
             deck_2_name,
-            tool_label
+            tool_label,
+            query
         )
     else:
         # Gerar resposta do LLM baseada no tipo de visualizacao
@@ -810,46 +812,136 @@ def _summarize_differences(differences) -> str:
     return "\n".join(summary_parts)
 
 
+def _generate_simple_introduction(
+    tool_name: str,
+    tool_label: str,
+    query: str
+) -> str:
+    """
+    Gera uma breve introdução explicativa sobre o tipo de dado, sem mencionar dados específicos.
+    
+    Args:
+        tool_name: Nome da tool (ex: "ClastValoresTool", "CargaMensalTool")
+        tool_label: Label descritivo (ex: "CVU", "Carga Mensal", "Carga Adicional")
+        query: Query original do usuário
+        
+    Returns:
+        String markdown com introdução de 2 linhas explicando o conceito
+    """
+    # Mapear tool para informações sobre arquivo e conceito
+    tool_info = {
+        "ClastValoresTool": {
+            "arquivo": "CLAST.DAT",
+            "conceito": "CVU (Custo Variável Unitário) das classes térmicas"
+        },
+        "CargaMensalTool": {
+            "arquivo": "SISTEMA.DAT",
+            "conceito": "cargas mensais de energia (MWmédio) por submercado"
+        },
+        "CadicTool": {
+            "arquivo": "C_ADIC.DAT",
+            "conceito": "cargas e ofertas adicionais (valores extras somados/subtraídos da demanda principal)"
+        }
+    }
+    
+    info = tool_info.get(tool_name, {
+        "arquivo": "arquivo NEWAVE",
+        "conceito": tool_label.lower()
+    })
+    
+    # Criar prompt para LLM gerar introdução
+    system_prompt = """Você é um especialista em planejamento energético e modelo NEWAVE.
+
+Gere uma breve introdução de 2 linhas explicando o conceito solicitado, mencionando o arquivo de origem.
+
+REGRAS:
+- NÃO mencione dados específicos (valores, períodos, submercados)
+- Apenas explique o CONCEITO geral
+- Mencione o arquivo de origem
+- Seja conciso (máximo 2 linhas)
+- Use linguagem técnica mas acessível
+
+Exemplo para CVU:
+Os dados de CVU (Custo Variável Unitário) representam os custos operacionais das classes térmicas do sistema, obtidos do arquivo CLAST.DAT. Esses valores são fundamentais para a avaliação econômica da geração térmica no planejamento energético."""
+
+    user_prompt = f"""Gere uma introdução de 2 linhas explicando o que são {info['conceito']}, mencionando que os dados vêm do arquivo {info['arquivo']}.
+
+Conceito: {info['conceito']}
+Arquivo: {info['arquivo']}
+Label: {tool_label}"""
+
+    try:
+        llm = ChatOpenAI(
+            api_key=OPENAI_API_KEY,
+            model=OPENAI_MODEL,
+            temperature=0.3  # Baixa temperatura para respostas mais consistentes
+        )
+        
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", system_prompt),
+            ("human", user_prompt)
+        ])
+        
+        chain = prompt | llm
+        response = chain.invoke({})
+        introduction = getattr(response, 'content', '').strip()
+        
+        if introduction:
+            safe_print(f"[INTERPRETER] Introdução gerada para {tool_label}: {introduction[:100]}...")
+            return introduction
+        else:
+            # Fallback se LLM não retornar
+            return f"Os dados de {info['conceito']} são obtidos do arquivo {info['arquivo']} do modelo NEWAVE."
+    except Exception as e:
+        safe_print(f"[INTERPRETER] [ERRO] Erro ao gerar introdução: {e}")
+        # Fallback em caso de erro
+        return f"Os dados de {info['conceito']} são obtidos do arquivo {info['arquivo']} do modelo NEWAVE."
+
+
 def _format_clast_simple_comparison(
     comparison_table: List[Dict[str, Any]],
     deck_1_name: str,
-    deck_2_name: str
+    deck_2_name: str,
+    query: str = ""
 ) -> str:
     """
-    Formata resposta simples para ClastValoresTool: apenas título.
+    Formata resposta simples para ClastValoresTool: título + introdução.
     A tabela e o gráfico são renderizados pelo componente ComparisonView no frontend.
     
     Args:
         comparison_table: Lista de dicionários com dados da comparação
         deck_1_name: Nome do deck 1
         deck_2_name: Nome do deck 2
+        query: Query original do usuário (para contexto na introdução)
         
     Returns:
-        String markdown com apenas o título (sem tabela, pois será renderizada pelo componente)
+        String markdown com título e introdução (sem tabela, pois será renderizada pelo componente)
     """
     if not comparison_table:
         return "## Comparação de CVU\n\nNenhum dado disponível para comparação."
+    
+    # Gerar introdução explicativa
+    introduction = _generate_simple_introduction("ClastValoresTool", "CVU", query)
     
     # Verificar formato da tabela (CVU simplificado ou formato genérico)
     first_item = comparison_table[0] if comparison_table else {}
     is_cvu_format = "data" in first_item and "deck_1" in first_item and "deck_2" in first_item
     
     if is_cvu_format:
-        # Apenas título - a tabela será renderizada pelo componente ComparisonView
-        return "## Comparação de CVU\n"
+        return f"## Comparação de CVU\n\n{introduction}\n"
     else:
-        # Apenas título - a tabela será renderizada pelo componente ComparisonView
-        return "## Comparação de Custos\n"
+        return f"## Comparação de Custos\n\n{introduction}\n"
 
 
 def _format_carga_simple_comparison(
     comparison_table: List[Dict[str, Any]],
     deck_1_name: str,
     deck_2_name: str,
-    tool_label: str = "Carga Mensal"
+    tool_label: str = "Carga Mensal",
+    query: str = ""
 ) -> str:
     """
-    Formata resposta simples para CargaMensalTool e CadicTool: apenas título.
+    Formata resposta simples para CargaMensalTool e CadicTool: título + introdução.
     A tabela e o gráfico são renderizados pelo componente ComparisonView no frontend.
     Baseado no formato de CVU.
     
@@ -858,15 +950,21 @@ def _format_carga_simple_comparison(
         deck_1_name: Nome do deck 1
         deck_2_name: Nome do deck 2
         tool_label: Label da tool ("Carga Mensal" ou "Carga Adicional")
+        query: Query original do usuário (para contexto na introdução)
         
     Returns:
-        String markdown com apenas o título (sem tabela, pois será renderizada pelo componente)
+        String markdown com título e introdução (sem tabela, pois será renderizada pelo componente)
     """
     if not comparison_table:
         return f"## Comparação de {tool_label}\n\nNenhum dado disponível para comparação."
     
-    # Apenas título - a tabela será renderizada pelo componente ComparisonView
-    return f"## Comparação de {tool_label}\n"
+    # Determinar tool_name baseado no tool_label
+    tool_name = "CargaMensalTool" if tool_label == "Carga Mensal" else "CadicTool"
+    
+    # Gerar introdução explicativa
+    introduction = _generate_simple_introduction(tool_name, tool_label, query)
+    
+    return f"## Comparação de {tool_label}\n\n{introduction}\n"
 
 
 def _generate_fallback_comparison_response(
@@ -1059,18 +1157,88 @@ def _format_restricao_eletrica_data(dados: list) -> list:
     return dados_formatados
 
 
-def _format_tool_response_data_for_llm(tool_result: dict) -> str:
+def _detect_list_query(query: str) -> bool:
+    """
+    Detecta se a query pede uma lista completa de itens.
+    
+    Args:
+        query: Query do usuário
+        
+    Returns:
+        True se a query pede lista completa, False caso contrário
+    """
+    query_lower = query.lower()
+    
+    # Frases que indicam que o usuário quer uma lista completa
+    list_indicators = [
+        "quais usinas",
+        "quais são",
+        "quais sao",
+        "lista de",
+        "todas as",
+        "todos os",
+        "quais possuem",
+        "quais têm",
+        "quais tem",
+        "quais contêm",
+        "quais contem",
+        "quais têm",
+        "quais tem",
+        "quais apresentam",
+        "quais possuem",
+        "enumere",
+        "liste",
+        "mostre todas",
+        "mostre todos",
+        "mostre todas as",
+        "mostre todos os",
+        "identifique todas",
+        "identifique todos",
+    ]
+    
+    return any(indicator in query_lower for indicator in list_indicators)
+
+
+def _get_data_limit_for_query(query: str, default_limit: int = 20) -> int:
+    """
+    Determina o limite de dados baseado no tipo de query.
+    
+    Args:
+        query: Query do usuário
+        default_limit: Limite padrão (20 registros)
+        
+    Returns:
+        Limite de registros a incluir
+    """
+    if _detect_list_query(query):
+        # Para queries que pedem listas completas, aumentar limite significativamente
+        # Mas ainda limitar para não exceder tokens do LLM
+        return 200  # Limite aumentado para listas completas
+    return default_limit
+
+
+def _format_tool_response_data_for_llm(tool_result: dict, query: str = "") -> str:
     """
     Formata os dados da tool em formato estruturado para o LLM.
-    Usa JSON para manter estrutura, mas limita tamanho.
+    Usa JSON para manter estrutura, mas limita tamanho dinamicamente baseado na query.
     
     Args:
         tool_result: Resultado da execução da tool
+        query: Query original do usuário (para detectar se pede lista completa)
         
     Returns:
         String JSON resumida
     """
     import json
+    
+    # Detectar se a query pede lista completa
+    pede_lista_completa = _detect_list_query(query)
+    limite_padrao = 20  # Limite padrão para queries normais
+    limite_lista = 200   # Limite aumentado para queries que pedem listas completas
+    
+    safe_print(f"[INTERPRETER] [DATA FORMAT] Query: '{query[:100]}'")
+    safe_print(f"[INTERPRETER] [DATA FORMAT] Pede lista completa: {pede_lista_completa}")
+    safe_print(f"[INTERPRETER] [DATA FORMAT] Limite padrão: {limite_padrao}, Limite lista: {limite_lista}")
     
     # Criar estrutura resumida
     # IMPORTANTE: NÃO incluir stats_estrutural ou stats_conjuntural que contêm
@@ -1097,28 +1265,38 @@ def _format_tool_response_data_for_llm(tool_result: dict) -> str:
     dados_por_submercado = tool_result.get("dados_por_submercado")
     if dados_por_submercado:
         data_summary["dados_por_submercado"] = {}
+        # Ajustar limite baseado no tipo de query
+        limite_submercado = limite_lista if pede_lista_completa else 50
         for codigo, info in dados_por_submercado.items():
             nome = info.get('nome', f'Subsistema {codigo}')
             dados = info.get('dados', [])
-            # Limitar a 50 registros por submercado para não exceder tokens
             data_summary["dados_por_submercado"][codigo] = {
                 "nome": nome,
-                "dados": dados[:50],
+                "dados": dados[:limite_submercado],
                 "total_registros": len(dados)
             }
-            if len(dados) > 50:
+            if len(dados) > limite_submercado:
                 data_summary["dados_por_submercado"][codigo]["_limitado"] = True
+                safe_print(f"[INTERPRETER] [DATA FORMAT] Submercado {codigo}: {len(dados)} registros, limitado a {limite_submercado}")
     
-    # Adicionar dados principais (limitado para não sobrecarregar)
+    # Adicionar dados principais (limitado dinamicamente baseado na query)
     dados_por_tipo = tool_result.get("dados_por_tipo", {})
     if dados_por_tipo:
         data_summary["dados_por_tipo"] = {}
+        # Ajustar limite baseado no tipo de query
+        limite_tipo = limite_lista if pede_lista_completa else limite_padrao
         for tipo, dados in dados_por_tipo.items():
             if isinstance(dados, list):
-                # Limitar a 20 registros por tipo para não exceder tokens
-                data_summary["dados_por_tipo"][tipo] = dados[:20]
-                if len(dados) > 20:
-                    data_summary["dados_por_tipo"][tipo + "_total"] = len(dados)
+                total_registros = len(dados)
+                # Aplicar limite dinâmico
+                dados_limitados = dados[:limite_tipo]
+                data_summary["dados_por_tipo"][tipo] = dados_limitados
+                if total_registros > limite_tipo:
+                    data_summary["dados_por_tipo"][tipo + "_total"] = total_registros
+                    data_summary["dados_por_tipo"][tipo + "_limitado"] = True
+                    safe_print(f"[INTERPRETER] [DATA FORMAT] Tipo {tipo}: {total_registros} registros, limitado a {limite_tipo}")
+                else:
+                    safe_print(f"[INTERPRETER] [DATA FORMAT] Tipo {tipo}: {total_registros} registros (todos incluídos)")
             else:
                 data_summary["dados_por_tipo"][tipo] = dados
     
@@ -1130,20 +1308,9 @@ def _format_tool_response_data_for_llm(tool_result: dict) -> str:
         # O LLM deve apresentar todos os meses, não valores anuais agregados
         data_summary["data"] = data
     
-    # Dados por submercado (para CargaMensalTool quando organizado por submercado)
-    # IMPORTANTE: Incluir dados mensais brutos, não agregados
-    dados_por_submercado = tool_result.get("dados_por_submercado")
-    if dados_por_submercado:
-        data_summary["dados_por_submercado"] = {}
-        for codigo, info in dados_por_submercado.items():
-            nome = info.get('nome', f'Subsistema {codigo}')
-            dados = info.get('dados', [])
-            # Incluir TODOS os dados mensais (sem limite para carga mensal)
-            data_summary["dados_por_submercado"][codigo] = {
-                "nome": nome,
-                "dados": dados,  # TODOS os dados mensais, sem limite
-                "total_registros": len(dados)
-            }
+    # NOTA: dados_por_submercado já foi processado acima (linha 1265-1280)
+    # A seção abaixo foi removida para evitar duplicação
+    # Para CargaMensalTool, os dados mensais já são incluídos sem limite na seção acima
     
     # Dados estruturais e conjunturais (para ClastValoresTool)
     # IMPORTANTE: Incluir apenas os dados brutos, NÃO as estatísticas calculadas
@@ -1155,26 +1322,38 @@ def _format_tool_response_data_for_llm(tool_result: dict) -> str:
     
     dados_conjunturais = tool_result.get("dados_conjunturais")
     if dados_conjunturais:
-        # Incluir dados conjunturais (limitado para não exceder tokens)
-        data_summary["dados_conjunturais"] = dados_conjunturais[:50]
-        if len(dados_conjunturais) > 50:
-            data_summary["dados_conjunturais_total"] = len(dados_conjunturais)
+        # Ajustar limite baseado no tipo de query
+        limite_conjunturais = limite_lista if pede_lista_completa else 50
+        total_conjunturais = len(dados_conjunturais)
+        data_summary["dados_conjunturais"] = dados_conjunturais[:limite_conjunturais]
+        if total_conjunturais > limite_conjunturais:
+            data_summary["dados_conjunturais_total"] = total_conjunturais
+            data_summary["dados_conjunturais_limitado"] = True
     
     # Dados de restrições elétricas (para RestricaoEletricaTool)
     dados = tool_result.get("dados")
     if dados:
         # Formatar valores numéricos muito grandes em notação científica
         dados_formatados = _format_restricao_eletrica_data(dados)
-        data_summary["dados"] = dados_formatados[:50]  # Limitar a 50 registros
-        if len(dados_formatados) > 50:
-            data_summary["dados_total"] = len(dados_formatados)
+        # Ajustar limite baseado no tipo de query
+        limite_dados = limite_lista if pede_lista_completa else 50
+        total_dados = len(dados_formatados)
+        data_summary["dados"] = dados_formatados[:limite_dados]
+        if total_dados > limite_dados:
+            data_summary["dados_total"] = total_dados
+            data_summary["dados_limitado"] = True
     
     # Outras seções importantes
+    limite_outros = limite_lista if pede_lista_completa else 20
     for key in ["desativacoes", "repotenciacoes", "expansoes", "indisponibilidades"]:
         if key in tool_result:
             value = tool_result[key]
             if isinstance(value, list):
-                data_summary[key] = value[:20]  # Limitar também
+                total_outros = len(value)
+                data_summary[key] = value[:limite_outros]
+                if total_outros > limite_outros:
+                    data_summary[key + "_total"] = total_outros
+                    data_summary[key + "_limitado"] = True
             else:
                 data_summary[key] = value
     
@@ -1220,7 +1399,7 @@ def _format_tool_response_with_llm(tool_result: dict, tool_used: str, query: str
         
         # Criar resumos para o LLM
         tool_result_summary = _format_tool_response_summary(tool_result, tool_used)
-        tool_result_data = _format_tool_response_data_for_llm(tool_result)
+        tool_result_data = _format_tool_response_data_for_llm(tool_result, query)
         
         # Usar LLM para filtrar e focar
         llm = ChatOpenAI(
