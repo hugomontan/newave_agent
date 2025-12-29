@@ -1,4 +1,5 @@
 import json
+import math
 from typing import Generator, Any, Optional
 from langgraph.graph import StateGraph, END
 from app.agents.state import AgentState
@@ -16,6 +17,23 @@ from app.config import safe_print
 
 # Constantes
 MAX_RETRIES = 3
+
+
+def _clean_nan_for_json(obj: Any) -> Any:
+    """
+    Limpa valores NaN e Inf de um objeto antes de serializar para JSON.
+    Converte NaN e Inf para None.
+    """
+    if isinstance(obj, float):
+        if math.isnan(obj) or math.isinf(obj):
+            return None
+        return obj
+    elif isinstance(obj, dict):
+        return {key: _clean_nan_for_json(value) for key, value in obj.items()}
+    elif isinstance(obj, list):
+        return [_clean_nan_for_json(item) for item in obj]
+    else:
+        return obj
 
 # Descricoes dos nodes para streaming
 # Nota: Emojis removidos para compatibilidade com Windows (cp1252)
@@ -428,7 +446,7 @@ def run_query_stream(query: str, deck_path: str, session_id: Optional[str] = Non
                         yield f"data: {json.dumps({'type': 'node_detail', 'node': node_name, 'detail': f'✅ Tool {tool_used} executada com sucesso!'})}\n\n"
                         if tool_result.get("success"):
                             summary = tool_result.get("summary", {})
-                            yield f"data: {json.dumps({'type': 'node_detail', 'node': node_name, 'detail': f'📊 {summary.get("total_registros", 0)} registros processados'})}\n\n"
+                            yield f"data: {json.dumps({'type': 'node_detail', 'node': node_name, 'detail': f' {summary.get("total_registros", 0)} registros processados'})}\n\n"
                     else:
                         yield f"data: {json.dumps({'type': 'node_detail', 'node': node_name, 'detail': '⚠️ Nenhuma tool disponível, continuando fluxo normal'})}\n\n"
                 
@@ -446,6 +464,10 @@ def run_query_stream(query: str, deck_path: str, session_id: Optional[str] = Non
                     response = node_output.get("final_response") if node_output else None
                     comparison_data = node_output.get("comparison_data") if node_output else None
                     safe_print(f"[GRAPH] Interpreter retornou resposta: {len(response) if response else 0} caracteres")
+                    if comparison_data:
+                        safe_print(f"[GRAPH] comparison_data presente, chart_data: {comparison_data.get('chart_data') is not None}")
+                        if comparison_data.get('chart_data'):
+                            safe_print(f"[GRAPH] chart_data no SSE - labels: {len(comparison_data.get('chart_data', {}).get('labels', []))}, datasets: {len(comparison_data.get('chart_data', {}).get('datasets', []))}")
                     # SEMPRE emitir resposta se houver conteúdo, mesmo que venha de disambiguation
                     # A diferença é que não emitimos mensagem "Processamento concluído" no final
                     if response and response.strip():
@@ -454,7 +476,9 @@ def run_query_stream(query: str, deck_path: str, session_id: Optional[str] = Non
                         chunk_size = 50
                         for i in range(0, len(response), chunk_size):
                             yield f"data: {json.dumps({'type': 'response_chunk', 'chunk': response[i:i + chunk_size]})}\n\n"
-                        yield f"data: {json.dumps({'type': 'response_complete', 'response': response, 'comparison_data': comparison_data})}\n\n"
+                        # Limpar NaN dos dados antes de serializar
+                        cleaned_comparison_data = _clean_nan_for_json(comparison_data) if comparison_data else None
+                        yield f"data: {json.dumps({'type': 'response_complete', 'response': response, 'comparison_data': cleaned_comparison_data}, allow_nan=False)}\n\n"
                     else:
                         # Resposta vazia - pode ser disambiguation ou erro
                         safe_print(f"[GRAPH] ⚠️ Resposta vazia do interpreter")

@@ -16,7 +16,6 @@ _EMOJI_TO_ASCII = {
     '❗': '[AVISO]',
     '❓': '[?]',
     '🔍': '[BUSCA]',
-    '📊': '[DADOS]',
     '📚': '[DOCS]',
     '📖': '[DOC]',
     '📈': '[GRAF]',
@@ -68,10 +67,12 @@ def safe_print(*args, **kwargs):
         except Exception:
             pass  # Silenciosamente ignora se ainda falhar
 
-load_dotenv()
-
 # Base paths
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Carregar variáveis de ambiente do arquivo .env na raiz de newave_agent
+env_path = BASE_DIR / ".env"
+load_dotenv(dotenv_path=env_path)
 DATA_DIR = BASE_DIR / "data"
 DOCS_DIR = DATA_DIR / "docs"
 UPLOADS_DIR = BASE_DIR / "uploads"

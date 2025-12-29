@@ -32,8 +32,8 @@ function formatPercent(value: number): string {
 }
 
 export function DifferencesTable({ differences, deck1Name, deck2Name }: DifferencesTableProps) {
-  const [isExpanded, setIsExpanded] = useState(true);
-  const maxInitial = 50;
+  const [isExpanded, setIsExpanded] = useState(false);
+  const maxInitial = 15;
   const hasMore = differences.length > maxInitial;
   const displayedDifferences = isExpanded ? differences : differences.slice(0, maxInitial);
 
@@ -43,7 +43,7 @@ export function DifferencesTable({ differences, deck1Name, deck2Name }: Differen
     return (
       <div className="bg-card border border-border rounded-lg p-4 sm:p-6 mt-4">
         <h3 className="text-base sm:text-lg font-semibold text-card-foreground mb-2">
-          📊 Comparação de Dados
+           Comparação de Dados
         </h3>
         <p className="text-sm text-muted-foreground">
           Nenhuma diferença encontrada entre os decks.
@@ -60,7 +60,7 @@ export function DifferencesTable({ differences, deck1Name, deck2Name }: Differen
     >
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-base sm:text-lg font-semibold text-card-foreground">
-          📊 Comparação Mensal
+           Tabela Comparativa
         </h3>
         <span className="text-sm text-muted-foreground">
           {differences.length} registros
@@ -73,7 +73,7 @@ export function DifferencesTable({ differences, deck1Name, deck2Name }: Differen
             <thead>
               <tr className="border-b border-border bg-background/50">
                 <th className="px-3 sm:px-4 py-3 text-left text-xs font-semibold text-card-foreground uppercase tracking-wider whitespace-nowrap">
-                  Período
+                  Ano
                 </th>
                 <th className="px-3 sm:px-4 py-3 text-right text-xs font-semibold text-blue-400 uppercase tracking-wider whitespace-nowrap">
                   {deck1Name}
@@ -82,7 +82,7 @@ export function DifferencesTable({ differences, deck1Name, deck2Name }: Differen
                   {deck2Name}
                 </th>
                 <th className="px-3 sm:px-4 py-3 text-right text-xs font-semibold text-card-foreground uppercase tracking-wider whitespace-nowrap">
-                  Diferença (MWmed)
+                  Diferença
                 </th>
                 <th className="px-3 sm:px-4 py-3 text-right text-xs font-semibold text-card-foreground uppercase tracking-wider whitespace-nowrap">
                   Variação %

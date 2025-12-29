@@ -72,6 +72,19 @@ interface Message {
       difference: number;
       difference_percent: number;
     }>;
+    comparison_table?: Array<{
+      data?: string | number;
+      classe?: string;
+      ano?: string | number;
+      deck_1?: number | null;
+      deck_2?: number | null;
+      deck_1_value?: number | null;
+      deck_2_value?: number | null;
+      diferenca?: number | null;
+      difference?: number | null;
+      diferenca_percent?: number | null;
+      difference_percent?: number | null;
+    }>;
   };
 }
 
@@ -296,6 +309,17 @@ export default function ComparisonPage() {
           streamingResponseRef.current = event.response;
         }
         if (event.comparison_data) {
+          console.log("[FRONTEND] comparison_data recebido no response_complete:", event.comparison_data);
+          console.log("[FRONTEND] comparison_table presente:", event.comparison_data.comparison_table !== undefined);
+          console.log("[FRONTEND] comparison_table length:", event.comparison_data.comparison_table?.length);
+          if (event.comparison_data.comparison_table && event.comparison_data.comparison_table.length > 0) {
+            console.log("[FRONTEND] primeiro item comparison_table:", event.comparison_data.comparison_table[0]);
+          }
+          console.log("[FRONTEND] chart_data presente:", event.comparison_data.chart_data !== undefined);
+          if (event.comparison_data.chart_data) {
+            console.log("[FRONTEND] chart_data labels:", event.comparison_data.chart_data.labels);
+            console.log("[FRONTEND] chart_data datasets:", event.comparison_data.chart_data.datasets);
+          }
           setComparisonData(event.comparison_data);
           comparisonDataRef.current = event.comparison_data;
         }

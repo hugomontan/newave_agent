@@ -380,7 +380,7 @@ def tool_router_node(state: AgentState) -> dict:
                         second_tool, second_score = semantic_results[1]
                         score_diff = top_score - second_score
                         
-                        safe_print(f"[TOOL ROUTER] 📊 ANÁLISE DE AMBIGUIDADE:")
+                        safe_print(f"[TOOL ROUTER]  ANÁLISE DE AMBIGUIDADE:")
                         safe_print(f"[TOOL ROUTER]   1º lugar: {tool_name} (score: {top_score:.4f})")
                         safe_print(f"[TOOL ROUTER]   2º lugar: {second_tool.get_name()} (score: {second_score:.4f})")
                         safe_print(f"[TOOL ROUTER]   Diferença 1º-2º: {score_diff:.4f}")

@@ -254,6 +254,32 @@ export function ChatMessage({ message, onOptionClick }: ChatMessageProps) {
                             {children}
                           </blockquote>
                         ),
+                        img: ({ src, alt, ...props }) => {
+                          // Suportar imagens base64 inline
+                          if (src && src.startsWith("data:image")) {
+                            return (
+                              <div className="my-4 flex justify-center">
+                                <img 
+                                  src={src} 
+                                  alt={alt || "Gráfico"} 
+                                  className="max-w-full h-auto rounded-lg border border-border"
+                                  {...props}
+                                />
+                              </div>
+                            );
+                          }
+                          // Imagens externas normais
+                          return (
+                            <div className="my-4 flex justify-center">
+                              <img 
+                                src={src} 
+                                alt={alt || "Imagem"} 
+                                className="max-w-full h-auto rounded-lg border border-border"
+                                {...props}
+                              />
+                            </div>
+                          );
+                        },
                         code({ node, className, children, ...props }) {
                           const match = /language-(\w+)/.exec(className || "");
                           const isInline = !match;
@@ -305,7 +331,7 @@ export function ChatMessage({ message, onOptionClick }: ChatMessageProps) {
               {message.rawData && message.rawData.length > 0 && !message.comparisonData && (
                 <DataTable 
                   data={message.rawData} 
-                  title="📊 Dados Extraídos"
+                  title=" Dados Extraídos"
                 />
               )}
 

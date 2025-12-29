@@ -348,7 +348,7 @@ def find_best_tool_semantic(
         safe_print("[SEMANTIC MATCHER] " + "=" * 70)
         
         # Mostrar ranking completo
-        safe_print("[SEMANTIC MATCHER] 📊 RANKING DE SIMILARIDADE:")
+        safe_print("[SEMANTIC MATCHER]  RANKING DE SIMILARIDADE:")
         all_scores_sorted = sorted(all_scores, key=lambda x: x['score'], reverse=True)
         for rank, item in enumerate(all_scores_sorted, 1):
             tool_name = item['tool']
@@ -454,7 +454,7 @@ def find_top_tools_semantic(
         all_scores.sort(key=lambda x: x[1], reverse=True)
         
         # Mostrar ranking completo de scores
-        safe_print(f"[SEMANTIC MATCHER] 📊 RANKING COMPLETO DE SCORES ({len(all_scores)} tools):")
+        safe_print(f"[SEMANTIC MATCHER]  RANKING COMPLETO DE SCORES ({len(all_scores)} tools):")
         for idx, (tool, score) in enumerate(all_scores[:10], 1):  # Mostrar top 10
             status = "✅" if score >= threshold else "❌"
             safe_print(f"[SEMANTIC MATCHER]   {idx}. {tool.get_name()}: {score:.4f} {status} (threshold: {threshold:.3f})")

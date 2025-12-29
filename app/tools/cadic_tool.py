@@ -375,9 +375,21 @@ class CadicTool(NEWAVETool):
             print("[TOOL] ETAPA 6: Processando dados...")
             
             # Criar colunas auxiliares se necessário
-            if 'data' in df.columns and pd.api.types.is_datetime64_any_dtype(df['data']):
-                df['ano'] = df['data'].dt.year
-                df['mes'] = df['data'].dt.month
+            # PRIMEIRO: Verificar se data é datetime, se não, converter (igual CargaMensalTool)
+            if 'data' in df.columns:
+                if not pd.api.types.is_datetime64_any_dtype(df['data']):
+                    print("[TOOL] ⚠️ Coluna 'data' não é datetime, tentando converter...")
+                    try:
+                        df['data'] = pd.to_datetime(df['data'], errors='coerce')
+                        print("[TOOL] ✅ Coluna 'data' convertida para datetime")
+                    except Exception as e:
+                        print(f"[TOOL] ⚠️ Não foi possível converter 'data' para datetime: {e}")
+                
+                # Agora criar ano e mes se data for datetime
+                if pd.api.types.is_datetime64_any_dtype(df['data']):
+                    df['ano'] = df['data'].dt.year
+                    df['mes'] = df['data'].dt.month
+                    print("[TOOL] ✅ Colunas auxiliares criadas a partir de 'data'")
             
             # Converter para lista de dicts
             dados = df.to_dict(orient="records")
@@ -389,6 +401,12 @@ class CadicTool(NEWAVETool):
                         record[key] = None
                     elif isinstance(value, (pd.Timestamp, pd.DatetimeTZDtype)):
                         record[key] = value.isoformat() if hasattr(value, 'isoformat') else str(value)
+                    # Converter numpy.int64 para int Python nativo (importante para JSON)
+                    elif hasattr(value, 'item'):  # numpy types têm método item()
+                        try:
+                            record[key] = value.item()
+                        except (ValueError, AttributeError):
+                            pass
             
             # ETAPA 7: Calcular estatísticas
             print("[TOOL] ETAPA 7: Calculando estatísticas...")

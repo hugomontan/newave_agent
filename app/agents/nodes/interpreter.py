@@ -9,7 +9,7 @@ matplotlib.use('Agg')  # Usar backend não-interativo
 import matplotlib.pyplot as plt
 import base64
 import io
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 
 
 INTERPRETER_SYSTEM_PROMPT = """Você é um especialista em análise de dados do setor elétrico brasileiro, 
@@ -41,7 +41,7 @@ INSTRUÇÕES DE FORMATAÇÃO (USE MARKDOWN):
 7. Para dados numéricos, formate com separadores de milhar
 
 ESTRUTURA DA RESPOSTA:
-## 📊 Resumo
+##  Resumo
 Breve resumo da análise realizada.
 
 ## 📈 Resultados
@@ -100,6 +100,20 @@ REGRAS CRITICAS - SIGA OBRIGATORIAMENTE:
      | Item | {deck_1_name} | {deck_2_name} | Diferenca |
    - Destaque diferencas significativas (>1% ou valores novos/removidos)
 
+4. FORMATO ESPECIAL PARA CVU (Custo Variável Unitário):
+   - Se receber uma tabela comparativa com campos "data", "deck_1", "deck_2", "diferenca", "diferenca_percent":
+   - Formate a tabela EXATAMENTE assim:
+     | Data | {deck_1_name} | {deck_2_name} | Diferenca |
+     |------|---------------|---------------|-----------|
+     | [ano] | [valor] | [valor] | [diferença nominal] ([diferença %]%) |
+   - O campo "data" contém os anos - use diretamente como "Data"
+   - O campo "deck_1" contém os valores do deck 1 - use diretamente
+   - O campo "deck_2" contém os valores do deck 2 - use diretamente  
+   - O campo "diferenca" contém a diferença nominal - use diretamente
+   - O campo "diferenca_percent" contém a diferença percentual - combine com a diferença nominal no formato: "valor (percent%)"
+   - Exemplo: Se diferenca=76.82 e diferenca_percent=17.84, escreva "76.82 (17.84%)"
+   - MOSTRE TODOS os anos na tabela - nao agrupe nem resuma
+
 4. CONCLUSAO OBRIGATORIA:
    - Sempre termine com uma conclusao clara e acionavel
    - Responda: "O que isso significa para o planejamento/operacao?"
@@ -148,6 +162,46 @@ INSTRUCAO FINAL:
 4. Forneca uma CONCLUSAO sobre o impacto das diferencas (ou ausencia delas)
 
 Responda de forma CONCISA e ACIONAVEL."""
+
+# Prompt livre para diff_list e llm_free
+COMPARISON_LLM_FREE_SYSTEM_PROMPT = """Voce e um especialista em analise de dados do setor eletrico brasileiro,
+especialmente do modelo NEWAVE e do sistema interligado nacional.
+
+Voce recebeu dados de comparacao entre DOIS decks NEWAVE:
+- **Deck 1**: {deck_1_name}
+- **Deck 2**: {deck_2_name}
+
+PERGUNTA ORIGINAL: {query}
+
+=====================================================================
+REGRAS - LIBERDADE PARA INTERPRETAR:
+=====================================================================
+
+1. ANALISE OS DADOS livremente - identifique padroes, tendencias, impactos
+2. COMPARE os dados entre os dois decks
+3. DESTAQUE mudancas significativas e seu significado
+4. EXPLIQUE o IMPACTO pratico das diferencas
+5. FORNECA uma CONCLUSAO acionavel
+
+Voce tem liberdade para estruturar a resposta da melhor forma para comunicar
+as diferencas e seus significados. Use tabelas, listas, ou formato narrativo
+conforme fizer mais sentido.
+
+IMPORTANTE: Seja claro, conciso e focado no que realmente mudou e por que isso importa."""
+
+COMPARISON_LLM_FREE_USER_PROMPT = """DADOS DO DECK 1 ({deck_1_name}):
+{deck_1_summary}
+
+DADOS DO DECK 2 ({deck_2_name}):
+{deck_2_summary}
+
+CONTEXTO ADICIONAL:
+{context_info}
+
+INSTRUCAO:
+Analise e compare os dados acima. Identifique o que mudou, o que foi adicionado,
+o que foi removido, e explique o significado pratico dessas mudancas para o
+planejamento e operacao do sistema eletrico."""
 
 
 # Prompt para interpretar e filtrar resultados de tools
@@ -257,7 +311,7 @@ IMPORTANTE: Cada linha da tabela deve estar em uma linha separada, com quebra de
 "A carga média é 41.838 MWmédio" ← NUNCA FAÇA ISSO
 
 FORMATO DA RESPOSTA (USE MARKDOWN):
-## 📊 Resposta à Pergunta
+##  Resposta à Pergunta
 
 [Resposta direta e clara que responde especificamente à pergunta]
 
@@ -348,7 +402,7 @@ EXEMPLOS ESPECÍFICOS PARA CARGA MENSAL:
   | ... | ... | ... |
   | 2029 | 12 | 49.635 |
 
-📊 REGRAS GERAIS:
+ REGRAS GERAIS:
 - Se os dados contêm múltiplos registros (ex: múltiplos anos), apresente TODOS em uma tabela
 - Use tabelas Markdown para apresentar dados tabulares com todos os registros
 - Analise a pergunta original e forneça uma resposta FOCADA que responda APENAS ao que foi perguntado
@@ -383,23 +437,11 @@ def interpreter_node(state: AgentState) -> dict:
             if tool_result.get("is_comparison"):
                 safe_print(f"[INTERPRETER] ✅ Resultado é comparação multi-deck")
                 query = state.get("query", "")
-                # A tool retorna os dados de comparação diretamente no tool_result
-                # Criar estrutura comparison_data a partir do tool_result
-                comparison_data = {
-                    "deck_1": tool_result.get("deck_1", {}),
-                    "deck_2": tool_result.get("deck_2", {}),
-                    "chart_data": tool_result.get("chart_data"),
-                    "tool_name": tool_result.get("tool_used", tool_used),
-                    "query": tool_result.get("query", query),
-                    "differences": tool_result.get("differences", [])  # Incluir todas as diferenças
-                }
+                # Formatar a resposta de comparação - isso já retorna comparison_data com chart_data
                 result = _format_comparison_response(tool_result, tool_used, query)
                 safe_print(f"[INTERPRETER]   Resposta de comparação gerada")
-                # Incluir comparison_data no resultado
-                return {
-                    **result,
-                    "comparison_data": comparison_data
-                }
+                # Usar o comparison_data que vem do result (já tem chart_data formatado)
+                return result
             
             safe_print(f"[INTERPRETER]   Data count: {len(tool_result.get('data', [])) if tool_result.get('data') else 0}")
             query = state.get("query", "")
@@ -511,38 +553,17 @@ def _format_comparison_response(
 ) -> Dict[str, Any]:
     """
     Formata a resposta para o frontend quando e uma comparacao multi-deck.
-    Usa LLM para interpretar os dados livremente.
+    Usa formatadores especializados por tool para gerar visualizacoes otimizadas.
     
     Args:
-        tool_result: Resultado da tool de comparacao (ja contem deck_1, deck_2, chart_data)
+        tool_result: Resultado da tool de comparacao (ja contem deck_1, deck_2)
         tool_used: Nome da tool usada
         query: Query original do usuario
         
     Returns:
         Dict com final_response formatado e comparison_data
     """
-    import json
-    
-    # A tool retorna os dados diretamente no tool_result
-    # Construir comparison_data a partir do tool_result
-    chart_data = tool_result.get("chart_data")
-    differences = tool_result.get("differences", [])
-    
-    # Debug: verificar se chart_data esta presente
-    if chart_data:
-        safe_print(f"[INTERPRETER] [OK] Chart data presente: {len(chart_data.get('labels', []))} labels, {len(chart_data.get('datasets', []))} datasets")
-    else:
-        safe_print(f"[INTERPRETER] [AVISO] Chart data NAO presente no tool_result")
-        safe_print(f"[INTERPRETER]   Keys disponiveis no tool_result: {list(tool_result.keys())}")
-    
-    comparison_data = {
-        "deck_1": tool_result.get("deck_1", {}),
-        "deck_2": tool_result.get("deck_2", {}),
-        "chart_data": chart_data,
-        "tool_name": tool_result.get("tool_used", tool_used),
-        "query": tool_result.get("query", query),
-        "differences": differences  # Incluir todas as diferencas
-    }
+    from app.comparison.registry import get_formatter_for_tool
     
     # Verificar se ha dados de comparacao
     if not tool_result.get("deck_1") and not tool_result.get("deck_2"):
@@ -572,63 +593,107 @@ def _format_comparison_response(
         final_response = "".join(response_parts)
         return {
             "final_response": final_response,
-            "comparison_data": comparison_data
+            "comparison_data": {
+                "deck_1": tool_result.get("deck_1", {}),
+                "deck_2": tool_result.get("deck_2", {}),
+                "tool_name": tool_used,
+                "query": query
+            }
         }
     
-    # Usar LLM para interpretar a comparacao
-    try:
-        safe_print(f"[INTERPRETER] [COMPARISON] Gerando interpretacao com LLM...")
-        
-        # Preparar resumos dos dados para o LLM
-        deck_1_summary = _summarize_deck_data(tool_result.get("deck_1", {}))
-        deck_2_summary = _summarize_deck_data(tool_result.get("deck_2", {}))
-        differences_summary = _summarize_differences(differences)
-        
-        llm = ChatOpenAI(
-            api_key=OPENAI_API_KEY,
-            model=OPENAI_MODEL,
-            temperature=0.3
+    # Obter formatador apropriado
+    deck_1_result = tool_result.get("deck_1", {}).get("full_result", {})
+    formatter = get_formatter_for_tool(tool_used, deck_1_result)
+    
+    safe_print(f"[INTERPRETER] [COMPARISON] Usando formatador: {formatter.__class__.__name__}")
+    
+    # Formatar comparacao usando o formatador
+    deck_1_full = tool_result.get("deck_1", {}).get("full_result", {})
+    deck_2_full = tool_result.get("deck_2", {}).get("full_result", {})
+    
+    formatted = formatter.format_comparison(
+        deck_1_full,
+        deck_2_full,
+        tool_used,
+        query
+    )
+    
+    visualization_type = formatted.get("visualization_type", "llm_free")
+    safe_print(f"[INTERPRETER] [COMPARISON] Visualization type: {visualization_type}")
+    
+    # Construir comparison_data com estrutura formatada
+    comparison_data = {
+        "deck_1": tool_result.get("deck_1", {}),
+        "deck_2": tool_result.get("deck_2", {}),
+        "comparison_table": formatted.get("comparison_table"),
+        "chart_data": formatted.get("chart_data"),
+        "visualization_type": visualization_type,
+        "chart_config": formatted.get("chart_config"),
+        "tool_name": tool_used,
+        "query": query,
+    }
+    
+    # Adicionar dados específicos do formatador
+    if formatted.get("diff_categories"):
+        comparison_data["diff_categories"] = formatted.get("diff_categories")
+    if formatted.get("cards"):
+        comparison_data["cards"] = formatted.get("cards")
+    
+    # Para ClastValoresTool, CargaMensalTool e CadicTool, retornar apenas tabela e gráfico (sem LLM)
+    if tool_used == "ClastValoresTool":
+        safe_print(f"[INTERPRETER] [COMPARISON] ClastValoresTool - formato simplificado (apenas tabela e gráfico)")
+        safe_print(f"[INTERPRETER] [COMPARISON] chart_data presente: {formatted.get('chart_data') is not None}")
+        if formatted.get('chart_data'):
+            safe_print(f"[INTERPRETER] [COMPARISON] chart_data labels: {formatted.get('chart_data', {}).get('labels', [])}")
+            safe_print(f"[INTERPRETER] [COMPARISON] chart_data datasets: {len(formatted.get('chart_data', {}).get('datasets', []))}")
+        final_response = _format_clast_simple_comparison(
+            formatted.get("comparison_table", []),
+            deck_1_name,
+            deck_2_name
         )
-        
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", COMPARISON_INTERPRETER_SYSTEM_PROMPT.format(
-                deck_1_name=deck_1_name,
-                deck_2_name=deck_2_name,
-                query=query
-            )),
-            ("human", COMPARISON_INTERPRETER_USER_PROMPT)
-        ])
-        
-        chain = prompt | llm
-        
-        response = chain.invoke({
-            "deck_1_name": deck_1_name,
-            "deck_2_name": deck_2_name,
-            "deck_1_summary": deck_1_summary,
-            "deck_2_summary": deck_2_summary,
-            "differences_summary": differences_summary
-        })
-        
-        final_response = getattr(response, 'content', None)
-        
-        if final_response:
-            safe_print(f"[INTERPRETER] [OK] Interpretacao gerada ({len(final_response)} caracteres)")
-            final_response = clean_response_text(final_response, max_emojis=2)
-        else:
-            # Fallback se LLM nao retornar conteudo
-            safe_print(f"[INTERPRETER] [AVISO] LLM nao retornou conteudo, usando resposta padrao")
+    elif tool_used in ["CargaMensalTool", "CadicTool"]:
+        tool_label = "Carga Mensal" if tool_used == "CargaMensalTool" else "Carga Adicional"
+        safe_print(f"[INTERPRETER] [COMPARISON] {tool_used} - formato simplificado (apenas tabela e gráfico)")
+        safe_print(f"[INTERPRETER] [COMPARISON] chart_data presente: {formatted.get('chart_data') is not None}")
+        if formatted.get('chart_data'):
+            safe_print(f"[INTERPRETER] [COMPARISON] chart_data labels: {len(formatted.get('chart_data', {}).get('labels', []))}")
+            safe_print(f"[INTERPRETER] [COMPARISON] chart_data datasets: {len(formatted.get('chart_data', {}).get('datasets', []))}")
+        final_response = _format_carga_simple_comparison(
+            formatted.get("comparison_table", []),
+            deck_1_name,
+            deck_2_name,
+            tool_label
+        )
+    else:
+        # Gerar resposta do LLM baseada no tipo de visualizacao
+        try:
+            safe_print(f"[INTERPRETER] [COMPARISON] Gerando interpretacao com LLM (tipo: {visualization_type})...")
+            
+            # Escolher prompt baseado no tipo de visualizacao
+            if visualization_type in ["diff_list", "llm_free"]:
+                final_response = _format_with_llm_free(
+                    deck_1_full, deck_2_full, tool_used, query,
+                    deck_1_name, deck_2_name, formatted
+                )
+            else:
+                final_response = _format_with_llm_structured(
+                    deck_1_full, deck_2_full, tool_used, query,
+                    deck_1_name, deck_2_name, formatted
+                )
+            
+        except Exception as e:
+            safe_print(f"[INTERPRETER] [ERRO] Erro ao gerar interpretacao com LLM: {e}")
+            import traceback
+            traceback.print_exc()
+            # Fallback para resposta padrao
             final_response = _generate_fallback_comparison_response(
-                query, deck_1_name, deck_2_name, tool_used, differences
+                query, deck_1_name, deck_2_name, tool_used, formatted.get("comparison_table")
             )
-        
-    except Exception as e:
-        safe_print(f"[INTERPRETER] [ERRO] Erro ao gerar interpretacao com LLM: {e}")
-        import traceback
-        traceback.print_exc()
-        # Fallback para resposta padrao
-        final_response = _generate_fallback_comparison_response(
-            query, deck_1_name, deck_2_name, tool_used, differences
-        )
+    
+    # Debug: verificar se chart_data está presente
+    safe_print(f"[INTERPRETER] [COMPARISON] Retornando comparison_data com chart_data: {comparison_data.get('chart_data') is not None}")
+    if comparison_data.get('chart_data'):
+        safe_print(f"[INTERPRETER] [COMPARISON] chart_data final - labels: {len(comparison_data.get('chart_data', {}).get('labels', []))}, datasets: {len(comparison_data.get('chart_data', {}).get('datasets', []))}")
     
     return {
         "final_response": final_response,
@@ -743,6 +808,65 @@ def _summarize_differences(differences) -> str:
         summary_parts.append(f"\n... e mais {len(differences) - 10} diferencas")
     
     return "\n".join(summary_parts)
+
+
+def _format_clast_simple_comparison(
+    comparison_table: List[Dict[str, Any]],
+    deck_1_name: str,
+    deck_2_name: str
+) -> str:
+    """
+    Formata resposta simples para ClastValoresTool: apenas título.
+    A tabela e o gráfico são renderizados pelo componente ComparisonView no frontend.
+    
+    Args:
+        comparison_table: Lista de dicionários com dados da comparação
+        deck_1_name: Nome do deck 1
+        deck_2_name: Nome do deck 2
+        
+    Returns:
+        String markdown com apenas o título (sem tabela, pois será renderizada pelo componente)
+    """
+    if not comparison_table:
+        return "## Comparação de CVU\n\nNenhum dado disponível para comparação."
+    
+    # Verificar formato da tabela (CVU simplificado ou formato genérico)
+    first_item = comparison_table[0] if comparison_table else {}
+    is_cvu_format = "data" in first_item and "deck_1" in first_item and "deck_2" in first_item
+    
+    if is_cvu_format:
+        # Apenas título - a tabela será renderizada pelo componente ComparisonView
+        return "## Comparação de CVU\n"
+    else:
+        # Apenas título - a tabela será renderizada pelo componente ComparisonView
+        return "## Comparação de Custos\n"
+
+
+def _format_carga_simple_comparison(
+    comparison_table: List[Dict[str, Any]],
+    deck_1_name: str,
+    deck_2_name: str,
+    tool_label: str = "Carga Mensal"
+) -> str:
+    """
+    Formata resposta simples para CargaMensalTool e CadicTool: apenas título.
+    A tabela e o gráfico são renderizados pelo componente ComparisonView no frontend.
+    Baseado no formato de CVU.
+    
+    Args:
+        comparison_table: Lista de dicionários com dados da comparação
+        deck_1_name: Nome do deck 1
+        deck_2_name: Nome do deck 2
+        tool_label: Label da tool ("Carga Mensal" ou "Carga Adicional")
+        
+    Returns:
+        String markdown com apenas o título (sem tabela, pois será renderizada pelo componente)
+    """
+    if not comparison_table:
+        return f"## Comparação de {tool_label}\n\nNenhum dado disponível para comparação."
+    
+    # Apenas título - a tabela será renderizada pelo componente ComparisonView
+    return f"## Comparação de {tool_label}\n"
 
 
 def _generate_fallback_comparison_response(
@@ -1201,7 +1325,7 @@ def _format_carga_mensal_response(tool_result: dict, tool_used: str) -> dict:
     
     # Resumo
     if summary:
-        response_parts.append("### 📊 Resumo\n\n")
+        response_parts.append("###  Resumo\n\n")
         response_parts.append(f"- **Total de registros**: {summary.get('total_registros', 0):,}\n")
         
         if filtro_info and filtro_info.get('filtrado'):
@@ -1423,7 +1547,7 @@ def _format_clast_valores_response(tool_result: dict, tool_used: str, query: str
     stats_estrutural = tool_result.get("stats_estrutural")
     
     if dados_estruturais is not None:
-        response_parts.append("### 📊 Valores Estruturais (Custos Base)\n\n")
+        response_parts.append("###  Valores Estruturais (Custos Base)\n\n")
         
         if stats_estrutural:
             response_parts.append(f"- **Total de classes**: {stats_estrutural.get('total_classes', 0)}\n")
@@ -1595,7 +1719,7 @@ def _format_expt_operacao_response(tool_result: dict, tool_used: str) -> dict:
     # Estatísticas gerais
     stats_geral = tool_result.get("stats_geral")
     if stats_geral:
-        response_parts.append("### 📊 Resumo\n\n")
+        response_parts.append("###  Resumo\n\n")
         response_parts.append(f"- **Total de registros**: {stats_geral.get('total_registros', 0):,}\n")
         response_parts.append(f"- **Usinas afetadas**: {stats_geral.get('total_usinas', 0)}\n")
         tipos = stats_geral.get('tipos_modificacao', [])
@@ -1875,7 +1999,7 @@ def _format_modif_operacao_response(tool_result: dict, tool_used: str) -> dict:
     # Estatísticas gerais
     stats_geral = tool_result.get("stats_geral")
     if stats_geral:
-        response_parts.append("### 📊 Resumo\n\n")
+        response_parts.append("###  Resumo\n\n")
         response_parts.append(f"- **Total de tipos de modificação**: {stats_geral.get('total_tipos', 0)}\n")
         response_parts.append(f"- **Total de registros**: {stats_geral.get('total_registros', 0):,}\n")
         tipos = stats_geral.get('tipos_encontrados', [])
@@ -2147,3 +2271,204 @@ def _format_modif_operacao_response(tool_result: dict, tool_used: str) -> dict:
     response_text = "".join(response_parts)
     response_text = clean_response_text(response_text, max_emojis=2)
     return {"final_response": response_text}
+
+
+def _format_with_llm_structured(
+    result_dec: Dict[str, Any],
+    result_jan: Dict[str, Any],
+    tool_used: str,
+    query: str,
+    deck_1_name: str,
+    deck_2_name: str,
+    formatted: Dict[str, Any]
+) -> str:
+    """
+    Formata resposta usando LLM com prompt estruturado (para visualizações temporais, tabelas, etc).
+    """
+    import json
+    
+    # Preparar resumos dos dados para o LLM
+    deck_1_summary = _summarize_deck_data({"full_result": result_dec})
+    deck_2_summary = _summarize_deck_data({"full_result": result_jan})
+    
+    # Resumir diferenças da tabela comparativa
+    comparison_table = formatted.get("comparison_table", [])
+    differences_summary = ""
+    if comparison_table:
+        # Verificar se é formato de CVU (campos: data, deck_1, deck_2, diferenca, diferenca_percent)
+        first_item = comparison_table[0] if comparison_table else {}
+        is_cvu_format = "data" in first_item and "deck_1" in first_item and "deck_2" in first_item and "diferenca" in first_item
+        
+        if is_cvu_format:
+            # Formato específico para CVU - instruir explicitamente como formatar
+            differences_summary = f"TABELA COMPARATIVA DE CVU com {len(comparison_table)} anos:\n\n"
+            differences_summary += "FORMATO OBRIGATORIO DA TABELA:\n"
+            differences_summary += f"| Data | {deck_1_name} | {deck_2_name} | Diferenca |\n"
+            differences_summary += "|------|---------------|---------------|----------|\n"
+            
+            for item in comparison_table:
+                data = item.get("data", "")
+                val1 = item.get("deck_1")
+                val2 = item.get("deck_2")
+                diff = item.get("diferenca")
+                diff_pct = item.get("diferenca_percent")
+                
+                # Formatar valores
+                val1_str = f"{val1:.2f}" if val1 is not None else "-"
+                val2_str = f"{val2:.2f}" if val2 is not None else "-"
+                
+                # Formatar diferença (nominal + percentual)
+                if diff is not None:
+                    if diff_pct is not None:
+                        diff_str = f"{diff:.2f} ({diff_pct:.2f}%)"
+                    else:
+                        diff_str = f"{diff:.2f}"
+                else:
+                    diff_str = "-"
+                
+                differences_summary += f"| {data} | {val1_str} | {val2_str} | {diff_str} |\n"
+        else:
+            # Formato genérico
+            differences_summary = f"Tabela comparativa com {len(comparison_table)} registros:\n"
+            # Mostrar primeiros 10 itens como exemplo
+            for item in comparison_table[:10]:
+                differences_summary += f"- {json.dumps(item, ensure_ascii=False, default=str)}\n"
+            if len(comparison_table) > 10:
+                differences_summary += f"\n... e mais {len(comparison_table) - 10} registros\n"
+    else:
+        differences_summary = "Nenhuma diferença pré-calculada disponível."
+    
+    llm = ChatOpenAI(
+        api_key=OPENAI_API_KEY,
+        model=OPENAI_MODEL,
+        temperature=0.3
+    )
+    
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", COMPARISON_INTERPRETER_SYSTEM_PROMPT.format(
+            deck_1_name=deck_1_name,
+            deck_2_name=deck_2_name,
+            query=query
+        )),
+        ("human", COMPARISON_INTERPRETER_USER_PROMPT)
+    ])
+    
+    chain = prompt | llm
+    
+    response = chain.invoke({
+        "deck_1_name": deck_1_name,
+        "deck_2_name": deck_2_name,
+        "deck_1_summary": deck_1_summary,
+        "deck_2_summary": deck_2_summary,
+        "differences_summary": differences_summary
+    })
+    
+    final_response = getattr(response, 'content', None)
+    
+    if final_response:
+        safe_print(f"[INTERPRETER] [OK] Interpretacao estruturada gerada ({len(final_response)} caracteres)")
+        final_response = clean_response_text(final_response, max_emojis=2)
+    else:
+        safe_print(f"[INTERPRETER] [AVISO] LLM nao retornou conteudo, usando fallback")
+        final_response = _generate_fallback_comparison_response(
+            query, deck_1_name, deck_2_name, tool_used, comparison_table
+        )
+    
+    return final_response
+
+
+def _format_with_llm_free(
+    result_dec: Dict[str, Any],
+    result_jan: Dict[str, Any],
+    tool_used: str,
+    query: str,
+    deck_1_name: str,
+    deck_2_name: str,
+    formatted: Dict[str, Any]
+) -> str:
+    """
+    Formata resposta usando LLM com prompt livre (para diff_list e llm_free).
+    Dá mais liberdade para o LLM interpretar os dados.
+    """
+    import json
+    
+    # Preparar resumos dos dados para o LLM
+    deck_1_summary = _summarize_deck_data({"full_result": result_dec})
+    deck_2_summary = _summarize_deck_data({"full_result": result_jan})
+    
+    # Preparar contexto adicional
+    context_info = ""
+    llm_context = formatted.get("llm_context", {})
+    
+    if formatted.get("diff_categories"):
+        diff_categories = formatted.get("diff_categories")
+        
+        if isinstance(diff_categories, dict) and "added" in diff_categories:
+            # Formato Expt/Modif (diff simples)
+            added = diff_categories.get("added", [])
+            removed = diff_categories.get("removed", [])
+            modified = diff_categories.get("modified", [])
+            
+            context_info = f"Diferenças identificadas:\n"
+            context_info += f"- Adicionado em {deck_2_name}: {len(added)} item(s)\n"
+            context_info += f"- Removido de {deck_1_name}: {len(removed)} item(s)\n"
+            context_info += f"- Modificado: {len(modified)} item(s)\n\n"
+            
+            if added:
+                context_info += f"Exemplos de itens adicionados:\n"
+                for item in added[:3]:
+                    context_info += f"  {json.dumps(item, ensure_ascii=False, default=str)}\n"
+            
+            if removed:
+                context_info += f"\nExemplos de itens removidos:\n"
+                for item in removed[:3]:
+                    context_info += f"  {json.dumps(item, ensure_ascii=False, default=str)}\n"
+        else:
+            # Formato Modif (por tipo)
+            context_info = "Diferenças por tipo de modificação:\n"
+            for tipo, diffs in diff_categories.items():
+                added = diffs.get("added", [])
+                removed = diffs.get("removed", [])
+                modified = diffs.get("modified", [])
+                context_info += f"\n{tipo}:\n"
+                context_info += f"  - Adicionado: {len(added)}, Removido: {len(removed)}, Modificado: {len(modified)}\n"
+    
+    if llm_context:
+        context_info += f"\nContexto adicional: {json.dumps(llm_context, ensure_ascii=False, default=str)}\n"
+    
+    llm = ChatOpenAI(
+        api_key=OPENAI_API_KEY,
+        model=OPENAI_MODEL,
+        temperature=0.5  # Temperatura maior para mais criatividade
+    )
+    
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", COMPARISON_LLM_FREE_SYSTEM_PROMPT.format(
+            deck_1_name=deck_1_name,
+            deck_2_name=deck_2_name,
+            query=query
+        )),
+        ("human", COMPARISON_LLM_FREE_USER_PROMPT)
+    ])
+    
+    chain = prompt | llm
+    
+    response = chain.invoke({
+        "deck_1_name": deck_1_name,
+        "deck_2_name": deck_2_name,
+        "deck_1_summary": deck_1_summary,
+        "deck_2_summary": deck_2_summary,
+        "context_info": context_info
+    })
+    
+    final_response = getattr(response, 'content', None)
+    
+    if final_response:
+        safe_print(f"[INTERPRETER] [OK] Interpretacao livre gerada ({len(final_response)} caracteres)")
+        final_response = clean_response_text(final_response, max_emojis=2)
+    else:
+        safe_print(f"[INTERPRETER] [AVISO] LLM nao retornou conteudo, usando fallback livre")
+        # Fallback simples
+        final_response = f"## Análise Comparativa\n\nDados comparados entre {deck_1_name} e {deck_2_name}.\n\nConsulte os dados detalhados para análise completa."
+    
+    return final_response

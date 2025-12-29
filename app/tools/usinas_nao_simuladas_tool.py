@@ -440,7 +440,7 @@ class UsinasNaoSimuladasTool(NEWAVETool):
                     # Filtro genérico: pegar todas as fontes que contêm a sigla base
                     sigla_base = fonte.replace("__GEN_", "").replace("__", "").lower()
                     print(f"[TOOL] 🔍 Aplicando filtro genérico para '{sigla_base.upper()}' (retorna todas as variações)")
-                    print(f"[TOOL] 📊 Total de registros antes do filtro de fonte: {len(resultado_df)}")
+                    print(f"[TOOL]  Total de registros antes do filtro de fonte: {len(resultado_df)}")
                     resultado_df = resultado_df[resultado_df['fonte'].str.lower().str.contains(sigla_base, na=False)]
                     fontes_encontradas = resultado_df['fonte'].unique().tolist() if not resultado_df.empty else []
                     print(f"[TOOL] ✅ {len(resultado_df)} registro(s) após filtro genérico")
@@ -451,7 +451,7 @@ class UsinasNaoSimuladasTool(NEWAVETool):
                 else:
                     # Filtro específico: match exato
                     print(f"[TOOL] 🔍 Aplicando filtro específico para fonte: '{fonte}'")
-                    print(f"[TOOL] 📊 Total de registros antes do filtro de fonte: {len(resultado_df)}")
+                    print(f"[TOOL]  Total de registros antes do filtro de fonte: {len(resultado_df)}")
                     resultado_df = resultado_df[resultado_df['fonte'] == fonte]
                     print(f"[TOOL] ✅ {len(resultado_df)} registro(s) após filtro específico")
                     if len(resultado_df) == 0:
