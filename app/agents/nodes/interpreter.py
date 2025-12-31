@@ -91,11 +91,10 @@ REGRAS CRITICAS - SIGA OBRIGATORIAMENTE:
    - Diga claramente: "Os dados sao IDENTICOS entre os dois decks"
    - NAO liste todos os dados - apenas confirme que sao iguais
    - Mencione brevemente o que existe (ex: "3 modificacoes, 2 expansoes")
-   - VA DIRETO PARA A CONCLUSAO
 
 3. SE HA DIFERENCAS:
    - Liste APENAS as diferencas, nao todos os dados
-   - Para cada diferenca, explique o IMPACTO
+   - DESCREVA as mudancas de forma clara e objetiva
    - Use tabela comparativa quando apropriado:
      | Item | {deck_1_name} | {deck_2_name} | Diferenca |
    - Destaque diferencas significativas (>1% ou valores novos/removidos)
@@ -114,36 +113,31 @@ REGRAS CRITICAS - SIGA OBRIGATORIAMENTE:
    - Exemplo: Se diferenca=76.82 e diferenca_percent=17.84, escreva "76.82 (17.84%)"
    - MOSTRE TODOS os anos na tabela - nao agrupe nem resuma
 
-4. CONCLUSAO OBRIGATORIA:
-   - Sempre termine com uma conclusao clara e acionavel
-   - Responda: "O que isso significa para o planejamento/operacao?"
-   - Se nao ha diferencas, confirme que os decks estao alinhados
-
 =====================================================================
 PROIBICOES ABSOLUTAS:
 =====================================================================
 - NAO liste todos os dados se forem iguais entre os decks
 - NAO faca tabelas gigantes sem analise
-- NAO responda sem uma conclusao
 - NAO repita dados identicos entre os decks
-- NAO apenas descreva os dados - COMPARE e CONCLUA
+- NAO tire conclusoes automaticas - apenas DESCREVA as mudancas
 - NAO use frases vagas como "os dados mostram..." sem especificar O QUE
 
 =====================================================================
-FORMATO OBRIGATORIO:
+FORMATO SUGERIDO (voce tem liberdade para adaptar):
 =====================================================================
 
 ## Analise Comparativa
 
 ### Resultado
-[OBRIGATORIO: Diga claramente se ha diferencas ou nao. Uma frase direta.]
+[Diga claramente se ha diferencas ou nao. Uma frase direta.]
 
 ### Diferencas Encontradas
-[Se houver: liste APENAS o que mudou/adicionou/removeu]
-[Se NAO houver: escreva "Nenhuma diferenca encontrada" e pule para Conclusao]
+[Se houver: liste e DESCREVA o que mudou/adicionou/removeu de forma objetiva]
+[Se NAO houver: escreva "Nenhuma diferenca encontrada"]
 
-### Conclusao
-[OBRIGATORIO: O que isso significa? Qual o impacto pratico?]
+[Voce tem liberdade para estruturar a resposta da melhor forma para DESCREVER
+as mudancas de forma clara e objetiva, sem tentar tirar conclusoes sobre
+impactos ou significados. Apenas apresente os fatos.]
 """
 
 COMPARISON_INTERPRETER_USER_PROMPT = """DADOS DO DECK 1 ({deck_1_name}):
@@ -159,9 +153,9 @@ INSTRUCAO FINAL:
 1. Compare os dados acima entre os dois decks
 2. Identifique DIFERENCAS (valores diferentes, itens adicionados/removidos)
 3. Se os dados forem IDENTICOS, diga isso claramente e NAO liste tudo
-4. Forneca uma CONCLUSAO sobre o impacto das diferencas (ou ausencia delas)
+4. DESCREVA as mudancas de forma clara e objetiva, sem tentar tirar conclusoes automaticas
 
-Responda de forma CONCISA e ACIONAVEL."""
+Responda de forma CONCISA e DESCRITIVA."""
 
 # Prompt livre para diff_list e llm_free
 COMPARISON_LLM_FREE_SYSTEM_PROMPT = """Voce e um especialista em analise de dados do setor eletrico brasileiro,
@@ -174,20 +168,21 @@ Voce recebeu dados de comparacao entre DOIS decks NEWAVE:
 PERGUNTA ORIGINAL: {query}
 
 =====================================================================
-REGRAS - LIBERDADE PARA INTERPRETAR:
+REGRAS - LIBERDADE PARA INTERPRETAR E DESCREVER:
 =====================================================================
 
-1. ANALISE OS DADOS livremente - identifique padroes, tendencias, impactos
+1. ANALISE OS DADOS livremente - identifique padroes e tendencias
 2. COMPARE os dados entre os dois decks
-3. DESTAQUE mudancas significativas e seu significado
-4. EXPLIQUE o IMPACTO pratico das diferencas
-5. FORNECA uma CONCLUSAO acionavel
+3. DESCREVA as mudancas de forma clara e objetiva
+4. APRESENTE os fatos sem tentar tirar conclusoes automaticas
+5. Voce tem liberdade para interpretar e estruturar a resposta da melhor forma
 
-Voce tem liberdade para estruturar a resposta da melhor forma para comunicar
-as diferencas e seus significados. Use tabelas, listas, ou formato narrativo
+Voce tem liberdade para estruturar a resposta da melhor forma para DESCREVER
+as diferencas de forma clara. Use tabelas, listas, ou formato narrativo
 conforme fizer mais sentido.
 
-IMPORTANTE: Seja claro, conciso e focado no que realmente mudou e por que isso importa."""
+IMPORTANTE: Seja claro, conciso e focado em DESCREVER o que mudou de forma objetiva.
+Apenas apresente os fatos - nao tente tirar conclusoes sobre impactos ou significados."""
 
 COMPARISON_LLM_FREE_USER_PROMPT = """DADOS DO DECK 1 ({deck_1_name}):
 {deck_1_summary}
@@ -199,9 +194,9 @@ CONTEXTO ADICIONAL:
 {context_info}
 
 INSTRUCAO:
-Analise e compare os dados acima. Identifique o que mudou, o que foi adicionado,
-o que foi removido, e explique o significado pratico dessas mudancas para o
-planejamento e operacao do sistema eletrico."""
+Analise e compare os dados acima. Identifique e DESCREVA o que mudou, o que foi adicionado,
+e o que foi removido de forma clara e objetiva. Apresente os fatos sem tentar tirar
+conclusoes automaticas sobre impactos ou significados."""
 
 
 # Prompt para interpretar e filtrar resultados de tools
@@ -878,7 +873,7 @@ def _generate_fallback_comparison_response(
 ) -> str:
     """
     Gera resposta de comparacao de fallback quando LLM falha.
-    Segue o formato obrigatorio com resultado claro e conclusao.
+    Segue o formato descritivo com resultado claro, sem conclusoes automaticas.
     """
     response_parts = []
     response_parts.append(f"## Analise Comparativa\n\n")
@@ -902,16 +897,12 @@ def _generate_fallback_comparison_response(
         if len(differences) > 5:
             response_parts.append(f"\n*... e mais {len(differences) - 5} diferencas*\n")
         
-        response_parts.append(f"\n### Conclusao\n\n")
-        response_parts.append(f"Os decks apresentam diferencas que devem ser analisadas. ")
-        response_parts.append(f"Consulte os dados detalhados para avaliar o impacto no planejamento.\n")
+        # Removido: conclusao automatica - o LLM deve ter liberdade para interpretar
     else:
         response_parts.append(f"Os dados sao **IDENTICOS** entre {deck_1_name} e {deck_2_name}.\n\n")
         response_parts.append(f"### Diferencas Encontradas\n\n")
         response_parts.append(f"Nenhuma diferenca encontrada.\n\n")
-        response_parts.append(f"### Conclusao\n\n")
-        response_parts.append(f"Os decks estao alinhados para esta consulta. ")
-        response_parts.append(f"Nao ha divergencias que impactem o planejamento.\n")
+        # Removido: conclusao automatica - o LLM deve ter liberdade para interpretar
     
     return "".join(response_parts)
 

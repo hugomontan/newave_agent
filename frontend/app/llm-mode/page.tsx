@@ -7,6 +7,15 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { ChatMessage } from "@/components/ChatMessage";
+import { FileUpload } from "@/components/FileUpload";
+import { AgentProgress, AgentStep } from "@/components/AgentProgress";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -14,16 +23,16 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ChatMessage } from "@/components/ChatMessage";
-import { AgentProgress, AgentStep } from "@/components/AgentProgress";
 import {
   sendQueryStream,
+  getSession,
   deleteSession,
   reindexDocs,
+  UploadResponse,
   StreamEvent,
 } from "@/lib/api";
 import { motion } from "framer-motion";
-import { Send, MoreVertical, RefreshCw, Trash2, ArrowLeft, GitCompare } from "lucide-react";
+import { Upload, Send, MoreVertical, RefreshCw, Trash2, FileText, ArrowLeft, Brain } from "lucide-react";
 
 interface Message {
   id: string;
@@ -36,68 +45,20 @@ interface Message {
   retryCount?: number;
   error?: string | null;
   timestamp: Date;
-  disambiguationData?: {
-    type: string;
-    question: string;
-    options: Array<{label: string; query: string; tool_name: string}>;
-    original_query: string;
-  };
-  comparisonData?: {
-    deck_1: {
-      name: string;
-      success: boolean;
-      data: Record<string, unknown>[];
-      summary?: Record<string, unknown>;
-      error?: string;
-    };
-    deck_2: {
-      name: string;
-      success: boolean;
-      data: Record<string, unknown>[];
-      summary?: Record<string, unknown>;
-      error?: string;
-    };
-    chart_data?: {
-      labels: string[];
-      datasets: Array<{
-        label: string;
-        data: (number | null)[];
-      }>;
-    } | null;
-    differences?: Array<{
-      field: string;
-      period: string;
-      deck_1_value: number;
-      deck_2_value: number;
-      difference: number;
-      difference_percent: number;
-    }>;
-    comparison_table?: Array<{
-      data?: string | number;
-      classe?: string;
-      ano?: string | number;
-      deck_1?: number | null;
-      deck_2?: number | null;
-      deck_1_value?: number | null;
-      deck_2_value?: number | null;
-      diferenca?: number | null;
-      difference?: number | null;
-      diferenca_percent?: number | null;
-      difference_percent?: number | null;
-    }>;
-    visualization_type?: string;
-    comparison_by_type?: Record<string, unknown>;
-    comparison_by_usina?: Record<string, unknown>;
-  };
 }
 
-export default function ComparisonPage() {
+export default function LLMModePage() {
   const router = useRouter();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [selectedDeck, setSelectedDeck] = useState<"december" | "january" | "upload" | null>(null);
+  const [files, setFiles] = useState<string[]>([]);
+  const [filesCount, setFilesCount] = useState(0);
   const [isReindexing, setIsReindexing] = useState(false);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isDeckSelectOpen, setIsDeckSelectOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Streaming state
@@ -110,13 +71,6 @@ export default function ComparisonPage() {
   const [executionOutput, setExecutionOutput] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
   const [maxRetries, setMaxRetries] = useState(3);
-  const [comparisonData, setComparisonData] = useState<Message["comparisonData"]>(null);
-  const [disambiguationData, setDisambiguationData] = useState<{
-    type: string;
-    question: string;
-    options: Array<{label: string; query: string; tool_name: string}>;
-    original_query: string;
-  } | null>(null);
 
   // Refs para capturar estado durante streaming
   const streamingCodeRef = useRef("");
@@ -125,7 +79,6 @@ export default function ComparisonPage() {
   const executionErrorRef = useRef<string | null>(null);
   const executionOutputRef = useRef<string | null>(null);
   const retryCountRef = useRef(0);
-  const comparisonDataRef = useRef<Message["comparisonData"]>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -135,47 +88,66 @@ export default function ComparisonPage() {
     scrollToBottom();
   }, [messages, agentSteps, streamingCode, streamingResponse]);
 
-  // Carregar sessão de comparação ao montar
-  useEffect(() => {
-    const initializeComparison = async () => {
-      try {
-        // Chamar API para inicializar modo comparação
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/init-comparison`, {
-          method: "POST",
-        });
+  const loadDeckFromRepo = async (deck: "december" | "january") => {
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/load-deck`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          deck_name: deck === "december" ? "NW202512" : "NW202601",
+        }),
+      });
 
-        if (!response.ok) {
-          throw new Error("Erro ao inicializar modo comparação");
-        }
-
-        const data = await response.json();
-        setSessionId(data.session_id);
-
-        setMessages([
-          {
-            id: Date.now().toString(),
-            role: "assistant",
-            content: `Modo Comparação ativado! Todas as consultas compararão automaticamente os dados entre **Dezembro 2025** e **Janeiro 2026**.\n\nFaça sua primeira consulta para ver os resultados lado a lado com gráficos comparativos.`,
-            timestamp: new Date(),
-          },
-        ]);
-      } catch (err) {
-        console.error("Error initializing comparison:", err);
-        setMessages([
-          {
-            id: Date.now().toString(),
-            role: "assistant",
-            content: `❌ **Erro ao inicializar modo comparação:**\n\n${
-              err instanceof Error ? err.message : "Erro desconhecido"
-            }`,
-            timestamp: new Date(),
-          },
-        ]);
+      if (!response.ok) {
+        throw new Error("Erro ao carregar deck");
       }
-    };
 
-    initializeComparison();
-  }, []);
+      const data = await response.json();
+      setSessionId(data.session_id);
+      setSelectedDeck(deck);
+      setFiles(data.files || []);
+      setFilesCount(data.files_count || 0);
+
+      setMessages([
+        {
+          id: Date.now().toString(),
+          role: "assistant",
+          content: `✅ **Deck carregado com sucesso!**\n\n**Deck:** ${deck === "december" ? "Dezembro 2025 (NW202512)" : "Janeiro 2026 (NW202601)"}\n**Arquivos:** ${data.files_count || 0}\n\nAgora você pode fazer consultas usando o **LLM Mode**. Este modo oferece mais liberdade para o LLM codar e entender o projeto, usando RAG completo e LLM Planner.`,
+          timestamp: new Date(),
+        },
+      ]);
+    } catch (err) {
+      setMessages([
+        {
+          id: Date.now().toString(),
+          role: "assistant",
+          content: `❌ **Erro ao carregar deck:**\n\n${
+            err instanceof Error ? err.message : "Erro desconhecido"
+          }`,
+          timestamp: new Date(),
+        },
+      ]);
+    } finally {
+      setIsDeckSelectOpen(false);
+    }
+  };
+
+  const handleUploadSuccess = (response: UploadResponse) => {
+    setSessionId(response.session_id);
+    setSelectedDeck("upload");
+    setFilesCount(response.files_count);
+    setMessages([
+      {
+        id: Date.now().toString(),
+        role: "assistant",
+        content: `✅ **Deck carregado com sucesso!**\n\n**Arquivos:** ${response.files_count}\n\nAgora você pode fazer consultas usando o **LLM Mode**. Este modo oferece mais liberdade para o LLM codar e entender o projeto, usando RAG completo e LLM Planner.`,
+        timestamp: new Date(),
+      },
+    ]);
+    setIsDialogOpen(false);
+  };
 
   const processStreamEvent = useCallback((event: StreamEvent) => {
     switch (event.type) {
@@ -188,14 +160,12 @@ export default function ComparisonPage() {
         setExecutionError(null);
         setExecutionOutput(null);
         setRetryCount(0);
-        setComparisonData(null);
         streamingCodeRef.current = "";
         streamingResponseRef.current = "";
         executionSuccessRef.current = null;
         executionErrorRef.current = null;
         executionOutputRef.current = null;
         retryCountRef.current = 0;
-        comparisonDataRef.current = null;
         break;
 
       case "node_start":
@@ -278,16 +248,6 @@ export default function ComparisonPage() {
           if (event.max_retries) {
             setMaxRetries(event.max_retries);
           }
-          setAgentSteps((prev) => [
-            ...prev,
-            {
-              node: `retry_${event.retry_count}`,
-              name: `Tentativa ${event.retry_count + 1}/${event.max_retries || 3}`,
-              icon: "🔄",
-              description: event.message || "Corrigindo código com base no erro...",
-              status: "running" as const,
-            },
-          ]);
         }
         break;
 
@@ -310,37 +270,6 @@ export default function ComparisonPage() {
         if (event.response) {
           setStreamingResponse(event.response);
           streamingResponseRef.current = event.response;
-        }
-        if (event.comparison_data) {
-          console.log("[FRONTEND] comparison_data recebido no response_complete:", event.comparison_data);
-          console.log("[FRONTEND] comparison_table presente:", event.comparison_data.comparison_table !== undefined);
-          console.log("[FRONTEND] comparison_table length:", event.comparison_data.comparison_table?.length);
-          if (event.comparison_data.comparison_table && event.comparison_data.comparison_table.length > 0) {
-            console.log("[FRONTEND] primeiro item comparison_table:", event.comparison_data.comparison_table[0]);
-          }
-          console.log("[FRONTEND] chart_data presente:", event.comparison_data.chart_data !== undefined);
-          if (event.comparison_data.chart_data) {
-            console.log("[FRONTEND] chart_data labels:", event.comparison_data.chart_data.labels);
-            console.log("[FRONTEND] chart_data datasets:", event.comparison_data.chart_data.datasets);
-          }
-          setComparisonData(event.comparison_data);
-          comparisonDataRef.current = event.comparison_data;
-        }
-        break;
-
-      case "disambiguation":
-        if (event.data) {
-          setDisambiguationData(event.data);
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: Date.now().toString(),
-              role: "assistant",
-              content: "",
-              disambiguationData: event.data,
-              timestamp: new Date(),
-            },
-          ]);
         }
         break;
 
@@ -376,12 +305,10 @@ export default function ComparisonPage() {
     setExecutionError(null);
     setExecutionOutput(null);
     setRetryCount(0);
-    setComparisonData(null);
-    comparisonDataRef.current = null;
 
     try {
-      // Enviar query com modo comparação
-      for await (const event of sendQueryStream(sessionId, userMessage.content, "comparison")) {
+      // Usar analysis_mode="llm" para LLM Mode
+      for await (const event of sendQueryStream(sessionId, userMessage.content, "llm")) {
         processStreamEvent(event);
       }
 
@@ -403,7 +330,7 @@ export default function ComparisonPage() {
       const hasData = rawData && rawData.length > 0;
       const hasCode = streamingCodeRef.current && streamingCodeRef.current.trim();
       
-      if (hasContent || hasData || hasCode || comparisonDataRef.current) {
+      if (hasContent || hasData || hasCode) {
         const assistantMessage: Message = {
           id: (Date.now() + 1).toString(),
           role: "assistant",
@@ -414,7 +341,6 @@ export default function ComparisonPage() {
           rawData: rawData,
           retryCount: retryCountRef.current,
           error: executionErrorRef.current,
-          comparisonData: comparisonDataRef.current || undefined,
           timestamp: new Date(),
         };
 
@@ -454,6 +380,9 @@ export default function ComparisonPage() {
     }
 
     setSessionId(null);
+    setSelectedDeck(null);
+    setFiles([]);
+    setFilesCount(0);
     setMessages([]);
     setAgentSteps([]);
     setStreamingCode("");
@@ -497,100 +426,11 @@ export default function ComparisonPage() {
     }
   };
 
-  const handleDisambiguationOptionClick = async (query: string) => {
-    if (!sessionId) return;
-    
-    setDisambiguationData(null);
-    
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      role: "user",
-      content: query,
-      timestamp: new Date(),
-    };
-    
-    setMessages((prev) => [...prev, userMessage]);
-    setInput("");
-    setIsLoading(true);
-    setAgentSteps([]);
-    setStreamingCode("");
-    setStreamingResponse("");
-    setExecutionSuccess(null);
-    setExecutionError(null);
-    setExecutionOutput(null);
-    setRetryCount(0);
-    setComparisonData(null);
-    comparisonDataRef.current = null;
-
-    try {
-      for await (const event of sendQueryStream(sessionId, query, "comparison")) {
-        processStreamEvent(event);
-      }
-
-      await new Promise(resolve => setTimeout(resolve, 100));
-
-      let rawData: Record<string, unknown>[] | null = null;
-      if (executionOutputRef.current) {
-        try {
-          const jsonMatch = executionOutputRef.current.match(/---JSON_DATA_START---([\s\S]*?)---JSON_DATA_END---/);
-          if (jsonMatch) {
-            rawData = JSON.parse(jsonMatch[1].trim());
-          }
-        } catch {
-          // Ignora erro de parsing
-        }
-      }
-
-      const hasContent = streamingResponseRef.current && streamingResponseRef.current.trim();
-      const hasData = rawData && rawData.length > 0;
-      const hasCode = streamingCodeRef.current && streamingCodeRef.current.trim();
-      
-      if (hasContent || hasData || hasCode || comparisonDataRef.current) {
-        const assistantMessage: Message = {
-          id: (Date.now() + 1).toString(),
-          role: "assistant",
-          content: streamingResponseRef.current || "",
-          code: streamingCodeRef.current || undefined,
-          executionSuccess: executionSuccessRef.current ?? false,
-          executionOutput: executionOutputRef.current,
-          rawData: rawData,
-          retryCount: retryCountRef.current,
-          error: executionErrorRef.current,
-          comparisonData: comparisonDataRef.current || undefined,
-          timestamp: new Date(),
-        };
-
-        setMessages((prev) => [...prev, assistantMessage]);
-      }
-      
-      setAgentSteps([]);
-      setStreamingCode("");
-      setStreamingResponse("");
-
-    } catch (err) {
-      const errorMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: `❌ **Erro ao processar sua pergunta:**\n\n${
-          err instanceof Error ? err.message : "Erro desconhecido"
-        }`,
-        timestamp: new Date(),
-      };
-
-      setMessages((prev) => [...prev, errorMessage]);
-      setAgentSteps([]);
-      setStreamingCode("");
-      setStreamingResponse("");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   return (
     <main className="flex flex-col h-screen bg-background overflow-hidden">
       {/* Header */}
       <header className="border-b border-border bg-background">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+        <div className="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Button
               variant="ghost"
@@ -601,11 +441,29 @@ export default function ComparisonPage() {
               <ArrowLeft className="w-4 h-4" />
             </Button>
             <div className="flex items-center gap-2">
-              <GitCompare className="w-4 h-4 text-primary" />
-              <h1 className="text-sm font-medium text-foreground">Análise Comparativa</h1>
+              <Brain className="w-5 h-5 text-primary" />
+              <h1 className="text-sm font-medium text-foreground">LLM Mode</h1>
             </div>
           </div>
           <div className="flex items-center gap-1">
+            {!sessionId && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsDeckSelectOpen(true)}
+                className="text-muted-foreground hover:text-foreground"
+              >
+                Selecionar Deck
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setIsDialogOpen(true)}
+              className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-muted"
+            >
+              <Upload className="w-4 h-4" />
+            </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -620,14 +478,6 @@ export default function ComparisonPage() {
                 <DropdownMenuLabel className="text-card-foreground">Configurações</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 
-                <div className="px-2 py-1.5">
-                  <p className="text-xs text-muted-foreground font-medium mb-1">Modo Ativo</p>
-                  <p className="text-xs text-foreground">Comparação Multi-Deck</p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Comparando: Dezembro 2025 vs Janeiro 2026
-                  </p>
-                </div>
-                
                 {sessionId && (
                   <>
                     <div className="px-2 py-1.5">
@@ -636,6 +486,41 @@ export default function ComparisonPage() {
                         {sessionId}
                       </code>
                     </div>
+                    
+                    {selectedDeck && (
+                      <div className="px-2 py-1.5">
+                        <p className="text-xs text-muted-foreground font-medium mb-1">Deck Selecionado</p>
+                        <p className="text-xs text-foreground">
+                          {selectedDeck === "december" ? "Dezembro 2025 (NW202512)" : 
+                           selectedDeck === "january" ? "Janeiro 2026 (NW202601)" : 
+                           "Upload Manual"}
+                        </p>
+                      </div>
+                    )}
+                    
+                    {filesCount > 0 && (
+                      <div className="px-2 py-1.5">
+                        <p className="text-xs text-muted-foreground font-medium mb-2">
+                          Arquivos ({filesCount})
+                        </p>
+                        <div className="max-h-32 overflow-y-auto space-y-1">
+                          {files.slice(0, 10).map((file, index) => (
+                            <div
+                              key={index}
+                              className="text-xs bg-background px-2 py-1 rounded flex items-center gap-2 border border-border"
+                            >
+                              <FileText className="w-3 h-3 text-muted-foreground flex-shrink-0" />
+                              <span className="truncate text-foreground">{file}</span>
+                            </div>
+                          ))}
+                          {files.length > 10 && (
+                            <p className="text-xs text-muted-foreground italic pl-2">
+                              +{files.length - 10} arquivos...
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    )}
                     
                     <DropdownMenuSeparator />
                     
@@ -668,24 +553,47 @@ export default function ComparisonPage() {
       {/* Main content */}
       <div className="flex-1 flex flex-col overflow-hidden">
         <ScrollArea className="flex-1">
-          <div className="max-w-7xl mx-auto py-12 px-4">
+          <div className="max-w-3xl mx-auto py-12 px-4">
             {messages.length === 0 && !isLoading ? (
               <div className="flex flex-col items-center justify-center text-center">
-                <GitCompare className="w-16 h-16 text-primary mb-4" />
-                <h2 className="text-4xl font-semibold mb-4 text-foreground">
-                  Análise Comparativa
-                </h2>
-                <p className="text-muted-foreground mb-8 text-lg">
-                  Todas as consultas compararão automaticamente os dados entre Dezembro 2025 e Janeiro 2026
+                <div className="flex items-center gap-3 mb-4">
+                  <Brain className="w-12 h-12 text-primary" />
+                  <h2 className="text-4xl font-semibold text-foreground">
+                    LLM Mode
+                  </h2>
+                </div>
+                <p className="text-muted-foreground mb-4 text-lg">
+                  Modo avançado com RAG completo e LLM Planner
                 </p>
+                <p className="text-muted-foreground mb-8 text-base max-w-2xl">
+                  {!sessionId 
+                    ? "Selecione um deck do repositório ou faça upload de um deck para começar. O LLM Mode oferece mais liberdade para o LLM codar e entender o projeto, usando RAG completo em toda documentação + tools_context.md e um LLM Planner que gera instruções detalhadas."
+                    : "Faça sua consulta sobre o deck carregado. O LLM Mode não usa tools pré-programadas - o LLM gera código diretamente baseado no contexto completo."}
+                </p>
+                {!sessionId && (
+                  <div className="flex gap-4">
+                    <Button 
+                      onClick={() => setIsDeckSelectOpen(true)}
+                      className="bg-primary hover:bg-primary/90 text-primary-foreground"
+                    >
+                      Selecionar Deck do Repositório
+                    </Button>
+                    <Button 
+                      onClick={() => setIsDialogOpen(true)}
+                      variant="outline"
+                    >
+                      <Upload className="w-4 h-4 mr-2" />
+                      Upload do Deck
+                    </Button>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="space-y-8">
                 {messages.map((message) => (
                   <ChatMessage 
                     key={message.id} 
-                    message={message} 
-                    onOptionClick={handleDisambiguationOptionClick}
+                    message={message}
                   />
                 ))}
                 
@@ -726,12 +634,12 @@ export default function ComparisonPage() {
 
         {/* Input area */}
         <div className="border-t border-border bg-background">
-          <div className="max-w-7xl mx-auto px-4 py-4">
+          <div className="max-w-3xl mx-auto px-4 py-4">
             <div className="relative flex items-end gap-3">
               <div className="flex-1 relative">
                 <div className="relative flex items-center bg-input border border-border rounded-2xl shadow-sm hover:border-primary/50 transition-colors">
                   <Input
-                    placeholder={sessionId ? "Faça uma pergunta para comparar os decks..." : "Inicializando modo comparação..."}
+                    placeholder={sessionId ? "Faça uma pergunta sobre os dados..." : "Selecione um deck ou faça upload para começar"}
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={handleKeyPress}
@@ -750,11 +658,46 @@ export default function ComparisonPage() {
               </Button>
             </div>
             <p className="text-xs text-center text-muted-foreground mt-2">
-              Todas as respostas incluirão comparação entre Dezembro 2025 e Janeiro 2026
+              LLM Mode - NEWAVE Agent pode cometer erros. Verifique informações importantes.
             </p>
           </div>
         </div>
       </div>
+
+      {/* Upload Dialog */}
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent className="bg-card border-border">
+          <DialogHeader>
+            <DialogTitle className="text-card-foreground">Upload do Deck NEWAVE</DialogTitle>
+          </DialogHeader>
+          <FileUpload onUploadSuccess={handleUploadSuccess} />
+        </DialogContent>
+      </Dialog>
+
+      {/* Deck Selection Dialog */}
+      <Dialog open={isDeckSelectOpen} onOpenChange={setIsDeckSelectOpen}>
+        <DialogContent className="bg-card border-border">
+          <DialogHeader>
+            <DialogTitle className="text-card-foreground">Selecionar Deck do Repositório</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <Button
+              onClick={() => loadDeckFromRepo("december")}
+              className="w-full"
+              variant="outline"
+            >
+              Dezembro 2025 (NW202512)
+            </Button>
+            <Button
+              onClick={() => loadDeckFromRepo("january")}
+              className="w-full"
+              variant="outline"
+            >
+              Janeiro 2026 (NW202601)
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </main>
   );
 }

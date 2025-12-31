@@ -180,7 +180,7 @@ export async function sendQuery(
 export async function* sendQueryStream(
   sessionId: string,
   query: string,
-  analysisMode?: "single" | "comparison"
+  analysisMode?: "single" | "comparison" | "llm"
 ): AsyncGenerator<StreamEvent> {
   const response = await fetch(`${API_URL}/query/stream`, {
     method: "POST",
