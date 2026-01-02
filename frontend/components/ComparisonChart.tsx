@@ -140,8 +140,8 @@ export function ComparisonChart({ data }: ComparisonChartProps) {
                 dataKey={dataset.label}
                 stroke={colors[index % colors.length]}
                 strokeWidth={2}
-                dot={{ r: 4 }}
-                activeDot={{ r: 6 }}
+                dot={false}
+                activeDot={false}
                 connectNulls={false}
               />
             ))}
