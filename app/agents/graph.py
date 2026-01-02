@@ -6,6 +6,8 @@ from app.agents.state import AgentState
 from app.agents.nodes import (
     rag_retriever_node,
     rag_simple_node,
+    rag_enhanced_node,
+    llm_planner_node,
     tool_router_node,
     coder_node,
     executor_node,
@@ -48,6 +50,16 @@ NODE_DESCRIPTIONS = {
         "icon": "[DOC]",
         "description": "Buscando documentacao no abstract..."
     },
+    "rag_enhanced": {
+        "name": "RAG Enhanced",
+        "icon": "[DOCS+]",
+        "description": "Buscando em toda documentacao + tools_context.md..."
+    },
+    "llm_planner": {
+        "name": "LLM Planner",
+        "icon": "[PLAN]",
+        "description": "Gerando instrucoes detalhadas baseadas no contexto..."
+    },
     "tool_router": {
         "name": "Tool Router",
         "icon": "[TOOL]",
@@ -87,6 +99,19 @@ def should_continue_after_rag(state: AgentState) -> str:
     
     # Sempre tentar tool_router primeiro para queries frequentes
     return "tool_router"
+
+
+def should_use_llm_mode(state: AgentState) -> str:
+    """
+    Verifica se deve usar modo LLM baseado no analysis_mode.
+    
+    Returns:
+        "llm" se analysis_mode == "llm", "normal" caso contrário
+    """
+    analysis_mode = state.get("analysis_mode", "single")
+    if analysis_mode == "llm":
+        return "llm"
+    return "normal"
 
 
 def should_continue_after_tool_router(state: AgentState) -> str:
@@ -163,7 +188,7 @@ def create_newave_agent() -> StateGraph:
     """
     Cria o grafo do agente NEWAVE otimizado com Tools pré-programadas e RAG simplificado.
     
-    Fluxo otimizado:
+    Fluxo otimizado (modo normal):
     1. Tool Router (entry point): Verifica se há tool pré-programada
        - Se tool executou: vai direto para Interpreter ✅
        - Se tool não executou: continua para RAG Simplificado
@@ -174,25 +199,47 @@ def create_newave_agent() -> StateGraph:
     5. Retry Check: Verifica se precisa retry
     6. Interpreter: Interpreta resultados e gera resposta
     
+    Fluxo LLM Mode (analysis_mode="llm"):
+    1. RAG Enhanced: Busca em toda documentação + tools_context.md
+    2. LLM Planner: Gera instruções detalhadas baseadas no contexto
+    3. Coder: Gera código usando instruções enriquecidas
+    4. Executor: Executa o código
+    5. Retry Check: Verifica se precisa retry
+    6. Interpreter: Interpreta resultados e gera resposta
+    
     Benefícios:
     - Menor latência quando tool resolve (evita RAG completo)
     - Menor custo (sem chamadas LLM de validação quando tool resolve)
     - RAG simplificado é suficiente para Coder gerar código
+    - LLM Mode oferece mais liberdade e contexto completo
     """
     workflow = StateGraph(AgentState)
     
     # Nodes disponíveis
     workflow.add_node("rag", rag_retriever_node)  # Mantido para uso futuro/fallback
-    workflow.add_node("rag_simple", rag_simple_node)  # Novo: RAG simplificado
+    workflow.add_node("rag_simple", rag_simple_node)  # RAG simplificado (modo normal)
+    workflow.add_node("rag_enhanced", rag_enhanced_node)  # RAG completo (modo LLM)
+    workflow.add_node("llm_planner", llm_planner_node)  # LLM Planner (modo LLM)
     workflow.add_node("tool_router", tool_router_node)
     workflow.add_node("coder", coder_node)
     workflow.add_node("executor", executor_node)
     workflow.add_node("retry_check", retry_check_node)
     workflow.add_node("interpreter", interpreter_node)
     
-    # Entry point: Tool Router (otimização)
-    workflow.set_entry_point("tool_router")
+    # Entry point condicional: LLM Mode ou Normal
+    workflow.set_conditional_entry_point(
+        should_use_llm_mode,
+        {
+            "llm": "rag_enhanced",  # Modo LLM: começa com RAG Enhanced
+            "normal": "tool_router"  # Modo normal: começa com Tool Router
+        }
+    )
     
+    # Fluxo LLM Mode: rag_enhanced → llm_planner → coder → executor → retry_check → interpreter
+    workflow.add_edge("rag_enhanced", "llm_planner")
+    workflow.add_edge("llm_planner", "coder")
+    
+    # Fluxo modo normal: tool_router → (interpreter ou rag_simple → coder)
     # Decisão após Tool Router: 
     # - END se disambiguation (termina fluxo)
     # - interpreter se tool executou
@@ -210,6 +257,7 @@ def create_newave_agent() -> StateGraph:
     # RAG simplificado sempre vai para Coder
     workflow.add_edge("rag_simple", "coder")
     
+    # Coder → Executor (comum para ambos os modos)
     workflow.add_edge("coder", "executor")
     workflow.add_edge("executor", "retry_check")
     
@@ -275,7 +323,9 @@ def get_initial_state(query: str, deck_path: str, analysis_mode: str = "single")
         # Campos para Disambiguation
         "disambiguation": None,
         # Campos para Comparação Multi-Deck
-        "comparison_data": None
+        "comparison_data": None,
+        # Campos para LLM Mode
+        "llm_instructions": None
     }
 
 
@@ -412,10 +462,22 @@ def run_query_stream(query: str, deck_path: str, session_id: Optional[str] = Non
                         yield f"data: {json.dumps({'type': 'node_detail', 'node': node_name, 'detail': f'⚠️ Arquivos testados ({len(tried_files)}): {", ".join(tried_files)} - Nenhum adequado para a pergunta'})}\n\n"
                     elif selected_files:
                         colunas = validation_result.get("colunas_relevantes", []) if validation_result else []
-                        detail = f'✅ Arquivo validado: {selected_files[0].upper()}'
+                        detail = f'✅ Arquivo validado: {selected_files[0].upper()}' 
                         if colunas:
                             detail += f' | Colunas: {", ".join(colunas[:5])}'
                         yield f"data: {json.dumps({'type': 'node_detail', 'node': node_name, 'detail': detail})}\n\n"
+                
+                elif node_name == "rag_enhanced":
+                    rag_status = node_output.get("rag_status", "success")
+                    relevant_docs = node_output.get("relevant_docs", [])
+                    if relevant_docs:
+                        total_chars = sum(len(doc) for doc in relevant_docs)
+                        yield f"data: {json.dumps({'type': 'node_detail', 'node': node_name, 'detail': f'✅ Contexto completo preparado ({total_chars} caracteres) - documentacao NEWAVE + tools_context.md'})}\n\n"
+                
+                elif node_name == "llm_planner":
+                    llm_instructions = node_output.get("llm_instructions")
+                    if llm_instructions:
+                        yield f"data: {json.dumps({'type': 'node_detail', 'node': node_name, 'detail': f'✅ Instrucoes detalhadas geradas ({len(llm_instructions)} caracteres)'})}\n\n"
                 
                 elif node_name == "coder":
                     code = node_output.get("generated_code", "")

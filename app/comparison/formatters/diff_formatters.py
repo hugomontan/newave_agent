@@ -44,51 +44,262 @@ class DiffComparisonFormatter(ComparisonFormatter):
         result_jan: Dict[str, Any],
         query: str
     ) -> Dict[str, Any]:
-        """Formata comparação de dados do EXPT (expansões/modificações térmicas)."""
+        """
+        Formata comparação de dados do EXPT (expansões/modificações térmicas).
+        Formato hierárquico: por tipo e por usina, apenas tabelas.
+        """
         dados_dec = result_dec.get("dados_expansoes", [])
         dados_jan = result_jan.get("dados_expansoes", [])
         
-        # Chave primária: (codigo_usina, tipo, data_inicio ou período)
+        # Chave primária: (codigo_usina, tipo, data_inicio)
         dec_indexed = self._index_expt_records(dados_dec)
         jan_indexed = self._index_expt_records(dados_jan)
         
-        # Computar diferenças
-        added = []
-        removed = []
-        modified = []
+        # Organizar por tipo
+        comparison_by_type = {}
+        all_types = set()
         
-        all_keys = set(dec_indexed.keys()) | set(jan_indexed.keys())
+        # Coletar todos os tipos
+        for record in dados_dec + dados_jan:
+            tipo = record.get("tipo")
+            if tipo:
+                all_types.add(tipo)
         
-        for key in all_keys:
-            dec_record = dec_indexed.get(key)
-            jan_record = jan_indexed.get(key)
+        # Processar cada tipo
+        for tipo in sorted(all_types):
+            tipo_records_dec = [r for r in dados_dec if r.get("tipo") == tipo]
+            tipo_records_jan = [r for r in dados_jan if r.get("tipo") == tipo]
             
-            if dec_record and not jan_record:
-                removed.append(dec_record)
-            elif jan_record and not dec_record:
-                added.append(jan_record)
-            elif dec_record and jan_record:
-                # Comparar valores para ver se mudou
-                if self._records_different(dec_record, jan_record):
-                    modified.append({
-                        "original": dec_record,
-                        "modified": jan_record
-                    })
+            # Indexar registros deste tipo
+            tipo_dec_indexed = {k: v for k, v in dec_indexed.items() if v.get("tipo") == tipo}
+            tipo_jan_indexed = {k: v for k, v in jan_indexed.items() if v.get("tipo") == tipo}
+            
+            # Construir tabela comparativa para este tipo
+            tipo_table = []
+            tipo_added = []
+            tipo_removed = []
+            tipo_modified = []
+            
+            all_tipo_keys = set(tipo_dec_indexed.keys()) | set(tipo_jan_indexed.keys())
+            
+            for key in sorted(all_tipo_keys):
+                dec_record = tipo_dec_indexed.get(key)
+                jan_record = tipo_jan_indexed.get(key)
+                
+                codigo_usina = dec_record.get("codigo_usina") if dec_record else (jan_record.get("codigo_usina") if jan_record else None)
+                nome_usina = dec_record.get("nome_usina") if dec_record else (jan_record.get("nome_usina") if jan_record else "N/A")
+                data_inicio = dec_record.get("data_inicio") if dec_record else (jan_record.get("data_inicio") if jan_record else None)
+                data_fim = dec_record.get("data_fim") if dec_record else (jan_record.get("data_fim") if jan_record else None)
+                
+                modificacao_dec = dec_record.get("modificacao") if dec_record else None
+                modificacao_jan = jan_record.get("modificacao") if jan_record else None
+                
+                # Formatar datas
+                data_inicio_str = self._format_date(data_inicio)
+                data_fim_str = self._format_date(data_fim)
+                
+                # Calcular diferenças
+                difference = None
+                difference_percent = None
+                status = "unchanged"
+                
+                if dec_record and not jan_record:
+                    status = "removed"
+                    tipo_removed.append(dec_record)
+                elif jan_record and not dec_record:
+                    status = "added"
+                    tipo_added.append(jan_record)
+                elif dec_record and jan_record:
+                    if self._records_different(dec_record, jan_record):
+                        status = "modified"
+                        tipo_modified.append({
+                            "original": dec_record,
+                            "modified": jan_record
+                        })
+                        
+                        # Calcular diferenças numéricas
+                        if modificacao_dec is not None and modificacao_jan is not None:
+                            try:
+                                diff_val = float(modificacao_jan) - float(modificacao_dec)
+                                difference = round(diff_val, 2)
+                                if float(modificacao_dec) != 0:
+                                    diff_pct = (diff_val / float(modificacao_dec)) * 100
+                                    difference_percent = round(diff_pct, 2)
+                                else:
+                                    difference_percent = 0.0
+                            except (ValueError, TypeError):
+                                pass
+                
+                # Adicionar à tabela
+                tipo_table.append({
+                    "codigo_usina": codigo_usina,
+                    "nome_usina": nome_usina,
+                    "tipo": tipo,
+                    "data_inicio": data_inicio_str,
+                    "data_fim": data_fim_str,
+                    "deck_1_value": self._safe_float(modificacao_dec),
+                    "deck_2_value": self._safe_float(modificacao_jan),
+                    "difference": difference,
+                    "difference_percent": difference_percent,
+                    "status": status
+                })
+            
+            # Resumo por tipo
+            summary = {
+                "total_dezembro": len(tipo_records_dec),
+                "total_janeiro": len(tipo_records_jan),
+                "added_count": len(tipo_added),
+                "removed_count": len(tipo_removed),
+                "modified_count": len(tipo_modified)
+            }
+            
+            comparison_by_type[tipo] = {
+                "comparison_table": tipo_table,
+                "summary": summary,
+                "diff_categories": {
+                    "added": tipo_added,
+                    "removed": tipo_removed,
+                    "modified": tipo_modified
+                }
+            }
+        
+        # Organizar por usina
+        comparison_by_usina = {}
+        all_usinas = set()
+        
+        # Coletar todas as usinas
+        for record in dados_dec + dados_jan:
+            codigo = record.get("codigo_usina")
+            if codigo is not None:
+                all_usinas.add(codigo)
+        
+        # Processar cada usina
+        for codigo_usina in sorted(all_usinas):
+            usina_records_dec = [r for r in dados_dec if r.get("codigo_usina") == codigo_usina]
+            usina_records_jan = [r for r in dados_jan if r.get("codigo_usina") == codigo_usina]
+            
+            # Obter nome da usina
+            nome_usina = None
+            for record in usina_records_dec + usina_records_jan:
+                nome = record.get("nome_usina")
+                if nome:
+                    nome_usina = nome
+                    break
+            if not nome_usina:
+                nome_usina = f"Usina {codigo_usina}"
+            
+            # Indexar registros desta usina
+            usina_dec_indexed = {k: v for k, v in dec_indexed.items() if v.get("codigo_usina") == codigo_usina}
+            usina_jan_indexed = {k: v for k, v in jan_indexed.items() if v.get("codigo_usina") == codigo_usina}
+            
+            # Construir tabela comparativa para esta usina
+            usina_table = []
+            usina_added = []
+            usina_removed = []
+            usina_modified = []
+            
+            all_usina_keys = set(usina_dec_indexed.keys()) | set(usina_jan_indexed.keys())
+            
+            for key in sorted(all_usina_keys):
+                dec_record = usina_dec_indexed.get(key)
+                jan_record = usina_jan_indexed.get(key)
+                
+                tipo = dec_record.get("tipo") if dec_record else (jan_record.get("tipo") if jan_record else None)
+                data_inicio = dec_record.get("data_inicio") if dec_record else (jan_record.get("data_inicio") if jan_record else None)
+                data_fim = dec_record.get("data_fim") if dec_record else (jan_record.get("data_fim") if jan_record else None)
+                
+                modificacao_dec = dec_record.get("modificacao") if dec_record else None
+                modificacao_jan = jan_record.get("modificacao") if jan_record else None
+                
+                # Formatar datas
+                data_inicio_str = self._format_date(data_inicio)
+                data_fim_str = self._format_date(data_fim)
+                
+                # Calcular diferenças
+                difference = None
+                difference_percent = None
+                status = "unchanged"
+                
+                if dec_record and not jan_record:
+                    status = "removed"
+                    usina_removed.append(dec_record)
+                elif jan_record and not dec_record:
+                    status = "added"
+                    usina_added.append(jan_record)
+                elif dec_record and jan_record:
+                    if self._records_different(dec_record, jan_record):
+                        status = "modified"
+                        usina_modified.append({
+                            "original": dec_record,
+                            "modified": jan_record
+                        })
+                        
+                        # Calcular diferenças numéricas
+                        if modificacao_dec is not None and modificacao_jan is not None:
+                            try:
+                                diff_val = float(modificacao_jan) - float(modificacao_dec)
+                                difference = round(diff_val, 2)
+                                if float(modificacao_dec) != 0:
+                                    diff_pct = (diff_val / float(modificacao_dec)) * 100
+                                    difference_percent = round(diff_pct, 2)
+                                else:
+                                    difference_percent = 0.0
+                            except (ValueError, TypeError):
+                                pass
+                
+                # Adicionar à tabela
+                usina_table.append({
+                    "tipo": tipo,
+                    "data_inicio": data_inicio_str,
+                    "data_fim": data_fim_str,
+                    "deck_1_value": self._safe_float(modificacao_dec),
+                    "deck_2_value": self._safe_float(modificacao_jan),
+                    "difference": difference,
+                    "difference_percent": difference_percent,
+                    "status": status
+                })
+            
+            # Resumo por usina
+            summary = {
+                "total_modificacoes_dezembro": len(usina_records_dec),
+                "total_modificacoes_janeiro": len(usina_records_jan),
+                "novas_modificacoes": len(usina_added),
+                "modificacoes_removidas": len(usina_removed),
+                "modificacoes_alteradas": len(usina_modified)
+            }
+            
+            comparison_by_usina[str(codigo_usina)] = {
+                "codigo_usina": codigo_usina,
+                "nome_usina": nome_usina,
+                "comparison_table": usina_table,
+                "summary": summary,
+                "modificacoes": {
+                    "added": usina_added,
+                    "removed": usina_removed,
+                    "modified": usina_modified
+                }
+            }
+        
+        # Calcular totais gerais
+        total_added = sum(len(v["diff_categories"]["added"]) for v in comparison_by_type.values())
+        total_removed = sum(len(v["diff_categories"]["removed"]) for v in comparison_by_type.values())
+        total_modified = sum(len(v["diff_categories"]["modified"]) for v in comparison_by_type.values())
         
         return {
-            "comparison_table": None,  # Não usar tabela padrão
-            "chart_data": None,  # Sem gráfico
-            "visualization_type": "diff_list",
-            "diff_categories": {
-                "added": added,
-                "removed": removed,
-                "modified": modified
-            },
+            "comparison_table": None,  # Não usar tabela padrão única
+            "chart_data": None,  # Sem gráficos
+            "visualization_type": "expt_hierarchical",
+            "comparison_by_type": comparison_by_type,
+            "comparison_by_usina": comparison_by_usina,
             "llm_context": {
                 "tool_type": "expt",
-                "total_added": len(added),
-                "total_removed": len(removed),
-                "total_modified": len(modified)
+                "total_added": total_added,
+                "total_removed": total_removed,
+                "total_modified": total_modified,
+                "tipos_afetados": list(all_types),
+                "usinas_afetadas": len(all_usinas),
+                "total_tipos": len(all_types),
+                "total_usinas": len(all_usinas)
             }
         }
     
@@ -198,7 +409,7 @@ class DiffComparisonFormatter(ComparisonFormatter):
     def _records_different(self, record1: Dict, record2: Dict) -> bool:
         """Verifica se dois registros são diferentes."""
         # Comparar campos numéricos relevantes
-        numeric_fields = ["valor", "volume", "vazao", "nivel", "custo", "potencia"]
+        numeric_fields = ["valor", "volume", "vazao", "nivel", "custo", "potencia", "modificacao"]
         
         for field in numeric_fields:
             val1 = record1.get(field)
@@ -212,4 +423,36 @@ class DiffComparisonFormatter(ComparisonFormatter):
                     pass
         
         return False
+    
+    def _format_date(self, date_value: Any) -> Optional[str]:
+        """Formata uma data para string legível."""
+        if date_value is None:
+            return None
+        
+        try:
+            # Se for string ISO
+            if isinstance(date_value, str):
+                if 'T' in date_value:
+                    return date_value.split('T')[0]
+                return date_value
+            
+            # Se for objeto datetime
+            if hasattr(date_value, 'date'):
+                return date_value.date().isoformat()
+            if hasattr(date_value, 'isoformat'):
+                return date_value.isoformat().split('T')[0]
+            
+            return str(date_value)
+        except Exception:
+            return str(date_value) if date_value else None
+    
+    def _safe_float(self, value: Any) -> Optional[float]:
+        """Converte um valor para float de forma segura."""
+        if value is None:
+            return None
+        
+        try:
+            return round(float(value), 2)
+        except (ValueError, TypeError):
+            return None
 

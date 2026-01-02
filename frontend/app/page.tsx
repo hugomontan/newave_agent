@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
-import { FileText, GitCompare, ArrowRight } from "lucide-react";
+import { FileText, GitCompare, ArrowRight, Brain } from "lucide-react";
 
 export default function Home() {
   const router = useRouter();
@@ -41,7 +41,7 @@ export default function Home() {
             </p>
           </motion.div>
 
-          <div className="grid md:grid-cols-2 gap-6">
+          <div className="grid md:grid-cols-3 gap-6">
             {/* Análise Single Deck */}
             <motion.div
               initial={{ opacity: 0, x: -20 }}
@@ -117,6 +117,49 @@ export default function Home() {
                       variant="default"
                     >
                       Acessar Análise Comparativa
+                      <ArrowRight className="w-4 h-4 ml-2" />
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+
+            {/* LLM Mode */}
+            <motion.div
+              initial={{ opacity: 0, x: 0 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.5, delay: 0.4 }}
+            >
+              <Card className="h-full hover:shadow-lg transition-shadow cursor-pointer border-2 hover:border-primary/50">
+                <CardHeader>
+                  <div className="flex items-center space-x-3 mb-2">
+                    <div className="p-3 bg-primary/10 rounded-lg">
+                      <Brain className="w-6 h-6 text-primary" />
+                    </div>
+                    <CardTitle className="text-2xl">LLM Mode</CardTitle>
+                  </div>
+                  <CardDescription className="text-base">
+                    Modo avançado com RAG completo e LLM Planner. Mais liberdade para o LLM codar e entender o projeto, sem usar tools pré-programadas.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium text-foreground">Características:</p>
+                      <ul className="text-sm text-muted-foreground space-y-1">
+                        <li>• RAG completo em toda documentação</li>
+                        <li>• LLM Planner gera instruções detalhadas</li>
+                        <li>• Coder com mais contexto e liberdade</li>
+                        <li>• Sem tools pré-programadas</li>
+                      </ul>
+                    </div>
+                    <Button
+                      onClick={() => router.push("/llm-mode")}
+                      className="w-full"
+                      size="lg"
+                      variant="outline"
+                    >
+                      Acessar LLM Mode
                       <ArrowRight className="w-4 h-4 ml-2" />
                     </Button>
                   </div>

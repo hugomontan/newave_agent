@@ -39,4 +39,7 @@ class AgentState(TypedDict):
     comparison_data: Optional[dict]  # Dados de comparação multi-deck
     
     # Modo de análise
-    analysis_mode: str  # "single" ou "comparison"
+    analysis_mode: str  # "single", "comparison" ou "llm"
+    
+    # Campos para LLM Mode
+    llm_instructions: Optional[str]  # Instruções detalhadas geradas pelo LLM Planner
