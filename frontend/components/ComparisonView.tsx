@@ -29,6 +29,23 @@ interface ComparisonViewProps {
         data: (number | null)[];
       }>;
     } | null;
+    charts_by_par?: Record<string, {
+      par: string;
+      sentido: string;
+      chart_data: {
+        labels: string[];
+        datasets: Array<{
+          label: string;
+          data: (number | null)[];
+        }>;
+      } | null;
+      chart_config?: {
+        type: string;
+        title: string;
+        x_axis: string;
+        y_axis: string;
+      };
+    }>;
     differences?: Array<{
       field: string;
       period: string;
@@ -49,6 +66,9 @@ interface ComparisonViewProps {
       difference?: number | null;
       diferenca_percent?: number | null;
       difference_percent?: number | null;
+      par_key?: string;
+      par?: string;
+      sentido?: string;
     }>;
     visualization_type?: string;
     comparison_by_type?: Record<string, unknown>;
@@ -57,7 +77,7 @@ interface ComparisonViewProps {
 }
 
 export function ComparisonView({ comparison }: ComparisonViewProps) {
-  const { deck_1, deck_2, chart_data, differences, comparison_table, visualization_type, comparison_by_type, comparison_by_usina } = comparison;
+  const { deck_1, deck_2, chart_data, charts_by_par, differences, comparison_table, visualization_type, comparison_by_type, comparison_by_usina } = comparison;
   
   // Verificar se é formato hierárquico do EXPT
   const isExptHierarchical = visualization_type === "expt_hierarchical" && 
@@ -94,33 +114,58 @@ export function ComparisonView({ comparison }: ComparisonViewProps) {
     }
   }, [comparison_table]);
   
-  // Mapear comparison_table para formato de differences
-  const mappedDifferences = comparison_table 
-    ? comparison_table.map((row) => {
-        // Priorizar "ano" se disponível (para Carga Mensal), senão usar "data" ou "classe"
-        const periodValue = row.ano !== undefined ? String(row.ano) : 
-                           (row.data !== undefined ? String(row.data) : 
-                           (row.classe !== undefined ? String(row.classe) : ""));
-        
-        // Determinar o tipo baseado no formato do período
-        const isCargaMensal = periodValue.includes("/") || periodValue.match(/\d{4}-\d{2}/); // Formato "Dez/2025" ou "2025-12"
-        // Para Carga Adicional, usar label apropriado
-        const isCargaAdicional = periodValue.includes("/") && comparison_table && comparison_table.length > 0;
-        const fieldLabel = isCargaMensal || isCargaAdicional ? (isCargaAdicional ? "Carga Adicional" : "Carga Mensal") : (row.classe ? String(row.classe) : "CVU");
-        
-        const deck1Value = row.deck_1 ?? row.deck_1_value ?? null;
-        const deck2Value = row.deck_2 ?? row.deck_2_value ?? null;
-        
-        return {
-          field: fieldLabel,
-          period: periodValue,
-          deck_1_value: deck1Value !== null && deck1Value !== undefined ? Number(deck1Value) : 0,
-          deck_2_value: deck2Value !== null && deck2Value !== undefined ? Number(deck2Value) : 0,
-          difference: row.diferenca ?? row.difference ?? 0,
-          difference_percent: row.diferenca_percent ?? row.difference_percent ?? 0,
+  // Função para mapear row para formato de differences
+  const mapRowToDifference = (row: typeof comparison_table[0]) => {
+    // Priorizar "ano" se disponível (para Carga Mensal), senão usar "data" ou "classe"
+    const periodValue = row.ano !== undefined ? String(row.ano) : 
+                       (row.data !== undefined ? String(row.data) : 
+                       (row.classe !== undefined ? String(row.classe) : ""));
+    
+    // Determinar o tipo baseado no formato do período
+    const isCargaMensal = periodValue.includes("/") || periodValue.match(/\d{4}-\d{2}/); // Formato "Dez/2025" ou "2025-12"
+    // Para Carga Adicional, usar label apropriado
+    const isCargaAdicional = periodValue.includes("/") && comparison_table && comparison_table.length > 0;
+    const fieldLabel = isCargaMensal || isCargaAdicional ? (isCargaAdicional ? "Carga Adicional" : "Carga Mensal") : (row.classe ? String(row.classe) : "CVU");
+    
+    const deck1Value = row.deck_1 ?? row.deck_1_value ?? null;
+    const deck2Value = row.deck_2 ?? row.deck_2_value ?? null;
+    
+    return {
+      field: fieldLabel,
+      period: periodValue,
+      deck_1_value: deck1Value !== null && deck1Value !== undefined ? Number(deck1Value) : 0,
+      deck_2_value: deck2Value !== null && deck2Value !== undefined ? Number(deck2Value) : 0,
+      difference: row.diferenca ?? row.difference ?? 0,
+      difference_percent: row.diferenca_percent ?? row.difference_percent ?? 0,
+    };
+  };
+
+  // Agrupar por par_key se existir (para LimitesIntercambioTool)
+  const groupedByPar = React.useMemo(() => {
+    if (!comparison_table || comparison_table.length === 0) return null;
+    if (!comparison_table[0]?.par_key) return null;
+    
+    const grouped: Record<string, { par: string; sentido: string; rows: typeof comparison_table }> = {};
+    comparison_table.forEach((row) => {
+      const key = row.par_key!;
+      if (!grouped[key]) {
+        grouped[key] = {
+          par: row.par || "",
+          sentido: row.sentido || "",
+          rows: []
         };
-      })
-    : differences || [];
+      }
+      grouped[key].rows.push(row);
+    });
+    return grouped;
+  }, [comparison_table]);
+
+  // Mapear comparison_table para formato de differences (se não agrupado)
+  const mappedDifferences = groupedByPar 
+    ? null  // Se agrupado, não usar mappedDifferences
+    : (comparison_table 
+        ? comparison_table.map(mapRowToDifference)
+        : differences || []);
   
   // Debug: verificar mappedDifferences
   React.useEffect(() => {
@@ -128,7 +173,10 @@ export function ComparisonView({ comparison }: ComparisonViewProps) {
     if (mappedDifferences && mappedDifferences.length > 0) {
       console.log("[ComparisonView] primeiro mappedDifference:", mappedDifferences[0]);
     }
-  }, [mappedDifferences]);
+    if (groupedByPar) {
+      console.log("[ComparisonView] groupedByPar:", Object.keys(groupedByPar).length, "pares");
+    }
+  }, [mappedDifferences, groupedByPar]);
 
   return (
     <motion.div
@@ -136,17 +184,62 @@ export function ComparisonView({ comparison }: ComparisonViewProps) {
       animate={{ opacity: 1, y: 0 }}
       className="w-full space-y-6 mt-4"
     >
-      {/* Tabela de Comparação */}
-      {mappedDifferences.length > 0 && (
-        <DifferencesTable 
-          differences={mappedDifferences}
-          deck1Name={deck_1.name}
-          deck2Name={deck_2.name}
-        />
+      {/* Tabelas e Gráficos de Comparação */}
+      {groupedByPar && charts_by_par ? (
+        // Renderizar tabela e gráfico juntos para cada par (intercalados)
+        Object.entries(groupedByPar).map(([key, group]) => {
+          const mappedRows = group.rows.map(mapRowToDifference);
+          const parChart = charts_by_par[key];
+          const hasChartData = parChart && parChart.chart_data && parChart.chart_data.labels && parChart.chart_data.labels.length > 0;
+          
+          return (
+            <div key={key} className="space-y-4">
+              <div className="space-y-2">
+                <h4 className="text-lg font-semibold text-card-foreground">
+                  {group.par} - {group.sentido}
+                </h4>
+                <DifferencesTable 
+                  differences={mappedRows}
+                  deck1Name={deck_1.name}
+                  deck2Name={deck_2.name}
+                />
+              </div>
+              {hasChartData && (
+                <ComparisonChart data={parChart.chart_data} />
+              )}
+            </div>
+          );
+        })
+      ) : groupedByPar ? (
+        // Renderizar apenas tabelas agrupadas por par (sem gráficos por par)
+        Object.entries(groupedByPar).map(([key, group]) => {
+          const mappedRows = group.rows.map(mapRowToDifference);
+          return (
+            <div key={key} className="space-y-2">
+              <h4 className="text-lg font-semibold text-card-foreground">
+                {group.par} - {group.sentido}
+              </h4>
+              <DifferencesTable 
+                differences={mappedRows}
+                deck1Name={deck_1.name}
+                deck2Name={deck_2.name}
+              />
+            </div>
+          );
+        })
+      ) : (
+        // Renderizar tabela única (comportamento padrão)
+        mappedDifferences && mappedDifferences.length > 0 && (
+          <DifferencesTable 
+            differences={mappedDifferences}
+            deck1Name={deck_1.name}
+            deck2Name={deck_2.name}
+          />
+        )
       )}
 
-      {/* Gráfico Comparativo */}
-      {(() => {
+      {/* Gráfico único (apenas se não houver charts_by_par) */}
+      {!charts_by_par && (() => {
         const hasChartData = chart_data && chart_data.labels && chart_data.labels.length > 0 && chart_data.datasets && chart_data.datasets.length > 0;
         console.log("[ComparisonView] Renderizando gráfico - hasChartData:", hasChartData);
         console.log("[ComparisonView] chart_data:", chart_data);

@@ -64,6 +64,30 @@ def format_carga_simple_comparison(
     return f"## Comparação de {tool_label}\n"
 
 
+def format_limites_intercambio_simple_comparison(
+    comparison_table: List[Dict[str, Any]],
+    deck_1_name: str,
+    deck_2_name: str
+) -> str:
+    """
+    Formata resposta simples para LimitesIntercambioTool: apenas título.
+    A tabela e os gráficos são renderizados pelo componente ComparisonView no frontend.
+    
+    Args:
+        comparison_table: Lista de dicionários com dados da comparação
+        deck_1_name: Nome do deck 1
+        deck_2_name: Nome do deck 2
+        
+    Returns:
+        String markdown com apenas o título (sem tabela, pois será renderizada pelo componente)
+    """
+    if not comparison_table:
+        return "## Comparação de Limites de Intercâmbio\n\nNenhum dado disponível para comparação."
+    
+    # Apenas título - a tabela será renderizada pelo componente ComparisonView
+    return "## Comparação de Limites de Intercâmbio\n"
+
+
 def generate_fallback_comparison_response(
     query: str,
     deck_1_name: str,

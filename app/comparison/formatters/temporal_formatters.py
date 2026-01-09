@@ -1217,3 +1217,277 @@ class UsinasNaoSimuladasFormatter(ComparisonFormatter):
         except (ValueError, TypeError):
             return None
 
+
+class LimitesIntercambioComparisonFormatter(ComparisonFormatter):
+    """
+    Formatador para LimitesIntercambioTool.
+    Visualização: Tabelas comparativas separadas por par de submercados.
+    Apenas linhas com diferenças são incluídas.
+    """
+    
+    def can_format(self, tool_name: str, result_structure: Dict[str, Any]) -> bool:
+        return tool_name == "LimitesIntercambioTool" and (
+            "data" in result_structure or "stats_por_par" in result_structure
+        )
+    
+    def get_priority(self) -> int:
+        return 85  # Prioridade alta - específico para limites de intercâmbio
+    
+    def format_comparison(
+        self,
+        result_dec: Dict[str, Any],
+        result_jan: Dict[str, Any],
+        tool_name: str,
+        query: str,
+        deck_1_name: Optional[str] = None,
+        deck_2_name: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Formata comparação de limites de intercâmbio.
+        Agrupa por par de submercados e sentido, mostrando apenas diferenças.
+        
+        Args:
+            result_dec: Resultado completo da tool para deck 1
+            result_jan: Resultado completo da tool para deck 2
+            tool_name: Nome da tool usada
+            query: Query original do usuário
+            deck_1_name: Nome do deck 1 (opcional, padrão: "Deck 1")
+            deck_2_name: Nome do deck 2 (opcional, padrão: "Deck 2")
+        """
+        # Usar nomes fornecidos ou fallback genérico
+        deck_1_label = deck_1_name or "Deck 1"
+        deck_2_label = deck_2_name or "Deck 2"
+        
+        data_dec = result_dec.get("data", [])
+        data_jan = result_jan.get("data", [])
+        
+        if not data_dec and not data_jan:
+            return {
+                "comparison_table": [],
+                "chart_data": None,
+                "visualization_type": "table_with_line_chart"
+            }
+        
+        # Indexar dados por (par, sentido, período)
+        dec_indexed = self._index_by_par_sentido_periodo(data_dec)
+        jan_indexed = self._index_by_par_sentido_periodo(data_jan)
+        
+        # Obter todos os pares únicos
+        all_pares = set(dec_indexed.keys()) | set(jan_indexed.keys())
+        
+        # Construir tabela comparativa (apenas linhas com diferenças) e charts_by_par
+        comparison_table = []
+        charts_by_par = {}
+        
+        for par_key in sorted(all_pares):
+            dec_records = dec_indexed.get(par_key, {})
+            jan_records = jan_indexed.get(par_key, {})
+            
+            # Extrair informações do par_key: "sub_de-sub_para-sentido"
+            parts = par_key.split("-")
+            if len(parts) >= 3:
+                sub_de = parts[0]
+                sub_para = parts[1]
+                sentido = int(parts[2])
+                
+                # Obter nomes dos submercados
+                nome_de = self._get_submercado_nome(sub_de, result_dec, result_jan)
+                nome_para = self._get_submercado_nome(sub_para, result_dec, result_jan)
+                sentido_label = "Mínimo Obrigatório" if sentido == 1 else "Máximo"
+                par_label = f"{nome_de} → {nome_para}"
+                
+                # Obter todos os períodos únicos para este par
+                all_periodos = sorted(set(dec_records.keys()) | set(jan_records.keys()))
+                
+                # Construir dados do gráfico para este par (incluir todos os períodos, não apenas diferenças)
+                par_dec_values = []
+                par_jan_values = []
+                
+                for periodo in all_periodos:
+                    dec_record = dec_records.get(periodo, {})
+                    jan_record = jan_records.get(periodo, {})
+                    
+                    val_dec = self._sanitize_number(dec_record.get("valor"))
+                    val_jan = self._sanitize_number(jan_record.get("valor"))
+                    
+                    # Dados para gráfico (todos os períodos)
+                    par_dec_values.append(self._safe_round(val_dec))
+                    par_jan_values.append(self._safe_round(val_jan))
+                    
+                    # Calcular diferença para tabela (apenas diferenças)
+                    diff = None
+                    diff_percent = None
+                    
+                    if val_dec is not None and val_jan is not None:
+                        diff = val_jan - val_dec
+                        # Incluir apenas se houver diferença
+                        if diff != 0:
+                            diff_percent = ((val_jan - val_dec) / val_dec * 100) if val_dec != 0 else None
+                    elif val_jan is not None:
+                        # Apenas no deck 2 (adicionado)
+                        diff = val_jan
+                        diff_percent = None
+                    elif val_dec is not None:
+                        # Apenas no deck 1 (removido)
+                        diff = -val_dec
+                        diff_percent = None
+                    
+                    # Incluir apenas linhas com diferenças na tabela
+                    if diff is not None and diff != 0:
+                        # Formatar período como YYYY-MM
+                        periodo_formatted = periodo  # Já vem no formato YYYY-MM
+                        
+                        comparison_table.append({
+                            "data": periodo_formatted,
+                            "par_key": par_key,
+                            "par": par_label,
+                            "sentido": sentido_label,
+                            "deck_1": self._safe_round(val_dec),
+                            "deck_2": self._safe_round(val_jan),
+                            "diferenca": self._safe_round(diff),
+                            "diferenca_percent": self._safe_round(diff_percent) if diff_percent is not None else None
+                        })
+                
+                # Criar chart_data para este par
+                par_chart_data = {
+                    "labels": all_periodos,
+                    "datasets": [
+                        {
+                            "label": deck_1_label,
+                            "data": par_dec_values
+                        },
+                        {
+                            "label": deck_2_label,
+                            "data": par_jan_values
+                        }
+                    ]
+                } if all_periodos else None
+                
+                charts_by_par[par_key] = {
+                    "par": par_label,
+                    "sentido": sentido_label,
+                    "chart_data": par_chart_data,
+                    "chart_config": {
+                        "type": "line",
+                        "title": f"{par_label} - {sentido_label}",
+                        "x_axis": "Período",
+                        "y_axis": "Limite (MW)"
+                    }
+                }
+        
+        # Resumo
+        pares_afetados = len(set(row["par_key"] for row in comparison_table)) if comparison_table else 0
+        
+        return {
+            "comparison_table": comparison_table,
+            "chart_data": None,  # Não usar chart_data único, usar charts_by_par
+            "charts_by_par": charts_by_par,
+            "visualization_type": "limites_intercambio",
+            "summary": {
+                "total_differences": len(comparison_table),
+                "pares_afetados": pares_afetados
+            }
+        }
+    
+    def _index_by_par_sentido_periodo(self, data: List[Dict]) -> Dict[str, Dict[str, Dict]]:
+        """
+        Indexa dados por (submercado_de, submercado_para, sentido) e depois por período.
+        Retorna: {par_key: {periodo: record}}
+        """
+        indexed = {}
+        
+        for record in data:
+            sub_de = record.get("submercado_de")
+            sub_para = record.get("submercado_para")
+            sentido = record.get("sentido")
+            
+            if sub_de is not None and sub_para is not None and sentido is not None:
+                par_key = f"{sub_de}-{sub_para}-{sentido}"
+                
+                periodo = self._get_period_key(record)
+                if periodo:
+                    if par_key not in indexed:
+                        indexed[par_key] = {}
+                    indexed[par_key][periodo] = record
+        
+        return indexed
+    
+    def _get_period_key(self, record: Dict) -> Optional[str]:
+        """Obtém chave de período no formato YYYY-MM."""
+        # Tentar ano e mes primeiro
+        ano = record.get("ano")
+        mes = record.get("mes")
+        
+        if ano is not None and mes is not None:
+            try:
+                ano_int = int(float(ano)) if isinstance(ano, (int, float, str)) else None
+                mes_int = int(float(mes)) if isinstance(mes, (int, float, str)) else None
+                if ano_int is not None and mes_int is not None:
+                    return f"{ano_int:04d}-{mes_int:02d}"
+            except (ValueError, TypeError):
+                pass
+        
+        # Tentar campo data
+        data = record.get("data")
+        if data:
+            if isinstance(data, str):
+                # Formato ISO: "2025-01-01T00:00:00" ou "2025-01-01"
+                if len(data) >= 7 and "-" in data:
+                    return data[:7]  # YYYY-MM
+            elif hasattr(data, 'year') and hasattr(data, 'month'):
+                try:
+                    return f"{data.year:04d}-{data.month:02d}"
+                except (AttributeError, ValueError):
+                    pass
+        
+        # Tentar ano_mes se existir
+        ano_mes = record.get("ano_mes")
+        if ano_mes:
+            if isinstance(ano_mes, str) and len(ano_mes) >= 7:
+                return ano_mes[:7]  # YYYY-MM
+        
+        return None
+    
+    def _get_submercado_nome(self, codigo: str, result_dec: Dict, result_jan: Dict) -> str:
+        """Obtém nome do submercado a partir do código."""
+        # Tentar obter dos dados
+        for result in [result_dec, result_jan]:
+            data = result.get("data", [])
+            for record in data:
+                if str(record.get("submercado_de")) == str(codigo):
+                    nome = record.get("nome_submercado_de")
+                    if nome:
+                        return nome
+                if str(record.get("submercado_para")) == str(codigo):
+                    nome = record.get("nome_submercado_para")
+                    if nome:
+                        return nome
+        
+        # Fallback: usar código
+        return f"Subsistema {codigo}"
+    
+    def _safe_round(self, value) -> Optional[float]:
+        """Arredonda valor com tratamento de NaN/None."""
+        if value is None:
+            return None
+        try:
+            rounded = round(value, 2)
+            # Verificar se o resultado é NaN ou Inf
+            if math.isnan(rounded) or math.isinf(rounded):
+                return None
+            return rounded
+        except (ValueError, TypeError):
+            return None
+    
+    def _sanitize_number(self, value) -> Optional[float]:
+        """Sanitiza valor numérico."""
+        if value is None:
+            return None
+        try:
+            float_val = float(value)
+            if math.isnan(float_val) or math.isinf(float_val):
+                return None
+            return float_val
+        except (ValueError, TypeError):
+            return None
+

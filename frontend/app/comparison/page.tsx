@@ -64,6 +64,23 @@ interface Message {
         data: (number | null)[];
       }>;
     } | null;
+    charts_by_par?: Record<string, {
+      par: string;
+      sentido: string;
+      chart_data: {
+        labels: string[];
+        datasets: Array<{
+          label: string;
+          data: (number | null)[];
+        }>;
+      } | null;
+      chart_config?: {
+        type: string;
+        title: string;
+        x_axis: string;
+        y_axis: string;
+      };
+    }>;
     differences?: Array<{
       field: string;
       period: string;

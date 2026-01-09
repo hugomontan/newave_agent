@@ -6,6 +6,7 @@ from app.comparison.formatters.temporal_formatters import (
     CargaComparisonFormatter,
     VazoesComparisonFormatter,
     UsinasNaoSimuladasFormatter,
+    LimitesIntercambioComparisonFormatter,
 )
 from app.comparison.formatters.diff_formatters import (
     DiffComparisonFormatter,
@@ -25,6 +26,7 @@ __all__ = [
     'CargaComparisonFormatter',
     'VazoesComparisonFormatter',
     'UsinasNaoSimuladasFormatter',
+    'LimitesIntercambioComparisonFormatter',
     'DiffComparisonFormatter',
     'CadastroComparisonFormatter',
     'TableComparisonFormatter',

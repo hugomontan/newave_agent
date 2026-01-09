@@ -7,6 +7,7 @@ from app.config import safe_print
 from .simple_formatters import (
     format_clast_simple_comparison,
     format_carga_simple_comparison,
+    format_limites_intercambio_simple_comparison,
     generate_fallback_comparison_response
 )
 from .llm_formatters import (
@@ -80,12 +81,23 @@ def format_comparison_response(
     deck_1_full = tool_result.get("deck_1", {}).get("full_result", {})
     deck_2_full = tool_result.get("deck_2", {}).get("full_result", {})
     
-    formatted = formatter.format_comparison(
-        deck_1_full,
-        deck_2_full,
-        tool_used,
-        query
-    )
+    # Passar nomes dos decks se o formatter aceitar (usando inspect para verificar assinatura)
+    import inspect
+    sig = inspect.signature(formatter.format_comparison)
+    format_kwargs = {
+        "result_dec": deck_1_full,
+        "result_jan": deck_2_full,
+        "tool_name": tool_used,
+        "query": query
+    }
+    
+    # Se o formatter aceita deck_1_name e deck_2_name, passar
+    if "deck_1_name" in sig.parameters:
+        format_kwargs["deck_1_name"] = deck_1_name
+    if "deck_2_name" in sig.parameters:
+        format_kwargs["deck_2_name"] = deck_2_name
+    
+    formatted = formatter.format_comparison(**format_kwargs)
     
     visualization_type = formatted.get("visualization_type", "llm_free")
     safe_print(f"[INTERPRETER] [COMPARISON] Visualization type: {visualization_type}")
@@ -107,8 +119,10 @@ def format_comparison_response(
         comparison_data["diff_categories"] = formatted.get("diff_categories")
     if formatted.get("cards"):
         comparison_data["cards"] = formatted.get("cards")
+    if formatted.get("charts_by_par"):
+        comparison_data["charts_by_par"] = formatted.get("charts_by_par")
     
-    # Para ClastValoresTool, CargaMensalTool e CadicTool, retornar apenas tabela e gráfico (sem LLM)
+    # Para ClastValoresTool, CargaMensalTool, CadicTool e LimitesIntercambioTool, retornar apenas tabela e gráfico (sem LLM)
     if tool_used == "ClastValoresTool":
         safe_print(f"[INTERPRETER] [COMPARISON] ClastValoresTool - formato simplificado (apenas tabela e gráfico)")
         safe_print(f"[INTERPRETER] [COMPARISON] chart_data presente: {formatted.get('chart_data') is not None}")
@@ -132,6 +146,16 @@ def format_comparison_response(
             deck_1_name,
             deck_2_name,
             tool_label
+        )
+    elif tool_used == "LimitesIntercambioTool":
+        safe_print(f"[INTERPRETER] [COMPARISON] LimitesIntercambioTool - formato simplificado (apenas tabela e gráfico)")
+        safe_print(f"[INTERPRETER] [COMPARISON] charts_by_par presente: {formatted.get('charts_by_par') is not None}")
+        if formatted.get('charts_by_par'):
+            safe_print(f"[INTERPRETER] [COMPARISON] charts_by_par: {len(formatted.get('charts_by_par', {}))} pares")
+        final_response = format_limites_intercambio_simple_comparison(
+            formatted.get("comparison_table", []),
+            deck_1_name,
+            deck_2_name
         )
     else:
         # Gerar resposta do LLM baseada no tipo de visualizacao
