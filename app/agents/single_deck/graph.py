@@ -295,7 +295,10 @@ def get_initial_state(query: str, deck_path: str, llm_mode: bool = False) -> dic
         # Campos para Disambiguation
         "disambiguation": None,
         # Campos para LLM Mode
-        "llm_instructions": None if not llm_mode else ""  # Será preenchido pelo LLM Planner
+        "llm_instructions": None if not llm_mode else "",  # Será preenchido pelo LLM Planner
+        # Campos para escolha do usuário (requires_user_choice)
+        "requires_user_choice": None,
+        "alternative_type": None
     }
 
 

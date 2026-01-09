@@ -714,6 +714,18 @@ class CargaComparisonFormatter(ComparisonFormatter):
             # Formatar label do período (ex: "2025-12" -> "Dez/2025")
             periodo_label = self._format_period_label(periodo_key)
             
+            # Extrair ano e mês do periodo_key (formato "2025-12")
+            ano = None
+            mes = None
+            if periodo_key and "-" in periodo_key:
+                try:
+                    parts = periodo_key.split("-")
+                    if len(parts) >= 2:
+                        ano = int(parts[0])
+                        mes = int(parts[1])
+                except (ValueError, TypeError):
+                    pass
+            
             # Função auxiliar para arredondar e garantir que NaN vire None
             def safe_round(value):
                 if value is None:
@@ -730,6 +742,8 @@ class CargaComparisonFormatter(ComparisonFormatter):
             # Adicionar à tabela (mesmo formato do CVU)
             table_row = {
                 "data": periodo_label,  # Coluna "Data" com ano-mês formatado (ex: "Dez/2025")
+                "ano": ano,  # Ano extraído do periodo_key (para detecção no frontend)
+                "mes": mes,  # Mês extraído do periodo_key (para detecção no frontend)
                 "deck_1": safe_round(val_dec),
                 "deck_2": safe_round(val_jan),
             }

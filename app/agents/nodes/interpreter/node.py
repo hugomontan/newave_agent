@@ -43,8 +43,21 @@ def interpreter_node(state: AgentState) -> dict:
             safe_print(f"[INTERPRETER]   Data count: {len(tool_result.get('data', [])) if tool_result.get('data') else 0}")
             query = state.get("query", "")
             safe_print(f"[INTERPRETER]   Query original: {query[:100]}")
+            
+            # Verificar se tool_result tem requires_user_choice antes de formatar
+            if tool_result.get("requires_user_choice"):
+                safe_print(f"[INTERPRETER] tool_result tem requires_user_choice: {tool_result.get('requires_user_choice')}, alternative_type: {tool_result.get('alternative_type')}")
+            
             result = format_tool_response_with_llm(tool_result, tool_used, query)
             safe_print(f"[INTERPRETER]   Resposta gerada: {len(result.get('final_response', ''))} caracteres")
+            safe_print(f"[INTERPRETER]   result keys: {list(result.keys())}")
+            
+            # Verificar se result tem requires_user_choice após formatar
+            if result.get("requires_user_choice"):
+                safe_print(f"[INTERPRETER] ✅ result tem requires_user_choice: {result.get('requires_user_choice')}, alternative_type: {result.get('alternative_type')}")
+            else:
+                safe_print(f"[INTERPRETER] result NÃO tem requires_user_choice (keys disponíveis: {list(result.keys())})")
+            
             return result
         
         # Verificar se há disambiguation (apenas se não há tool_result)

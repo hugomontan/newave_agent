@@ -72,6 +72,8 @@ interface Message {
     options: Array<{label: string; query: string; tool_name: string}>;
     original_query: string;
   };
+  requires_user_choice?: boolean;
+  alternative_type?: string;
 }
 
 interface ChatMessageProps {
@@ -82,6 +84,16 @@ interface ChatMessageProps {
 export function ChatMessage({ message, onOptionClick }: ChatMessageProps) {
   const isUser = message.role === "user";
   const [copied, setCopied] = useState(false);
+  
+  // Debug: verificar se requires_user_choice está presente
+  console.log("[ChatMessage] Renderizando mensagem:", {
+    requires_user_choice: message.requires_user_choice,
+    alternative_type: message.alternative_type,
+    has_requires_user_choice: !!message.requires_user_choice,
+    has_alternative_type: !!message.alternative_type,
+    will_render_buttons: !!(message.requires_user_choice && message.alternative_type),
+    content_preview: message.content?.substring(0, 100)
+  });
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -166,6 +178,75 @@ export function ChatMessage({ message, onOptionClick }: ChatMessageProps) {
                   </Badge>
                 )}
 
+                {/* User Choice Options (requires_user_choice) */}
+                {(() => {
+                  const shouldRender = message.requires_user_choice && message.alternative_type;
+                  console.log("[ChatMessage] Verificando renderização de botões:", {
+                    requires_user_choice: message.requires_user_choice,
+                    alternative_type: message.alternative_type,
+                    shouldRender
+                  });
+                  
+                  if (!shouldRender) {
+                    return null;
+                  }
+                  
+                  // Extrair mensagem da escolha do conteúdo (remover markdown headers)
+                  const choiceMessage = message.content
+                    .replace(/^##\s+/gm, '')
+                    .replace(/\n+/g, ' ')
+                    .trim();
+                  
+                  return (
+                    <div className="mb-4 p-4 border border-primary/30 rounded-lg bg-primary/5">
+                      <h3 className="text-base font-semibold text-white mb-3">
+                        {choiceMessage || "Deseja buscar os dados alternativos?"}
+                      </h3>
+                      <div className="space-y-2">
+                        <Button
+                          onClick={() => {
+                            // Quando clicar em "Sim", fazer query com o tipo alternativo
+                            // Extrair informação da usina da mensagem
+                            let query = "vazão mínima por período";
+                            
+                            // Tentar extrair código da usina (formato: "usina 14" ou "usina 14 (CACONDE)")
+                            const usinaMatch = message.content.match(/usina\s+(\d+)/i);
+                            if (usinaMatch) {
+                              query += ` da usina ${usinaMatch[1]}`;
+                            } else {
+                              // Tentar extrair nome da usina entre parênteses
+                              const nomeMatch = message.content.match(/\(([^)]+)\)/);
+                              if (nomeMatch) {
+                                query += ` de ${nomeMatch[1]}`;
+                              }
+                            }
+                            
+                            console.log("[ChatMessage] Botão Sim clicado, query gerada:", query);
+                            onOptionClick?.(query);
+                          }}
+                          variant="outline"
+                          className="w-full text-left justify-start bg-background/50 hover:bg-background border-border hover:border-primary/50 text-foreground"
+                        >
+                          <span className="font-bold mr-2 text-primary">1.</span>
+                          <span>Sim</span>
+                        </Button>
+                        <Button
+                          onClick={() => {
+                            // Quando clicar em "Não", não fazer nada (ou cancelar)
+                            // A mensagem já foi exibida
+                            console.log("[ChatMessage] Botão Não clicado");
+                          }}
+                          variant="outline"
+                          className="w-full text-left justify-start bg-background/50 hover:bg-background border-border hover:border-primary/50 text-foreground"
+                        >
+                          <span className="font-bold mr-2 text-primary">2.</span>
+                          <span>Não</span>
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 {/* Disambiguation Options */}
                 {message.disambiguationData && (
                   <div className="mb-4 p-4 border border-primary/30 rounded-lg bg-primary/5">
@@ -188,8 +269,8 @@ export function ChatMessage({ message, onOptionClick }: ChatMessageProps) {
                   </div>
                 )}
 
-                {/* Response content with markdown - apenas se houver conteúdo e não for apenas disambiguation */}
-                {message.content && message.content.trim() && (
+                {/* Response content with markdown - apenas se houver conteúdo e não for apenas disambiguation ou requires_user_choice */}
+                {message.content && message.content.trim() && !message.requires_user_choice && (
                 <div className="prose prose-sm max-w-none prose-invert prose-headings:text-white prose-p:text-white prose-strong:text-white prose-code:text-white prose-ul:text-white prose-ol:text-white prose-li:text-white prose-a:text-blue-400 prose-blockquote:text-gray-300 prose-th:text-white prose-td:text-gray-200">
                 <ReactMarkdown
                       remarkPlugins={[remarkGfm]}

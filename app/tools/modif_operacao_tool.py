@@ -92,6 +92,17 @@ class ModifOperacaoTool(NEWAVETool):
         """
         query_lower = query.lower()
         
+        # Verificar primeiro "vazão mínima por período" (mais específico) antes de "vazão mínima" (genérico)
+        vazao_minima_por_periodo_patterns = [
+            "vazão mínima por período", "vazao minima por periodo",
+            "vazão minima por período", "vazao mínima por periodo",
+            "vazão mínima por periodo", "vazao minima por período",
+            "vazão mínima temporal", "vazao minima temporal"
+        ]
+        
+        if any(pattern in query_lower for pattern in vazao_minima_por_periodo_patterns):
+            return "VAZMINT"
+        
         tipos = {
             # Volumes
             "volume mínimo": "VOLMIN",
@@ -527,6 +538,28 @@ class ModifOperacaoTool(NEWAVETool):
                 if tipo_modificacao in modificacoes_por_tipo:
                     modificacoes_por_tipo = {tipo_modificacao: modificacoes_por_tipo[tipo_modificacao]}
                 else:
+                    # Caso especial: se não encontrou VAZMIN mas existe VAZMINT, oferecer alternativa
+                    if tipo_modificacao == "VAZMIN" and "VAZMINT" in modificacoes_por_tipo:
+                        print(f"[TOOL] ⚠️ Tipo {tipo_modificacao} não encontrado, mas VAZMINT está disponível")
+                        # Obter informações da usina para a mensagem
+                        nome_usina_str = "a usina"
+                        if codigo_usina is not None:
+                            nome_usina = usinas_df[usinas_df['codigo'] == codigo_usina]
+                            if not nome_usina.empty:
+                                nome_usina_str = f"a usina {codigo_usina} ({str(nome_usina.iloc[0].get('nome', ''))})"
+                            else:
+                                nome_usina_str = f"a usina {codigo_usina}"
+                        
+                        return {
+                            "success": False,
+                            "error": f"Não existem registros de vazão mínima (VAZMIN) para {nome_usina_str}",
+                            "requires_user_choice": True,
+                            "choice_message": f"Não existem registros de vazão mínima (VAZMIN) para {nome_usina_str}, você deseja os valores de vazão mínima por período (VAZMINT)?",
+                            "alternative_type": "VAZMINT",
+                            "alternative_data_available": True,
+                            "tool": self.get_name()
+                        }
+                    
                     print(f"[TOOL] ⚠️ Tipo {tipo_modificacao} não encontrado")
                     return {
                         "success": False,

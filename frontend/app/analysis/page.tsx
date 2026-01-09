@@ -51,6 +51,8 @@ interface Message {
     options: Array<{label: string; query: string; tool_name: string}>;
     original_query: string;
   };
+  requires_user_choice?: boolean;
+  alternative_type?: string;
   comparisonData?: {
     deck_1: {
       name: string;
@@ -116,6 +118,8 @@ export default function AnalysisPage() {
   const executionOutputRef = useRef<string | null>(null);
   const retryCountRef = useRef(0);
   const comparisonDataRef = useRef<Message["comparisonData"]>(null);
+  const requiresUserChoiceRef = useRef(false);
+  const alternativeTypeRef = useRef<string | undefined>(undefined);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -328,10 +332,28 @@ export default function AnalysisPage() {
         break;
 
       case "response_complete":
+        console.log("[FRONTEND] response_complete recebido - evento completo:", {
+          has_response: !!event.response,
+          response_length: event.response?.length || 0,
+          requires_user_choice: event.requires_user_choice,
+          alternative_type: event.alternative_type,
+          event_keys: Object.keys(event)
+        });
+        
         if (event.response) {
-          console.log("[FRONTEND] response_complete recebido:", event.response.length, "caracteres");
           setStreamingResponse(event.response);
           streamingResponseRef.current = event.response;
+        }
+        if (event.requires_user_choice) {
+          console.log("[FRONTEND] ✅ requires_user_choice detectado, alternative_type:", event.alternative_type);
+          requiresUserChoiceRef.current = true;
+          if (event.alternative_type) {
+            alternativeTypeRef.current = event.alternative_type;
+          }
+        } else {
+          console.log("[FRONTEND] requires_user_choice NÃO detectado no evento");
+          requiresUserChoiceRef.current = false;
+          alternativeTypeRef.current = undefined;
         }
         if (event.comparison_data) {
           console.log("[FRONTEND] comparison_data recebido");
@@ -384,6 +406,10 @@ export default function AnalysisPage() {
     setAgentSteps([]);
     setStreamingCode("");
     setStreamingResponse("");
+    streamingCodeRef.current = "";
+    streamingResponseRef.current = "";
+    requiresUserChoiceRef.current = false;
+    alternativeTypeRef.current = undefined;
     setExecutionSuccess(null);
     setExecutionError(null);
     setExecutionOutput(null);
@@ -426,6 +452,8 @@ export default function AnalysisPage() {
           retryCount: retryCountRef.current,
           error: executionErrorRef.current,
           comparisonData: comparisonDataRef.current || undefined,
+          requires_user_choice: requiresUserChoiceRef.current ? true : undefined,
+          alternative_type: alternativeTypeRef.current,
           timestamp: new Date(),
         };
 
@@ -571,6 +599,8 @@ export default function AnalysisPage() {
           retryCount: retryCountRef.current,
           error: executionErrorRef.current,
           comparisonData: comparisonDataRef.current || undefined,
+          requires_user_choice: requiresUserChoiceRef.current ? true : undefined,
+          alternative_type: alternativeTypeRef.current,
           timestamp: new Date(),
         };
 

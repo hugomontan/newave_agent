@@ -325,7 +325,10 @@ def get_initial_state(query: str, deck_path: str, analysis_mode: str = "single")
         # Campos para Comparação Multi-Deck
         "comparison_data": None,
         # Campos para LLM Mode
-        "llm_instructions": None
+        "llm_instructions": None,
+        # Campos para escolha do usuário (requires_user_choice)
+        "requires_user_choice": None,
+        "alternative_type": None
     }
 
 
@@ -525,11 +528,19 @@ def run_query_stream(query: str, deck_path: str, session_id: Optional[str] = Non
                 elif node_name == "interpreter":
                     response = node_output.get("final_response") if node_output else None
                     comparison_data = node_output.get("comparison_data") if node_output else None
+                    requires_user_choice = node_output.get("requires_user_choice") if node_output else None
+                    alternative_type = node_output.get("alternative_type") if node_output else None
                     safe_print(f"[GRAPH] Interpreter retornou resposta: {len(response) if response else 0} caracteres")
+                    safe_print(f"[GRAPH] node_output keys: {list(node_output.keys()) if node_output else 'None'}")
+                    safe_print(f"[GRAPH] requires_user_choice do node_output: {requires_user_choice} (type: {type(requires_user_choice)}), alternative_type: {alternative_type}")
                     if comparison_data:
                         safe_print(f"[GRAPH] comparison_data presente, chart_data: {comparison_data.get('chart_data') is not None}")
                         if comparison_data.get('chart_data'):
                             safe_print(f"[GRAPH] chart_data no SSE - labels: {len(comparison_data.get('chart_data', {}).get('labels', []))}, datasets: {len(comparison_data.get('chart_data', {}).get('datasets', []))}")
+                    if requires_user_choice is True:
+                        safe_print(f"[GRAPH] ✅ requires_user_choice detectado (True), alternative_type: {alternative_type}")
+                    else:
+                        safe_print(f"[GRAPH] ⚠️ requires_user_choice não é True (valor: {requires_user_choice}, tipo: {type(requires_user_choice)})")
                     # SEMPRE emitir resposta se houver conteúdo, mesmo que venha de disambiguation
                     # A diferença é que não emitimos mensagem "Processamento concluído" no final
                     if response and response.strip():
@@ -540,7 +551,21 @@ def run_query_stream(query: str, deck_path: str, session_id: Optional[str] = Non
                             yield f"data: {json.dumps({'type': 'response_chunk', 'chunk': response[i:i + chunk_size]})}\n\n"
                         # Limpar NaN dos dados antes de serializar
                         cleaned_comparison_data = _clean_nan_for_json(comparison_data) if comparison_data else None
-                        yield f"data: {json.dumps({'type': 'response_complete', 'response': response, 'comparison_data': cleaned_comparison_data}, allow_nan=False)}\n\n"
+                        response_data = {
+                            'type': 'response_complete',
+                            'response': response,
+                            'comparison_data': cleaned_comparison_data
+                        }
+                        # Adicionar campos de escolha do usuário se presentes
+                        if requires_user_choice is True:
+                            safe_print(f"[GRAPH] ✅ Adicionando requires_user_choice ao SSE: {requires_user_choice}, alternative_type: {alternative_type}")
+                            response_data['requires_user_choice'] = True
+                            if alternative_type:
+                                response_data['alternative_type'] = alternative_type
+                        else:
+                            safe_print(f"[GRAPH] ⚠️ requires_user_choice não é True (valor: {requires_user_choice}, tipo: {type(requires_user_choice)}), não adicionando ao SSE")
+                        safe_print(f"[GRAPH] response_data final antes de serializar: {list(response_data.keys())}")
+                        yield f"data: {json.dumps(response_data, allow_nan=False)}\n\n"
                     else:
                         # Resposta vazia - pode ser disambiguation ou erro
                         safe_print(f"[GRAPH] ⚠️ Resposta vazia do interpreter")

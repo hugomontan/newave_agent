@@ -18,6 +18,20 @@ def format_tool_response(tool_result: dict, tool_used: str) -> dict:
         Dict com final_response formatado
     """
     if not tool_result.get("success"):
+        # Caso especial: quando a tool requer escolha do usuário (ex: VAZMIN não encontrado, mas VAZMINT existe)
+        if tool_result.get("requires_user_choice") and tool_result.get("choice_message"):
+            choice_message = tool_result.get("choice_message")
+            alternative_type = tool_result.get("alternative_type", "")
+            
+            response = f"## {choice_message}\n\n"
+            
+            return {
+                "final_response": response,
+                "requires_user_choice": True,
+                "alternative_type": alternative_type,
+                "original_error": tool_result.get("error")
+            }
+        
         error = tool_result.get("error", "Erro desconhecido")
         return {
             "final_response": f"## ❌ Erro na Tool {tool_used}\n\n{error}"

@@ -42,4 +42,8 @@ class AgentState(TypedDict):
     analysis_mode: str  # "single", "comparison" ou "llm"
     
     # Campos para LLM Mode
-    llm_instructions: Optional[str]  # Instruções detalhadas geradas pelo LLM Planner
+    llm_instructions: Optional[str]
+    
+    # Campos para escolha do usuário (requires_user_choice)
+    requires_user_choice: Optional[bool]  # True quando tool requer escolha do usuário
+    alternative_type: Optional[str]  # Tipo alternativo disponível (ex: VAZMINT quando VAZMIN não existe)  # Instruções detalhadas geradas pelo LLM Planner

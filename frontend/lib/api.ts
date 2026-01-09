@@ -90,6 +90,8 @@ export interface StreamEvent {
   stderr?: string;
   chunk?: string;
   response?: string;
+  requires_user_choice?: boolean;
+  alternative_type?: string;
   comparison_data?: {
     deck_1: {
       name: string;

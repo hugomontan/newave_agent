@@ -154,10 +154,21 @@ def format_tool_response_with_llm(tool_result: dict, tool_used: str, query: str)
         Dict com final_response formatado e filtrado
     """
     if not tool_result.get("success"):
+        # Caso especial: quando a tool requer escolha do usuário (ex: VAZMIN não encontrado, mas VAZMINT existe)
+        if tool_result.get("requires_user_choice") and tool_result.get("choice_message"):
+            # Usar format_tool_response que já trata esse caso especial
+            # IMPORTANTE: Não processar com LLM quando requer escolha do usuário
+            return format_tool_response(tool_result, tool_used)
+        
         error = tool_result.get("error", "Erro desconhecido")
         return {
             "final_response": f"## ❌ Erro na Tool {tool_used}\n\n{error}"
         }
+    
+    # Verificar se há requires_user_choice mesmo com success=True (caso especial)
+    if tool_result.get("requires_user_choice"):
+        # Não processar com LLM, retornar resposta formatada diretamente
+        return format_tool_response(tool_result, tool_used)
     
     try:
         safe_print(f"[TOOL INTERPRETER LLM] Gerando resposta focada para query: {query[:100]}")

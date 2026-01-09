@@ -20,6 +20,7 @@ interface DifferencesTableProps {
   differences: Difference[];
   deck1Name: string;
   deck2Name: string;
+  firstColumnLabel?: string;  // Label da primeira coluna ("Usina" ou "Ano")
 }
 
 function formatNumber(value: number): string {
@@ -33,7 +34,7 @@ function formatPercent(value: number): string {
   return `${sign}${value.toFixed(2)}%`;
 }
 
-export function DifferencesTable({ differences, deck1Name, deck2Name }: DifferencesTableProps) {
+export function DifferencesTable({ differences, deck1Name, deck2Name, firstColumnLabel = "Usina" }: DifferencesTableProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const maxInitial = 15;
   const hasMore = differences.length > maxInitial;
@@ -75,7 +76,7 @@ export function DifferencesTable({ differences, deck1Name, deck2Name }: Differen
             <thead>
               <tr className="border-b border-border bg-background/50">
                 <th className="px-3 sm:px-4 py-3 text-left text-xs font-semibold text-card-foreground uppercase tracking-wider whitespace-nowrap">
-                  Usina
+                  {firstColumnLabel}
                 </th>
                 {differences.some(d => d.periodo_coluna) && (
                   <th className="px-3 sm:px-4 py-3 text-left text-xs font-semibold text-card-foreground uppercase tracking-wider whitespace-nowrap">

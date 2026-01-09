@@ -267,7 +267,10 @@ def get_initial_state(query: str, deck_path: str, llm_mode: bool = False) -> dic
         "tool_used": None,
         "disambiguation": None,
         "comparison_data": None,
-        "llm_instructions": None if not llm_mode else ""
+        "llm_instructions": None if not llm_mode else "",
+        # Campos para escolha do usuário (requires_user_choice)
+        "requires_user_choice": None,
+        "alternative_type": None
     }
 
 

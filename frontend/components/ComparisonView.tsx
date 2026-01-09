@@ -58,6 +58,7 @@ interface ComparisonViewProps {
       data?: string | number;
       classe?: string;
       ano?: string | number;
+      mes?: string | number;
       deck_1?: number | null;
       deck_2?: number | null;
       deck_1_value?: number | null;
@@ -191,6 +192,95 @@ export function ComparisonView({ comparison }: ComparisonViewProps) {
         ? comparison_table.map(mapRowToDifference)
         : differences || []);
   
+  // Determinar label da primeira coluna (Ano ou Usina)
+  // Exceção: volumes iniciais sempre usa "Usina"
+  // Se houver campo "ano" na comparison_table, usar "Ano"
+  const firstColumnLabel = React.useMemo(() => {
+    // Verificar se é tool de volumes iniciais
+    if (visualization_type === "volume_inicial_changes_table") {
+      return "Usina";
+    }
+    
+    // Verificar se é CVU (ClastValoresTool) ou Carga Mensal - ambos usam visualization_type "table_with_line_chart"
+    // Carga Mensal tem campos "ano" e "mes", CVU só tem "ano"
+    if (visualization_type === "table_with_line_chart") {
+      if (comparison_table && comparison_table.length > 0) {
+        const firstRow = comparison_table[0];
+        
+        // Verificar se tem campo "mes" - indica Carga Mensal (usa "Período" ou "Ano" dependendo do contexto)
+        const hasMesField = comparison_table.some(row => {
+          const mesValue = row.mes;
+          return mesValue !== undefined && mesValue !== null && mesValue !== '';
+        });
+        
+        if (hasMesField) {
+          // Carga Mensal: usar "Ano" (a primeira coluna mostra o período/ano)
+          console.log("[ComparisonView] Detectado Carga Mensal - usando label 'Ano'");
+          return "Ano";
+        }
+        
+        // Se não tem "mes", verificar se tem campo "ano" - indica CVU
+        const hasAnoField = comparison_table.some(row => {
+          const anoValue = row.ano;
+          return anoValue !== undefined && anoValue !== null && anoValue !== '';
+        });
+        if (hasAnoField) {
+          console.log("[ComparisonView] Detectado CVU com campo 'ano' - usando label 'Ano'");
+          return "Ano";
+        }
+        
+        // Se não encontrou campo "ano" mas é table_with_line_chart, 
+        // verificar se o periodValue parece ser um ano (números)
+        if (firstRow) {
+          // Se period existe e parece ser um número ou "Ano X", é CVU
+          const periodValue = firstRow.period;
+          if (periodValue && typeof periodValue === 'string' && /^Ano\s+\d+/.test(periodValue)) {
+            console.log("[ComparisonView] Detectado CVU por formato de period - usando label 'Ano'");
+            return "Ano";
+          }
+        }
+      }
+    }
+    
+    if (comparison_table && comparison_table.length > 0) {
+      const firstRow = comparison_table[0];
+      
+      // Verificar se tem campo "classe" === "VOLUME_INICIAL"
+      if (firstRow.classe === "VOLUME_INICIAL") {
+        return "Usina";
+      }
+      
+      // Verificar se tem campo "ano" (para ClastValoresTool e outras tools que usam ano)
+      // Verificar na primeira linha e também em outras linhas para garantir
+      // O campo "ano" pode ser number ou string, então verificamos se existe e não é null/undefined
+      const hasAnoField = comparison_table.some(row => {
+        const anoValue = row.ano;
+        return anoValue !== undefined && anoValue !== null && anoValue !== '';
+      });
+      
+      if (hasAnoField) {
+        console.log("[ComparisonView] Campo 'ano' detectado - usando label 'Ano'");
+        return "Ano";
+      }
+      
+      // Verificação adicional: se o periodValue parece ser um número (ano)
+      // Isso ajuda quando o campo "ano" não está presente mas o period é um número
+      const firstMapped = mapRowToDifference(firstRow);
+      if (firstMapped.period && /^\d+$/.test(String(firstMapped.period).trim())) {
+        // Se period é apenas um número, provavelmente é um ano
+        console.log("[ComparisonView] Period é um número - usando label 'Ano'");
+        return "Ano";
+      }
+      
+      console.log("[ComparisonView] Nenhum campo 'ano' detectado - usando label padrão 'Usina'");
+      console.log("[ComparisonView] Primeira linha:", firstRow);
+      console.log("[ComparisonView] Campos disponíveis na primeira linha:", Object.keys(firstRow));
+    }
+    
+    // Padrão: Usina
+    return "Usina";
+  }, [comparison_table, visualization_type]);
+  
   // Debug: verificar mappedDifferences
   React.useEffect(() => {
     console.log("[ComparisonView] mappedDifferences length:", mappedDifferences?.length);
@@ -225,6 +315,7 @@ export function ComparisonView({ comparison }: ComparisonViewProps) {
                 differences={mappedRows}
                 deck1Name={deck_1.name}
                 deck2Name={deck_2.name}
+                firstColumnLabel={firstColumnLabel}
               />
             </div>
           );
@@ -267,6 +358,7 @@ export function ComparisonView({ comparison }: ComparisonViewProps) {
                 differences={mappedRows}
                 deck1Name={deck_1.name}
                 deck2Name={deck_2.name}
+                firstColumnLabel={firstColumnLabel}
               />
             </div>
           );
@@ -278,6 +370,7 @@ export function ComparisonView({ comparison }: ComparisonViewProps) {
             differences={mappedDifferences}
             deck1Name={deck_1.name}
             deck2Name={deck_2.name}
+            firstColumnLabel={firstColumnLabel}
           />
         )
       )}
