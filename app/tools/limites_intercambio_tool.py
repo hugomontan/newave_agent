@@ -108,6 +108,32 @@ class LimitesIntercambioTool(NEWAVETool):
         sub_de = None
         sub_para = None
         
+        # Padrão especial: "entre X e Y" (ex: "entre sudeste e norte")
+        pattern_entre = re.search(r'entre\s+([^e]+?)\s+e\s+([^e]+?)(?:\s|$|,|\.)', query_lower)
+        if pattern_entre:
+            nome_1 = pattern_entre.group(1).strip()
+            nome_2 = pattern_entre.group(2).strip()
+            
+            # Buscar submercados que correspondem aos nomes
+            for subsistema in subsistemas_ordenados:
+                nome_sub_lower = subsistema['nome'].lower().strip()
+                if nome_sub_lower and nome_sub_lower in nome_1:
+                    sub_de = subsistema['codigo']
+                    print(f"[TOOL] ✅ Código {sub_de} encontrado como origem (padrão 'entre X e Y'): '{subsistema['nome']}'")
+                    break
+            
+            for subsistema in subsistemas_ordenados:
+                nome_sub_lower = subsistema['nome'].lower().strip()
+                if nome_sub_lower and nome_sub_lower in nome_2:
+                    if subsistema['codigo'] != sub_de:
+                        sub_para = subsistema['codigo']
+                        print(f"[TOOL] ✅ Código {sub_para} encontrado como destino (padrão 'entre X e Y'): '{subsistema['nome']}'")
+                        break
+            
+            if sub_de is not None and sub_para is not None:
+                return (sub_de, sub_para)
+        
+        # Padrão: "X para Y" ou "X → Y"
         # Buscar primeiro submercado (origem)
         for subsistema in subsistemas_ordenados:
             codigo_sub = subsistema['codigo']

@@ -116,10 +116,12 @@ export function ComparisonView({ comparison }: ComparisonViewProps) {
   
   // Função para mapear row para formato de differences
   const mapRowToDifference = (row: typeof comparison_table[0]) => {
-    // Priorizar "ano" se disponível (para Carga Mensal), senão usar "data" ou "classe"
-    const periodValue = row.ano !== undefined ? String(row.ano) : 
+    // Priorizar "period" se disponível (contém nome da usina + período para GTMIN)
+    // Depois "ano" (para Carga Mensal), depois "data" ou "classe"
+    const periodValue = row.period !== undefined ? String(row.period) :
+                       (row.ano !== undefined ? String(row.ano) : 
                        (row.data !== undefined ? String(row.data) : 
-                       (row.classe !== undefined ? String(row.classe) : ""));
+                       (row.classe !== undefined ? String(row.classe) : "")));
     
     // Determinar o tipo baseado no formato do período
     const isCargaMensal = periodValue.includes("/") || periodValue.match(/\d{4}-\d{2}/); // Formato "Dez/2025" ou "2025-12"
@@ -133,12 +135,34 @@ export function ComparisonView({ comparison }: ComparisonViewProps) {
     return {
       field: fieldLabel,
       period: periodValue,
+      periodo_coluna: row.periodo_coluna ? String(row.periodo_coluna) : undefined,
       deck_1_value: deck1Value !== null && deck1Value !== undefined ? Number(deck1Value) : 0,
       deck_2_value: deck2Value !== null && deck2Value !== undefined ? Number(deck2Value) : 0,
-      difference: row.diferenca ?? row.difference ?? 0,
-      difference_percent: row.diferenca_percent ?? row.difference_percent ?? 0,
+      difference: row.diferenca ?? row.difference ?? null,
+      difference_percent: row.diferenca_percent ?? row.difference_percent ?? null,
+      is_inclusao_ou_exclusao: row.is_inclusao_ou_exclusao ?? false,
     };
   };
+
+  // Agrupar por tipo_mudanca_key se existir (para MudancasGeracoesTermicasTool)
+  const groupedByTipoMudanca = React.useMemo(() => {
+    if (!comparison_table || comparison_table.length === 0) return null;
+    if (!comparison_table[0]?.tipo_mudanca_key) return null;
+    
+    const grouped: Record<string, { tipo: string; label: string; rows: typeof comparison_table }> = {};
+    comparison_table.forEach((row) => {
+      const key = row.tipo_mudanca_key!;
+      if (!grouped[key]) {
+        grouped[key] = {
+          tipo: row.tipo_mudanca || "",
+          label: row.tipo_mudanca_label || row.tipo_mudanca || "",
+          rows: []
+        };
+      }
+      grouped[key].rows.push(row);
+    });
+    return grouped;
+  }, [comparison_table]);
 
   // Agrupar por par_key se existir (para LimitesIntercambioTool)
   const groupedByPar = React.useMemo(() => {
@@ -161,7 +185,7 @@ export function ComparisonView({ comparison }: ComparisonViewProps) {
   }, [comparison_table]);
 
   // Mapear comparison_table para formato de differences (se não agrupado)
-  const mappedDifferences = groupedByPar 
+  const mappedDifferences = (groupedByPar || groupedByTipoMudanca)
     ? null  // Se agrupado, não usar mappedDifferences
     : (comparison_table 
         ? comparison_table.map(mapRowToDifference)
@@ -176,7 +200,10 @@ export function ComparisonView({ comparison }: ComparisonViewProps) {
     if (groupedByPar) {
       console.log("[ComparisonView] groupedByPar:", Object.keys(groupedByPar).length, "pares");
     }
-  }, [mappedDifferences, groupedByPar]);
+    if (groupedByTipoMudanca) {
+      console.log("[ComparisonView] groupedByTipoMudanca:", Object.keys(groupedByTipoMudanca).length, "tipos");
+    }
+  }, [mappedDifferences, groupedByPar, groupedByTipoMudanca]);
 
   return (
     <motion.div
@@ -185,7 +212,24 @@ export function ComparisonView({ comparison }: ComparisonViewProps) {
       className="w-full space-y-6 mt-4"
     >
       {/* Tabelas e Gráficos de Comparação */}
-      {groupedByPar && charts_by_par ? (
+      {groupedByTipoMudanca ? (
+        // Renderizar tabelas agrupadas por tipo de mudança (para GTMIN)
+        Object.entries(groupedByTipoMudanca).map(([key, group]) => {
+          const mappedRows = group.rows.map(mapRowToDifference);
+          return (
+            <div key={key} className="space-y-2">
+              <h4 className="text-lg font-semibold text-card-foreground">
+                {group.label}
+              </h4>
+              <DifferencesTable 
+                differences={mappedRows}
+                deck1Name={deck_1.name}
+                deck2Name={deck_2.name}
+              />
+            </div>
+          );
+        })
+      ) : groupedByPar && charts_by_par ? (
         // Renderizar tabela e gráfico juntos para cada par (intercalados)
         Object.entries(groupedByPar).map(([key, group]) => {
           const mappedRows = group.rows.map(mapRowToDifference);

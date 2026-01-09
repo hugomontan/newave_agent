@@ -16,6 +16,8 @@ from app.tools.usinas_nao_simuladas_tool import UsinasNaoSimuladasTool
 from app.tools.restricao_eletrica_tool import RestricaoEletricaTool
 from app.tools.term_cadastro_tool import TermCadastroTool
 from app.tools.multi_deck_comparison_tool import MultiDeckComparisonTool
+from app.tools.mudancas_geracoes_termicas_tool import MudancasGeracoesTermicasTool
+from app.tools.variacao_volumes_iniciais_tool import VariacaoVolumesIniciaisTool
 
 # Registry de tools para modo single (sem comparacao multi-deck)
 TOOLS_REGISTRY_SINGLE = [
@@ -37,6 +39,8 @@ TOOLS_REGISTRY_SINGLE = [
 
 # Registry de tools para modo comparison (inclui MultiDeckComparisonTool)
 TOOLS_REGISTRY_COMPARISON = [
+    VariacaoVolumesIniciaisTool,  # Tool específica para variação de volumes iniciais (prioridade sobre outras)
+    MudancasGeracoesTermicasTool,  # Tool específica para mudanças de GTMIN (prioridade sobre MultiDeckComparisonTool)
     MultiDeckComparisonTool,  # Primeira para interceptar todas as queries em modo comparison
 ] + TOOLS_REGISTRY_SINGLE
 

@@ -8,10 +8,12 @@ import { motion, AnimatePresence } from "framer-motion";
 interface Difference {
   field: string;
   period: string;
+  periodo_coluna?: string;  // Período no formato "12-2025 até 01-2026"
   deck_1_value: number;
   deck_2_value: number;
-  difference: number;
-  difference_percent: number;
+  difference?: number | null;  // Pode ser null para inclusões/exclusões
+  difference_percent?: number | null;  // Pode ser null para inclusões/exclusões
+  is_inclusao_ou_exclusao?: boolean;  // Flag para ocultar diferença/variação
 }
 
 interface DifferencesTableProps {
@@ -73,20 +75,30 @@ export function DifferencesTable({ differences, deck1Name, deck2Name }: Differen
             <thead>
               <tr className="border-b border-border bg-background/50">
                 <th className="px-3 sm:px-4 py-3 text-left text-xs font-semibold text-card-foreground uppercase tracking-wider whitespace-nowrap">
-                  Ano
+                  Usina
                 </th>
+                {differences.some(d => d.periodo_coluna) && (
+                  <th className="px-3 sm:px-4 py-3 text-left text-xs font-semibold text-card-foreground uppercase tracking-wider whitespace-nowrap">
+                    Período
+                  </th>
+                )}
                 <th className="px-3 sm:px-4 py-3 text-right text-xs font-semibold text-blue-400 uppercase tracking-wider whitespace-nowrap">
                   {deck1Name}
                 </th>
                 <th className="px-3 sm:px-4 py-3 text-right text-xs font-semibold text-purple-400 uppercase tracking-wider whitespace-nowrap">
                   {deck2Name}
                 </th>
-                <th className="px-3 sm:px-4 py-3 text-right text-xs font-semibold text-card-foreground uppercase tracking-wider whitespace-nowrap">
-                  Diferença
-                </th>
-                <th className="px-3 sm:px-4 py-3 text-right text-xs font-semibold text-card-foreground uppercase tracking-wider whitespace-nowrap">
-                  Variação %
-                </th>
+                {/* Mostrar colunas de diferença/variação apenas se houver pelo menos uma linha que não seja inclusão/exclusão */}
+                {differences.some(d => !d.is_inclusao_ou_exclusao && d.difference !== null && d.difference !== undefined) && (
+                  <>
+                    <th className="px-3 sm:px-4 py-3 text-right text-xs font-semibold text-card-foreground uppercase tracking-wider whitespace-nowrap">
+                      Diferença
+                    </th>
+                    <th className="px-3 sm:px-4 py-3 text-right text-xs font-semibold text-card-foreground uppercase tracking-wider whitespace-nowrap">
+                      Variação %
+                    </th>
+                  </>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -102,22 +114,31 @@ export function DifferencesTable({ differences, deck1Name, deck2Name }: Differen
                     <td className="px-3 sm:px-4 py-2.5 text-sm text-card-foreground font-medium whitespace-nowrap">
                       {diff.period}
                     </td>
+                    {diff.periodo_coluna && (
+                      <td className="px-3 sm:px-4 py-2.5 text-sm text-muted-foreground whitespace-nowrap">
+                        {diff.periodo_coluna}
+                      </td>
+                    )}
                     <td className="px-3 sm:px-4 py-2.5 text-sm text-blue-400 text-right whitespace-nowrap font-mono">
                       {formatNumber(diff.deck_1_value)}
                     </td>
                     <td className="px-3 sm:px-4 py-2.5 text-sm text-purple-400 text-right whitespace-nowrap font-mono">
                       {formatNumber(diff.deck_2_value)}
                     </td>
-                    <td className="px-3 sm:px-4 py-2.5 text-sm text-right whitespace-nowrap font-mono">
-                      <span className={diff.difference >= 0 ? "text-green-400" : "text-red-400"}>
-                        {diff.difference >= 0 ? "+" : ""}{formatNumber(diff.difference)}
-                      </span>
-                    </td>
-                    <td className="px-3 sm:px-4 py-2.5 text-sm text-right whitespace-nowrap font-mono">
-                      <span className={diff.difference_percent >= 0 ? "text-green-400" : "text-red-400"}>
-                        {formatPercent(diff.difference_percent)}
-                      </span>
-                    </td>
+                    {!diff.is_inclusao_ou_exclusao && diff.difference !== null && diff.difference !== undefined && (
+                      <>
+                        <td className="px-3 sm:px-4 py-2.5 text-sm text-right whitespace-nowrap font-mono">
+                          <span className={diff.difference >= 0 ? "text-green-400" : "text-red-400"}>
+                            {diff.difference >= 0 ? "+" : ""}{formatNumber(diff.difference)}
+                          </span>
+                        </td>
+                        <td className="px-3 sm:px-4 py-2.5 text-sm text-right whitespace-nowrap font-mono">
+                          <span className={(diff.difference_percent ?? 0) >= 0 ? "text-green-400" : "text-red-400"}>
+                            {formatPercent(diff.difference_percent ?? 0)}
+                          </span>
+                        </td>
+                      </>
+                    )}
                   </motion.tr>
                 ))}
               </AnimatePresence>

@@ -20,8 +20,12 @@ from app.comparison.formatters.table_formatters import (
 from app.comparison.formatters.llm_free_formatters import (
     LLMFreeFormatter,
 )
+from app.comparison.formatters.gtmin_formatters import (
+    MudancasGeracoesTermicasFormatter,
+)
 
 __all__ = [
+    'MudancasGeracoesTermicasFormatter',
     'ClastComparisonFormatter',
     'CargaComparisonFormatter',
     'VazoesComparisonFormatter',

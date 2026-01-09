@@ -23,10 +23,18 @@ from app.comparison.formatters.table_formatters import (
 from app.comparison.formatters.llm_free_formatters import (
     LLMFreeFormatter,
 )
+from app.comparison.formatters.gtmin_formatters import (
+    MudancasGeracoesTermicasFormatter,
+)
+from app.comparison.formatters.volume_inicial_formatters import (
+    VariacaoVolumesIniciaisFormatter,
+)
 
 
 # Lista de formatadores (em ordem de prioridade - mais específicos primeiro)
 FORMATTERS = [
+    VariacaoVolumesIniciaisFormatter(),  # Alta prioridade - muito específico para volumes iniciais
+    MudancasGeracoesTermicasFormatter(),  # Alta prioridade - muito específico para GTMIN
     ClastComparisonFormatter(),
     CargaComparisonFormatter(),
     VazoesComparisonFormatter(),

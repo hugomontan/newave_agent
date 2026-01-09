@@ -47,7 +47,21 @@ class DiffComparisonFormatter(ComparisonFormatter):
         """
         Formata comparação de dados do EXPT (expansões/modificações térmicas).
         Formato hierárquico: por tipo e por usina, apenas tabelas.
+        
+        Se a query for sobre GTMIN, processa de forma especializada.
         """
+        # Verificar se a query é sobre GTMIN
+        query_lower = query.lower()
+        is_gtmin_query = any(kw in query_lower for kw in [
+            "gtmin", "geração mínima", "geracao minima", "mudanças gtmin",
+            "mudancas gtmin", "variação gtmin", "variacao gtmin",
+            "alterações gtmin", "alteracoes gtmin", "comparar gtmin",
+            "diferenças gtmin", "diferencas gtmin", "análise gtmin", "analise gtmin"
+        ])
+        
+        if is_gtmin_query:
+            return self._format_gtmin_specialized(result_dec, result_jan, query)
+        
         dados_dec = result_dec.get("dados_expansoes", [])
         dados_jan = result_jan.get("dados_expansoes", [])
         
@@ -455,4 +469,360 @@ class DiffComparisonFormatter(ComparisonFormatter):
             return round(float(value), 2)
         except (ValueError, TypeError):
             return None
+    
+    def _format_gtmin_specialized(
+        self,
+        result_dec: Dict[str, Any],
+        result_jan: Dict[str, Any],
+        query: str
+    ) -> Dict[str, Any]:
+        """
+        Formata comparação de GTMIN de forma especializada.
+        Extrai apenas registros de GTMIN e identifica mudanças ordenadas por magnitude.
+        
+        Retorna:
+        - Lista completa de todos os registros de GTMIN de cada deck (nome, GTMIN, início, fim)
+        - Tabela de mudanças ordenadas por magnitude
+        """
+        dados_dec = result_dec.get("dados_expansoes", [])
+        dados_jan = result_jan.get("dados_expansoes", [])
+        
+        # Filtrar apenas registros de GTMIN
+        gtmin_dec = [r for r in dados_dec if r.get("tipo") == "GTMIN"]
+        gtmin_jan = [r for r in dados_jan if r.get("tipo") == "GTMIN"]
+        
+        # Formatar todos os registros de GTMIN de cada deck
+        todos_registros_dezembro = self._format_all_gtmin_records(gtmin_dec)
+        todos_registros_janeiro = self._format_all_gtmin_records(gtmin_jan)
+        
+        # Identificar mudanças
+        mudancas = self._identify_gtmin_changes(gtmin_dec, gtmin_jan)
+        
+        # Ordenar por magnitude
+        mudancas_ordenadas = sorted(
+            mudancas,
+            key=lambda x: abs(x.get('magnitude_mudanca', 0)),
+            reverse=True
+        )
+        
+        # Calcular estatísticas
+        stats = self._calculate_gtmin_stats(gtmin_dec, gtmin_jan, mudancas)
+        
+        # Construir tabela de mudanças
+        comparison_table = []
+        
+        for mudanca in mudancas_ordenadas:
+            codigo = mudanca.get("codigo_usina")
+            nome = mudanca.get("nome_usina", f"Usina {codigo}")
+            tipo = mudanca.get("tipo_mudanca", "desconhecido")
+            gtmin_dec_val = mudanca.get("gtmin_dezembro")
+            gtmin_jan_val = mudanca.get("gtmin_janeiro")
+            magnitude = mudanca.get("magnitude_mudanca", 0)
+            diferenca = mudanca.get("diferenca")
+            periodo_inicio = mudanca.get("periodo_inicio", "N/A")
+            periodo_fim = mudanca.get("periodo_fim", "N/A")
+            
+            # Formatar período
+            periodo_str = f"{periodo_inicio}"
+            if periodo_fim and periodo_fim != "N/A" and periodo_fim != periodo_inicio:
+                periodo_str += f" até {periodo_fim}"
+            
+            # Descrição do tipo de mudança
+            tipo_desc = {
+                "alterado": "Valor alterado",
+                "novo_registro": "Novo registro",
+                "removido": "Registro removido",
+                "novo_valor": "Novo valor",
+                "valor_removido": "Valor removido"
+            }.get(tipo, tipo)
+            
+            comparison_table.append({
+                "codigo_usina": codigo,
+                "nome_usina": nome,
+                "tipo_mudanca": tipo_desc,
+                "periodo": periodo_str,
+                "gtmin_dezembro": gtmin_dec_val,
+                "gtmin_janeiro": gtmin_jan_val,
+                "diferenca": diferenca,
+                "magnitude_mudanca": round(magnitude, 2)
+            })
+        
+        return {
+            "comparison_table": comparison_table,
+            "chart_data": None,  # Sem gráfico
+            "visualization_type": "gtmin_changes_table",
+            "todos_registros_dezembro": todos_registros_dezembro,
+            "todos_registros_janeiro": todos_registros_janeiro,
+            "stats": stats,
+            "llm_context": {
+                "total_mudancas": len(mudancas_ordenadas),
+                "total_registros_dezembro": len(todos_registros_dezembro),
+                "total_registros_janeiro": len(todos_registros_janeiro),
+                "deck_1_name": "Dezembro 2025",
+                "deck_2_name": "Janeiro 2026",
+                "description": f"Análise de {len(mudancas_ordenadas)} mudanças de GTMIN entre Dezembro 2025 e Janeiro 2026, ordenadas por magnitude. Total de {len(todos_registros_dezembro)} registros em dezembro e {len(todos_registros_janeiro)} em janeiro."
+            }
+        }
+    
+    def _identify_gtmin_changes(
+        self,
+        gtmin_dec: List[Dict[str, Any]],
+        gtmin_jan: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """
+        Identifica mudanças de GTMIN entre os dois decks.
+        
+        Args:
+            gtmin_dec: Lista de registros de GTMIN de dezembro
+            gtmin_jan: Lista de registros de GTMIN de janeiro
+            
+        Returns:
+            Lista de dicionários com informações sobre mudanças
+        """
+        mudancas = []
+        
+        # Criar índices para comparação eficiente
+        # Chave: (codigo_usina, periodo_inicio, periodo_fim)
+        def create_key(record):
+            codigo = int(record.get('codigo_usina', 0))
+            inicio = self._format_gtmin_date(record.get('data_inicio'))
+            fim = self._format_gtmin_date(record.get('data_fim'))
+            return (codigo, inicio, fim)
+        
+        dec_indexed = {}
+        for record in gtmin_dec:
+            key = create_key(record)
+            dec_indexed[key] = record
+        
+        jan_indexed = {}
+        for record in gtmin_jan:
+            key = create_key(record)
+            jan_indexed[key] = record
+        
+        # Comparar registros
+        all_keys = set(dec_indexed.keys()) | set(jan_indexed.keys())
+        
+        for key in all_keys:
+            codigo_usina, periodo_inicio, periodo_fim = key
+            dec_record = dec_indexed.get(key)
+            jan_record = jan_indexed.get(key)
+            
+            # Obter nome da usina
+            nome_usina = None
+            if dec_record is not None:
+                nome_usina = dec_record.get('nome_usina', f'Usina {codigo_usina}')
+            elif jan_record is not None:
+                nome_usina = jan_record.get('nome_usina', f'Usina {codigo_usina}')
+            
+            if nome_usina is None:
+                nome_usina = f'Usina {codigo_usina}'
+            
+            # Extrair valores de GTMIN
+            gtmin_dec_val = None
+            gtmin_jan_val = None
+            
+            if dec_record is not None:
+                gtmin_dec_val = self._sanitize_gtmin_number(dec_record.get('modificacao'))
+            if jan_record is not None:
+                gtmin_jan_val = self._sanitize_gtmin_number(jan_record.get('modificacao'))
+            
+            # Identificar tipo de mudança
+            tipo_mudanca = None
+            magnitude_mudanca = 0
+            
+            if dec_record is None and jan_record is not None:
+                # Novo registro em janeiro
+                tipo_mudanca = "novo_registro"
+                magnitude_mudanca = gtmin_jan_val if gtmin_jan_val is not None else 0
+            elif dec_record is not None and jan_record is None:
+                # Registro removido em janeiro
+                tipo_mudanca = "removido"
+                magnitude_mudanca = gtmin_dec_val if gtmin_dec_val is not None else 0
+            elif dec_record is not None and jan_record is not None:
+                # Registro existe em ambos - verificar se valor mudou
+                if gtmin_dec_val is not None and gtmin_jan_val is not None:
+                    if abs(gtmin_dec_val - gtmin_jan_val) > 0.01:  # Tolerância para diferenças numéricas
+                        tipo_mudanca = "alterado"
+                        magnitude_mudanca = abs(gtmin_jan_val - gtmin_dec_val)
+                elif gtmin_dec_val is None and gtmin_jan_val is not None:
+                    tipo_mudanca = "novo_valor"
+                    magnitude_mudanca = gtmin_jan_val
+                elif gtmin_dec_val is not None and gtmin_jan_val is None:
+                    tipo_mudanca = "valor_removido"
+                    magnitude_mudanca = gtmin_dec_val
+            
+            # Se há mudança, adicionar à lista
+            if tipo_mudanca is not None:
+                mudanca = {
+                    "codigo_usina": int(codigo_usina),
+                    "nome_usina": str(nome_usina).strip(),
+                    "tipo_mudanca": tipo_mudanca,
+                    "periodo_inicio": periodo_inicio,
+                    "periodo_fim": periodo_fim,
+                    "gtmin_dezembro": round(gtmin_dec_val, 2) if gtmin_dec_val is not None else None,
+                    "gtmin_janeiro": round(gtmin_jan_val, 2) if gtmin_jan_val is not None else None,
+                    "magnitude_mudanca": round(magnitude_mudanca, 2),
+                    "diferenca": round(gtmin_jan_val - gtmin_dec_val, 2) if (
+                        gtmin_dec_val is not None and gtmin_jan_val is not None
+                    ) else None
+                }
+                mudancas.append(mudanca)
+        
+        return mudancas
+    
+    def _format_gtmin_date(self, date_value: Any) -> str:
+        """
+        Formata uma data para string no formato YYYY-MM.
+        
+        Args:
+            date_value: Valor de data (datetime, Timestamp, string, ou None)
+            
+        Returns:
+            String no formato "YYYY-MM"
+        """
+        if date_value is None:
+            return "N/A"
+        
+        try:
+            # Se for string ISO
+            if isinstance(date_value, str):
+                if 'T' in date_value:
+                    date_part = date_value.split('T')[0]
+                    if len(date_part) >= 7:  # YYYY-MM
+                        return date_part[:7]
+                    return date_part
+                if len(date_value) >= 7:  # YYYY-MM
+                    return date_value[:7]
+                return date_value
+            
+            # Se for objeto datetime
+            if hasattr(date_value, 'year') and hasattr(date_value, 'month'):
+                return f"{date_value.year:04d}-{date_value.month:02d}"
+            if hasattr(date_value, 'isoformat'):
+                iso_str = date_value.isoformat()
+                if 'T' in iso_str:
+                    iso_str = iso_str.split('T')[0]
+                if len(iso_str) >= 7:
+                    return iso_str[:7]
+                return iso_str
+            
+            return str(date_value)
+        except Exception:
+            return str(date_value) if date_value else "N/A"
+    
+    def _sanitize_gtmin_number(self, value: Any) -> Optional[float]:
+        """
+        Sanitiza um valor numérico, retornando None se for NaN ou inválido.
+        
+        Args:
+            value: Valor a sanitizar
+            
+        Returns:
+            Float ou None
+        """
+        if value is None:
+            return None
+        
+        try:
+            float_val = float(value)
+            # Verificar se é NaN usando comparação
+            if str(float_val).lower() in ['nan', 'inf', '-inf']:
+                return None
+            return float_val
+        except (ValueError, TypeError):
+            return None
+    
+    def _format_all_gtmin_records(self, gtmin_records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Formata todos os registros de GTMIN para exibição.
+        Retorna lista com nome da usina, GTMIN, início, fim.
+        
+        Args:
+            gtmin_records: Lista de registros de GTMIN
+            
+        Returns:
+            Lista de dicionários formatados ordenados por código da usina e início
+        """
+        formatted_records = []
+        
+        for record in gtmin_records:
+            codigo_usina = record.get('codigo_usina')
+            nome_usina = record.get('nome_usina', f'Usina {codigo_usina}')
+            gtmin_val = self._sanitize_gtmin_number(record.get('modificacao'))
+            data_inicio = record.get('data_inicio')
+            data_fim = record.get('data_fim')
+            
+            # Formatar datas
+            inicio_str = self._format_gtmin_date(data_inicio)
+            fim_str = self._format_gtmin_date(data_fim)
+            
+            formatted_records.append({
+                "codigo_usina": int(codigo_usina) if codigo_usina is not None else None,
+                "nome_usina": str(nome_usina).strip() if nome_usina else f"Usina {codigo_usina}",
+                "gtmin": round(gtmin_val, 2) if gtmin_val is not None else None,
+                "inicio": inicio_str,
+                "fim": fim_str
+            })
+        
+        # Ordenar por código da usina e depois por início
+        formatted_records.sort(key=lambda x: (
+            x['codigo_usina'] if x['codigo_usina'] is not None else 999999,
+            x['inicio'] if x['inicio'] != "N/A" else "9999-99"
+        ))
+        
+        return formatted_records
+    
+    def _calculate_gtmin_stats(
+        self,
+        gtmin_dec: List[Dict[str, Any]],
+        gtmin_jan: List[Dict[str, Any]],
+        mudancas: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """
+        Calcula estatísticas sobre os registros de GTMIN e mudanças.
+        
+        Args:
+            gtmin_dec: Lista de registros de GTMIN de dezembro
+            gtmin_jan: Lista de registros de GTMIN de janeiro
+            mudancas: Lista de mudanças identificadas
+            
+        Returns:
+            Dicionário com estatísticas
+        """
+        stats = {
+            "total_registros_dezembro": len(gtmin_dec),
+            "total_registros_janeiro": len(gtmin_jan),
+            "total_mudancas": len(mudancas),
+            "usinas_com_mudanca": len(set(m['codigo_usina'] for m in mudancas)),
+            "tipos_mudanca": {}
+        }
+        
+        # Contar por tipo de mudança
+        for mudanca in mudancas:
+            tipo = mudanca.get('tipo_mudanca', 'desconhecido')
+            stats["tipos_mudanca"][tipo] = stats["tipos_mudanca"].get(tipo, 0) + 1
+        
+        # Estatísticas de magnitude
+        if mudancas:
+            magnitudes = [abs(m.get('magnitude_mudanca', 0)) for m in mudancas]
+            stats["magnitude_maxima"] = round(max(magnitudes), 2)
+            stats["magnitude_minima"] = round(min(magnitudes), 2)
+            stats["magnitude_media"] = round(sum(magnitudes) / len(magnitudes), 2)
+        else:
+            stats["magnitude_maxima"] = 0
+            stats["magnitude_minima"] = 0
+            stats["magnitude_media"] = 0
+        
+        # Usinas únicas em cada deck
+        if gtmin_dec:
+            stats["usinas_unicas_dezembro"] = len(set(r.get('codigo_usina') for r in gtmin_dec if r.get('codigo_usina') is not None))
+        else:
+            stats["usinas_unicas_dezembro"] = 0
+        
+        if gtmin_jan:
+            stats["usinas_unicas_janeiro"] = len(set(r.get('codigo_usina') for r in gtmin_jan if r.get('codigo_usina') is not None))
+        else:
+            stats["usinas_unicas_janeiro"] = 0
+        
+        return stats
 

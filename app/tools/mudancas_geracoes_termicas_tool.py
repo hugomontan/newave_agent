@@ -1,0 +1,562 @@
+"""
+Tool para análise de mudanças de GTMIN entre decks no modo multideck.
+Foca especificamente em identificar e comparar variações de GTMIN entre dezembro e janeiro.
+"""
+from app.tools.base import NEWAVETool
+from inewave.newave import Expt
+import os
+import pandas as pd
+from typing import Dict, Any, List, Optional
+from app.utils.deck_loader import get_december_deck_path, get_january_deck_path
+
+
+class MudancasGeracoesTermicasTool(NEWAVETool):
+    """
+    Tool especializada para análise de mudanças de GTMIN entre decks.
+    
+    Funcionalidades:
+    - Lista todas as mudanças de GTMIN entre os dois decks
+    - Identifica mudanças (variações de valor, novos registros, remoções)
+    - Ordena mudanças por magnitude
+    - Retorna apenas as mudanças (não todos os registros)
+    """
+    
+    def get_name(self) -> str:
+        return "MudancasGeracoesTermicasTool"
+    
+    def can_handle(self, query: str) -> bool:
+        """
+        Verifica se a query é sobre análise de mudanças de GTMIN.
+        
+        Args:
+            query: Query do usuário
+            
+        Returns:
+            True se a tool pode processar a query
+        """
+        query_lower = query.lower()
+        keywords = [
+            "mudanças gtmin",
+            "mudancas gtmin",
+            "variação gtmin",
+            "variacao gtmin",
+            "análise gtmin",
+            "analise gtmin",
+        ]
+        return any(kw in query_lower for kw in keywords)
+    
+    def execute(self, query: str, **kwargs) -> Dict[str, Any]:
+        """
+        Executa a análise de mudanças de GTMIN entre os dois decks.
+        
+        Fluxo:
+        1. Carrega caminhos dos decks de dezembro e janeiro
+        2. Lê EXPT.DAT de ambos os decks
+        3. Filtra apenas registros de GTMIN
+        4. Compara e identifica mudanças
+        5. Ordena mudanças por magnitude
+        6. Retorna dados formatados
+        """
+        print(f"[TOOL] {self.get_name()}: Iniciando análise de mudanças de GTMIN...")
+        print(f"[TOOL] Query: {query[:100]}")
+        
+        try:
+            # ETAPA 1: Carregar caminhos dos decks
+            print("[TOOL] ETAPA 1: Carregando caminhos dos decks...")
+            try:
+                deck_december_path = get_december_deck_path()
+                deck_january_path = get_january_deck_path()
+                deck_december_name = "Dezembro 2025"
+                deck_january_name = "Janeiro 2026"
+            except FileNotFoundError as e:
+                print(f"[TOOL] ❌ Erro ao carregar decks: {e}")
+                return {
+                    "success": False,
+                    "error": f"Decks não encontrados: {str(e)}",
+                    "tool": self.get_name()
+                }
+            
+            print(f"[TOOL] ✅ Deck Dezembro: {deck_december_path}")
+            print(f"[TOOL] ✅ Deck Janeiro: {deck_january_path}")
+            
+            # ETAPA 2: Ler EXPT.DAT de ambos os decks
+            print("[TOOL] ETAPA 2: Lendo arquivos EXPT.DAT...")
+            expt_dec = self._read_expt_file(deck_december_path)
+            expt_jan = self._read_expt_file(deck_january_path)
+            
+            if expt_dec is None:
+                return {
+                    "success": False,
+                    "error": f"Arquivo EXPT.DAT não encontrado em {deck_december_path}",
+                    "tool": self.get_name()
+                }
+            
+            if expt_jan is None:
+                return {
+                    "success": False,
+                    "error": f"Arquivo EXPT.DAT não encontrado em {deck_january_path}",
+                    "tool": self.get_name()
+                }
+            
+            # ETAPA 3: Criar mapeamento código -> nome das usinas
+            print("[TOOL] ETAPA 3: Criando mapeamento código -> nome das usinas...")
+            mapeamento_codigo_nome = self._create_codigo_nome_mapping(expt_dec, expt_jan)
+            print(f"[TOOL] ✅ Mapeamento criado: {len(mapeamento_codigo_nome)} usinas mapeadas")
+            
+            # ETAPA 4: Filtrar apenas registros de GTMIN
+            print("[TOOL] ETAPA 4: Filtrando registros de GTMIN...")
+            gtmin_dec = self._extract_gtmin_records(expt_dec)
+            gtmin_jan = self._extract_gtmin_records(expt_jan)
+            
+            print(f"[TOOL] ✅ Registros GTMIN Dezembro: {len(gtmin_dec)}")
+            print(f"[TOOL] ✅ Registros GTMIN Janeiro: {len(gtmin_jan)}")
+            
+            # ETAPA 5: Comparar e identificar mudanças
+            print("[TOOL] ETAPA 5: Identificando mudanças...")
+            mudancas = self._identify_changes(gtmin_dec, gtmin_jan, deck_december_name, deck_january_name, mapeamento_codigo_nome)
+            
+            print(f"[TOOL] ✅ Total de mudanças identificadas: {len(mudancas)}")
+            
+            # ETAPA 6: Ordenar por tipo e magnitude
+            print("[TOOL] ETAPA 6: Ordenando mudanças por tipo e magnitude...")
+            ordem_tipo = {"aumento": 0, "queda": 1, "remocao": 2, "novo": 3}
+            mudancas_ordenadas = sorted(mudancas, key=lambda x: (
+                ordem_tipo.get(x.get('tipo_mudanca', 'N/A'), 99),
+                -abs(x.get('magnitude_mudanca', 0))  # Maior magnitude primeiro dentro do mesmo tipo
+            ))
+            
+            # ETAPA 7: Calcular estatísticas
+            stats = self._calculate_stats(gtmin_dec, gtmin_jan, mudancas)
+            
+            # ETAPA 7: Formatar tabela de comparação
+            comparison_table = []
+            for mudanca in mudancas_ordenadas:
+                tipo_mudanca = mudanca.get("tipo_mudanca", "desconhecido")
+                nome_usina = mudanca.get("nome_usina", "N/A")
+                codigo = mudanca.get("codigo_usina")
+                
+                # Sempre tentar melhorar o nome usando o mapeamento
+                # O mapeamento já foi criado com dados de ambos os decks e TERM.DAT
+                if codigo and codigo in mapeamento_codigo_nome:
+                    nome_mapeado = mapeamento_codigo_nome[codigo]
+                    # Se temos um nome válido no mapeamento, usar (mesmo que já tenhamos um nome)
+                    if nome_mapeado and nome_mapeado != "N/A" and not nome_mapeado.startswith("Usina "):
+                        nome_usina = nome_mapeado
+                    elif nome_usina == "N/A" or nome_usina.startswith("Usina "):
+                        # Se o nome atual é inválido, usar o mapeado mesmo que seja "Usina X"
+                        nome_usina = nome_mapeado
+                
+                comparison_table.append({
+                    "nome_usina": nome_usina,
+                    "codigo_usina": codigo,  # Incluir código para referência
+                    "tipo_mudanca": tipo_mudanca,  # Manter tipo original (aumento, queda, remocao, novo)
+                    "gtmin_dezembro": mudanca.get("gtmin_dezembro"),
+                    "gtmin_janeiro": mudanca.get("gtmin_janeiro"),
+                    "diferenca": mudanca.get("diferenca"),
+                    "magnitude": round(mudanca.get("magnitude_mudanca", 0), 2),
+                    "periodo_inicio": mudanca.get("periodo_inicio", "N/A"),
+                    "periodo_fim": mudanca.get("periodo_fim", "N/A")
+                })
+            
+            return {
+                "success": True,
+                "is_comparison": True,
+                "tool": self.get_name(),
+                "comparison_table": comparison_table,
+                "stats": stats,
+                "description": f"Análise de {len(mudancas_ordenadas)} mudanças de GTMIN entre {deck_december_name} e {deck_january_name}, ordenadas por magnitude."
+            }
+            
+        except Exception as e:
+            print(f"[TOOL] ❌ Erro ao processar: {type(e).__name__}: {e}")
+            import traceback
+            traceback.print_exc()
+            return {
+                "success": False,
+                "error": f"Erro ao processar análise de GTMIN: {str(e)}",
+                "error_type": type(e).__name__,
+                "tool": self.get_name()
+            }
+    
+    def _read_expt_file(self, deck_path) -> Optional[Expt]:
+        """
+        Lê o arquivo EXPT.DAT de um deck.
+        
+        Args:
+            deck_path: Caminho do diretório do deck
+            
+        Returns:
+            Objeto Expt ou None se não encontrado
+        """
+        expt_path = os.path.join(deck_path, "EXPT.DAT")
+        if not os.path.exists(expt_path):
+            expt_path_lower = os.path.join(deck_path, "expt.dat")
+            if os.path.exists(expt_path_lower):
+                expt_path = expt_path_lower
+            else:
+                print(f"[TOOL] ⚠️ Arquivo EXPT.DAT não encontrado em {deck_path}")
+                return None
+        
+        try:
+            expt = Expt.read(expt_path)
+            return expt
+        except Exception as e:
+            print(f"[TOOL] ❌ Erro ao ler EXPT.DAT: {e}")
+            return None
+    
+    def _create_codigo_nome_mapping(self, expt_dec: Expt, expt_jan: Expt) -> Dict[int, str]:
+        """
+        Cria mapeamento de código de usina para nome a partir dos DataFrames de expansões.
+        Prioriza nomes não vazios e usa ambos os decks para garantir cobertura completa.
+        Se não encontrar no EXPT, tenta cruzar com TERM.DAT.
+        
+        Args:
+            expt_dec: Objeto Expt do deck de dezembro
+            expt_jan: Objeto Expt do deck de janeiro
+            
+        Returns:
+            Dicionário mapeando codigo_usina -> nome_usina
+        """
+        mapeamento = {}
+        
+        # Processar deck de dezembro
+        if expt_dec.expansoes is not None and not expt_dec.expansoes.empty:
+            if 'codigo_usina' in expt_dec.expansoes.columns and 'nome_usina' in expt_dec.expansoes.columns:
+                usinas_dec = expt_dec.expansoes[['codigo_usina', 'nome_usina']].drop_duplicates()
+                for _, row in usinas_dec.iterrows():
+                    codigo = int(row['codigo_usina'])
+                    nome = str(row.get('nome_usina', '')).strip()
+                    # Verificar se nome é válido (não vazio, não NaN, não None)
+                    if nome and nome != 'nan' and nome.lower() != 'none' and nome != '' and not pd.isna(row.get('nome_usina')):
+                        mapeamento[codigo] = nome
+                        print(f"[TOOL] Mapeamento: {codigo} -> {nome}")
+        
+        # Processar deck de janeiro (sobrescreve se houver nome melhor ou se não existia)
+        if expt_jan.expansoes is not None and not expt_jan.expansoes.empty:
+            if 'codigo_usina' in expt_jan.expansoes.columns and 'nome_usina' in expt_jan.expansoes.columns:
+                usinas_jan = expt_jan.expansoes[['codigo_usina', 'nome_usina']].drop_duplicates()
+                for _, row in usinas_jan.iterrows():
+                    codigo = int(row['codigo_usina'])
+                    nome = str(row.get('nome_usina', '')).strip()
+                    if nome and nome != 'nan' and nome.lower() != 'none' and nome != '' and not pd.isna(row.get('nome_usina')):
+                        # Sobrescrever se não existia ou se o nome é mais completo
+                        if codigo not in mapeamento or (len(nome) > len(mapeamento.get(codigo, ''))):
+                            mapeamento[codigo] = nome
+                            print(f"[TOOL] Mapeamento: {codigo} -> {nome}")
+        
+        # Se ainda faltam nomes, tentar cruzar com TERM.DAT (usando deck de dezembro como referência)
+        codigos_sem_nome = []
+        if expt_dec.expansoes is not None and not expt_dec.expansoes.empty:
+            codigos_sem_nome.extend([c for c in expt_dec.expansoes['codigo_usina'].unique() if c not in mapeamento])
+        if expt_jan.expansoes is not None and not expt_jan.expansoes.empty:
+            codigos_sem_nome.extend([c for c in expt_jan.expansoes['codigo_usina'].unique() if c not in mapeamento])
+        codigos_sem_nome = list(set(codigos_sem_nome))
+        
+        if codigos_sem_nome:
+            print(f"[TOOL] ⚠️ {len(codigos_sem_nome)} usinas sem nome no EXPT, tentando TERM.DAT...")
+            try:
+                from inewave.newave import Term
+                deck_path_ref = get_december_deck_path()
+                term_path = os.path.join(deck_path_ref, "TERM.DAT")
+                if not os.path.exists(term_path):
+                    term_path = os.path.join(deck_path_ref, "term.dat")
+                
+                if os.path.exists(term_path):
+                    term = Term.read(term_path)
+                    if term.usinas is not None and not term.usinas.empty:
+                        for _, term_row in term.usinas.iterrows():
+                            codigo_term = int(term_row.get('codigo', 0))
+                            if codigo_term in codigos_sem_nome:
+                                nome_term = str(term_row.get('nome', '')).strip()
+                                if nome_term and nome_term != 'nan' and nome_term.lower() != 'none' and nome_term != '':
+                                    mapeamento[codigo_term] = nome_term
+                                    print(f"[TOOL] ✅ Nome do TERM.DAT: {codigo_term} -> {nome_term}")
+            except Exception as e:
+                print(f"[TOOL] ⚠️ Erro ao ler TERM.DAT para nomes: {e}")
+        
+        return mapeamento
+    
+    def _extract_gtmin_records(self, expt: Expt) -> pd.DataFrame:
+        """
+        Extrai apenas os registros de GTMIN do DataFrame de expansões.
+        
+        Args:
+            expt: Objeto Expt
+            
+        Returns:
+            DataFrame com apenas registros de GTMIN
+        """
+        if expt.expansoes is None or expt.expansoes.empty:
+            return pd.DataFrame()
+        
+        # Filtrar apenas GTMIN
+        gtmin_df = expt.expansoes[expt.expansoes['tipo'] == 'GTMIN'].copy()
+        
+        return gtmin_df
+    
+    def _identify_changes(
+        self,
+        gtmin_dec: pd.DataFrame,
+        gtmin_jan: pd.DataFrame,
+        deck_dec_name: str,
+        deck_jan_name: str,
+        mapeamento_codigo_nome: Dict[int, str]
+    ) -> List[Dict[str, Any]]:
+        """
+        Identifica mudanças de GTMIN entre os dois decks.
+        
+        Uma mudança é identificada quando:
+        - Uma usina tem GTMIN diferente no mesmo período
+        - Uma usina tem GTMIN em um deck mas não no outro
+        
+        Args:
+            gtmin_dec: DataFrame com GTMIN de dezembro
+            gtmin_jan: DataFrame com GTMIN de janeiro
+            deck_dec_name: Nome do deck de dezembro
+            deck_jan_name: Nome do deck de janeiro
+            
+        Returns:
+            Lista de dicionários com informações sobre mudanças
+        """
+        mudancas = []
+        
+        # Criar índices para comparação eficiente
+        # Chave: (codigo_usina, periodo_inicio, periodo_fim)
+        def create_key(row):
+            codigo = int(row['codigo_usina'])
+            inicio = self._format_date(row.get('data_inicio'))
+            fim = self._format_date(row.get('data_fim'))
+            return (codigo, inicio, fim)
+        
+        dec_indexed = {}
+        for _, row in gtmin_dec.iterrows():
+            key = create_key(row)
+            dec_indexed[key] = row
+        
+        jan_indexed = {}
+        for _, row in gtmin_jan.iterrows():
+            key = create_key(row)
+            jan_indexed[key] = row
+        
+        # Comparar registros
+        all_keys = set(dec_indexed.keys()) | set(jan_indexed.keys())
+        
+        for key in all_keys:
+            codigo_usina, periodo_inicio, periodo_fim = key
+            dec_record = dec_indexed.get(key)
+            jan_record = jan_indexed.get(key)
+            
+            # Obter nome da usina do mapeamento (prioridade) ou dos registros
+            nome_usina = mapeamento_codigo_nome.get(codigo_usina)
+            
+            if not nome_usina or nome_usina.strip() == '':
+                # Fallback: tentar obter dos registros
+                if dec_record is not None:
+                    nome_temp = str(dec_record.get('nome_usina', '')).strip()
+                    if nome_temp and nome_temp != 'nan' and nome_temp.lower() != 'none' and nome_temp != '':
+                        nome_usina = nome_temp
+                if (not nome_usina or nome_usina.strip() == '') and jan_record is not None:
+                    nome_temp = str(jan_record.get('nome_usina', '')).strip()
+                    if nome_temp and nome_temp != 'nan' and nome_temp.lower() != 'none' and nome_temp != '':
+                        nome_usina = nome_temp
+            
+            # Se ainda não encontrou, usar código
+            if not nome_usina or nome_usina.strip() == '':
+                nome_usina = f'Usina {codigo_usina}'
+            
+            # Extrair valores de GTMIN
+            gtmin_dec_val = None
+            gtmin_jan_val = None
+            
+            if dec_record is not None:
+                gtmin_dec_val = self._sanitize_number(dec_record.get('modificacao'))
+            if jan_record is not None:
+                gtmin_jan_val = self._sanitize_number(jan_record.get('modificacao'))
+            
+            # Normalizar valores None para 0 para comparação
+            # Mas manter None para exibição quando apropriado
+            gtmin_dec_val_normalized = gtmin_dec_val if gtmin_dec_val is not None else 0.0
+            gtmin_jan_val_normalized = gtmin_jan_val if gtmin_jan_val is not None else 0.0
+            
+            # Se ambos os valores são zero ou muito próximos de zero, não é uma mudança
+            if abs(gtmin_dec_val_normalized) < 0.01 and abs(gtmin_jan_val_normalized) < 0.01:
+                # Ambos são zero - não é uma mudança significativa, pular este registro
+                tipo_mudanca = None
+            else:
+                # Identificar tipo de mudança
+                tipo_mudanca = None
+                magnitude_mudanca = 0
+                
+                if dec_record is None and jan_record is not None:
+                    # Novo registro em janeiro
+                    # Só considerar como "novo" se o valor de janeiro for diferente de zero
+                    if gtmin_jan_val is not None and abs(gtmin_jan_val) > 0.01:
+                        tipo_mudanca = "novo"
+                        magnitude_mudanca = abs(gtmin_jan_val)
+                elif dec_record is not None and jan_record is None:
+                    # Registro removido em janeiro
+                    # Só considerar como "remocao" se o valor de dezembro for diferente de zero
+                    if gtmin_dec_val is not None and abs(gtmin_dec_val) > 0.01:
+                        tipo_mudanca = "remocao"
+                        magnitude_mudanca = abs(gtmin_dec_val)
+                elif dec_record is not None and jan_record is not None:
+                    # Registro existe em ambos - verificar se valor mudou
+                    if gtmin_dec_val is not None and gtmin_jan_val is not None:
+                        diferenca_val = gtmin_jan_val - gtmin_dec_val
+                        if abs(diferenca_val) > 0.01:  # Tolerância para diferenças numéricas
+                            if diferenca_val > 0:
+                                tipo_mudanca = "aumento"
+                            else:
+                                tipo_mudanca = "queda"
+                            magnitude_mudanca = abs(diferenca_val)
+                    elif gtmin_dec_val is None and gtmin_jan_val is not None:
+                        # Dezembro não tem valor, janeiro tem - só considerar se janeiro não for zero
+                        if abs(gtmin_jan_val) > 0.01:
+                            tipo_mudanca = "novo"
+                            magnitude_mudanca = abs(gtmin_jan_val)
+                    elif gtmin_dec_val is not None and gtmin_jan_val is None:
+                        # Janeiro não tem valor, dezembro tem - só considerar se dezembro não for zero
+                        if abs(gtmin_dec_val) > 0.01:
+                            tipo_mudanca = "remocao"
+                            magnitude_mudanca = abs(gtmin_dec_val)
+            
+            # Se há mudança, adicionar à lista
+            if tipo_mudanca is not None:
+                mudanca = {
+                    "codigo_usina": int(codigo_usina),
+                    "nome_usina": str(nome_usina).strip(),
+                    "tipo_mudanca": tipo_mudanca,
+                    "periodo_inicio": periodo_inicio,
+                    "periodo_fim": periodo_fim,
+                    "gtmin_dezembro": round(gtmin_dec_val, 2) if gtmin_dec_val is not None else None,
+                    "gtmin_janeiro": round(gtmin_jan_val, 2) if gtmin_jan_val is not None else None,
+                    "magnitude_mudanca": round(magnitude_mudanca, 2),
+                    "diferenca": round(gtmin_jan_val - gtmin_dec_val, 2) if (
+                        gtmin_dec_val is not None and gtmin_jan_val is not None
+                    ) else None
+                }
+                mudancas.append(mudanca)
+        
+        return mudancas
+    
+    def _format_date(self, date_value) -> str:
+        """
+        Formata uma data para string no formato YYYY-MM.
+        
+        Args:
+            date_value: Valor de data (datetime, Timestamp, ou None)
+            
+        Returns:
+            String no formato "YYYY-MM"
+        """
+        if date_value is None or pd.isna(date_value):
+            return "N/A"
+        
+        try:
+            if hasattr(date_value, 'year') and hasattr(date_value, 'month'):
+                return f"{date_value.year:04d}-{date_value.month:02d}"
+            elif isinstance(date_value, str):
+                return date_value
+            else:
+                return str(date_value)
+        except:
+            return str(date_value)
+    
+    def _sanitize_number(self, value) -> Optional[float]:
+        """
+        Sanitiza um valor numérico, retornando None se for NaN ou inválido.
+        
+        Args:
+            value: Valor a sanitizar
+            
+        Returns:
+            Float ou None
+        """
+        if value is None:
+            return None
+        
+        try:
+            float_val = float(value)
+            if pd.isna(float_val):
+                return None
+            return float_val
+        except (ValueError, TypeError):
+            return None
+    
+    def _calculate_stats(
+        self,
+        gtmin_dec: pd.DataFrame,
+        gtmin_jan: pd.DataFrame,
+        mudancas: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """
+        Calcula estatísticas sobre os registros de GTMIN e mudanças.
+        
+        Args:
+            gtmin_dec: DataFrame com GTMIN de dezembro
+            gtmin_jan: DataFrame com GTMIN de janeiro
+            mudancas: Lista de mudanças identificadas
+            
+        Returns:
+            Dicionário com estatísticas
+        """
+        stats = {
+            "total_registros_dezembro": len(gtmin_dec),
+            "total_registros_janeiro": len(gtmin_jan),
+            "total_mudancas": len(mudancas),
+            "usinas_com_mudanca": len(set(m['codigo_usina'] for m in mudancas)),
+            "tipos_mudanca": {}
+        }
+        
+        # Contar por tipo de mudança
+        for mudanca in mudancas:
+            tipo = mudanca.get('tipo_mudanca', 'desconhecido')
+            stats["tipos_mudanca"][tipo] = stats["tipos_mudanca"].get(tipo, 0) + 1
+        
+        # Estatísticas de magnitude
+        if mudancas:
+            magnitudes = [abs(m.get('magnitude_mudanca', 0)) for m in mudancas]
+            stats["magnitude_maxima"] = round(max(magnitudes), 2)
+            stats["magnitude_minima"] = round(min(magnitudes), 2)
+            stats["magnitude_media"] = round(sum(magnitudes) / len(magnitudes), 2)
+        else:
+            stats["magnitude_maxima"] = 0
+            stats["magnitude_minima"] = 0
+            stats["magnitude_media"] = 0
+        
+        # Usinas únicas em cada deck
+        if not gtmin_dec.empty:
+            stats["usinas_unicas_dezembro"] = gtmin_dec['codigo_usina'].nunique()
+        else:
+            stats["usinas_unicas_dezembro"] = 0
+        
+        if not gtmin_jan.empty:
+            stats["usinas_unicas_janeiro"] = gtmin_jan['codigo_usina'].nunique()
+        else:
+            stats["usinas_unicas_janeiro"] = 0
+        
+        return stats
+    
+    def get_description(self) -> str:
+        """
+        Retorna descrição da tool para uso pelo LLM.
+        
+        Returns:
+            String com descrição detalhada
+        """
+        return """
+        Mudanças em gerações térmicas. Análise de variações de GTMIN (Geração Térmica Mínima) entre decks no modo multideck.
+        
+        Esta tool é especializada em:
+        - Identificar todas as mudanças de GTMIN entre dezembro e janeiro
+        - Ordenar mudanças por magnitude (maior variação primeiro)
+        - Classificar tipos de mudança (alterado, novo_registro, removido)
+        - Retornar apenas as mudanças (não todos os registros)
+        
+        Queries que ativam esta tool:
+        - "mudanças gtmin" ou "mudancas gtmin"
+        - "variação gtmin" ou "variacao gtmin"
+        - "análise gtmin" ou "analise gtmin"
+        
+        Termos-chave: mudanças gtmin, variação gtmin, análise gtmin, mudancas gtmin, variacao gtmin, analise gtmin, geração mínima térmica, mudanças em gerações térmicas.
+        """
