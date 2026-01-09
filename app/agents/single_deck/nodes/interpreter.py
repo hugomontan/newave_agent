@@ -5,9 +5,9 @@ Node que interpreta os resultados e gera a resposta final formatada em Markdown 
 from app.agents.single_deck.state import SingleDeckState
 from app.config import safe_print
 from app.utils.text_utils import clean_response_text
-from app.agents.shared.interpreter.code_execution.formatter import format_code_execution_response
+from app.agents.single_deck.nodes.helpers.code_execution.formatter import format_code_execution_response
 from app.agents.single_deck.formatters.registry import get_formatter_for_tool
-from app.tools.single_deck import get_available_tools
+from app.agents.single_deck.tools import get_available_tools
 
 
 def interpreter_node(state: SingleDeckState) -> dict:
@@ -19,6 +19,20 @@ def interpreter_node(state: SingleDeckState) -> dict:
     2. Se rag_status == "fallback": retorna resposta de fallback
     3. Caso contrário: interpreta resultados de execução de código
     """
+    # #region agent log
+    import json as json_module
+    with open(r'c:\Users\Inteli\OneDrive\Desktop\nw_multi\.cursor\debug.log', 'a', encoding='utf-8') as f:
+        f.write(json_module.dumps({
+            "sessionId": "debug-session",
+            "runId": "run1",
+            "hypothesisId": "A",
+            "location": "interpreter.py:13",
+            "message": "Interpreter node called",
+            "data": {"has_tool_result": bool(state.get("tool_result")), "tool_used": state.get("tool_used"), "tool_route": state.get("tool_route", False)},
+            "timestamp": int(__import__('time').time() * 1000)
+        }) + '\n')
+    # #endregion
+    
     try:
         tool_result = state.get("tool_result")
         tool_used = state.get("tool_used")
@@ -26,6 +40,19 @@ def interpreter_node(state: SingleDeckState) -> dict:
         if tool_result:
             safe_print(f"[INTERPRETER] Processando resultado de tool: {tool_used}")
             safe_print(f"[INTERPRETER]   Success: {tool_result.get('success', False)}")
+            
+            # #region agent log
+            with open(r'c:\Users\Inteli\OneDrive\Desktop\nw_multi\.cursor\debug.log', 'a', encoding='utf-8') as f:
+                f.write(json_module.dumps({
+                    "sessionId": "debug-session",
+                    "runId": "run1",
+                    "hypothesisId": "B",
+                    "location": "interpreter.py:27",
+                    "message": "Tool result found, starting formatting",
+                    "data": {"tool_used": tool_used, "success": tool_result.get('success', False), "has_data": bool(tool_result.get('data'))},
+                    "timestamp": int(__import__('time').time() * 1000)
+                }) + '\n')
+            # #endregion
             
             # Obter tool instance para usar no registry
             tool_instance = None
@@ -44,11 +71,43 @@ def interpreter_node(state: SingleDeckState) -> dict:
                 formatter = get_formatter_for_tool(tool_instance, tool_result)
             
             query = state.get("query", "")
-            safe_print(f"[INTERPRETER]   Query original: {query[:100]}")
+            # Se a query veio de disambiguation, extrair apenas a parte original (antes do " - ")
+            if " - " in query:
+                query = query.split(" - ", 1)[0].strip()
+                safe_print(f"[INTERPRETER]   Query veio de disambiguation, usando query original: {query[:100]}")
+            else:
+                safe_print(f"[INTERPRETER]   Query original: {query[:100]}")
             safe_print(f"[INTERPRETER]   Usando formatter: {formatter.__class__.__name__}")
+            
+            # #region agent log
+            with open(r'c:\Users\Inteli\OneDrive\Desktop\nw_multi\.cursor\debug.log', 'a', encoding='utf-8') as f:
+                f.write(json_module.dumps({
+                    "sessionId": "debug-session",
+                    "runId": "run1",
+                    "hypothesisId": "C",
+                    "location": "interpreter.py:48",
+                    "message": "Formatter obtained, about to format",
+                    "data": {"formatter_class": formatter.__class__.__name__, "query": query[:50]},
+                    "timestamp": int(__import__('time').time() * 1000)
+                }) + '\n')
+            # #endregion
             
             # Formatar resposta usando o formatter
             result = formatter.format_response(tool_result, tool_used, query)
+            
+            # #region agent log
+            with open(r'c:\Users\Inteli\OneDrive\Desktop\nw_multi\.cursor\debug.log', 'a', encoding='utf-8') as f:
+                f.write(json_module.dumps({
+                    "sessionId": "debug-session",
+                    "runId": "run1",
+                    "hypothesisId": "D",
+                    "location": "interpreter.py:51",
+                    "message": "Formatter result obtained",
+                    "data": {"has_final_response": bool(result.get('final_response')), "response_length": len(result.get('final_response', '')), "response_preview": result.get('final_response', '')[:100]},
+                    "timestamp": int(__import__('time').time() * 1000)
+                }) + '\n')
+            # #endregion
+            
             safe_print(f"[INTERPRETER]   Resposta gerada: {len(result.get('final_response', ''))} caracteres")
             return result
         

@@ -1,11 +1,12 @@
-from .graph import create_newave_agent, get_agent, run_query, run_query_stream, NODE_DESCRIPTIONS
-from .state import AgentState
+"""
+Agents module - Modularizado em single_deck e multi_deck.
+"""
+
+# Exportar apenas os estados dos novos módulos
+from app.agents.single_deck.state import SingleDeckState
+from app.agents.multi_deck.state import MultiDeckState
 
 __all__ = [
-    "create_newave_agent",
-    "get_agent", 
-    "run_query",
-    "run_query_stream",
-    "NODE_DESCRIPTIONS",
-    "AgentState",
+    "SingleDeckState",
+    "MultiDeckState",
 ]

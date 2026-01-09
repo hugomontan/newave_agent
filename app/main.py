@@ -48,7 +48,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from app.config import UPLOADS_DIR
-from app.agents import run_query, run_query_stream
+from app.agents.single_deck.graph import run_query as single_deck_run_query, run_query_stream as single_deck_run_query_stream
+from app.agents.multi_deck.graph import run_query as multi_deck_run_query, run_query_stream as multi_deck_run_query_stream
 from app.rag import index_documentation
 
 
@@ -195,9 +196,13 @@ async def query_deck(request: QueryRequest):
             )
     
     deck_path = str(sessions[session_id])
+    analysis_mode = request.analysis_mode or "single"
     
     try:
-        result = run_query(request.query, deck_path, session_id=session_id)
+        if analysis_mode == "comparison":
+            result = multi_deck_run_query(request.query, deck_path, session_id=session_id)
+        else:
+            result = single_deck_run_query(request.query, deck_path, session_id=session_id)
         
         execution_result = result.get("execution_result") or {}
         stdout = execution_result.get("stdout", "")
@@ -247,7 +252,10 @@ async def query_deck_stream(request: QueryRequest):
     
     def event_generator():
         try:
-            yield from run_query_stream(request.query, deck_path, session_id=session_id, analysis_mode=analysis_mode)
+            if analysis_mode == "comparison":
+                yield from multi_deck_run_query_stream(request.query, deck_path, session_id=session_id)
+            else:
+                yield from single_deck_run_query_stream(request.query, deck_path, session_id=session_id)
         except Exception as e:
             import json
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"

@@ -6,9 +6,9 @@ from typing import Dict, Any, Optional
 from app.agents.multi_deck.state import MultiDeckState
 from app.config import safe_print
 from app.utils.text_utils import clean_response_text
-from app.agents.shared.interpreter.tool_formatting.llm_formatter import format_tool_response_with_llm
-from app.agents.shared.interpreter.code_execution.formatter import format_code_execution_response
-from app.agents.shared.interpreter.comparison.formatter import format_comparison_response
+from app.agents.multi_deck.nodes.helpers.tool_formatting.llm_formatter import format_tool_response_with_llm
+from app.agents.multi_deck.nodes.helpers.code_execution.formatter import format_code_execution_response
+from app.agents.multi_deck.nodes.helpers.comparison_formatter import format_comparison_response
 
 
 
@@ -37,7 +37,7 @@ def comparison_interpreter_node(state: MultiDeckState) -> dict:
                 tool_used_for_formatting = tool_result.get("tool_used", tool_used)
                 
                 # Usar format_comparison_response que já faz toda a lógica correta:
-                # - Usa app.comparison.registry.get_formatter_for_tool()
+                # - Usa app.agents.multi_deck.formatters.registry.get_formatter_for_tool()
                 # - Extrai full_result corretamente
                 # - Reconstroi estruturas quando necessário
                 # - Chama formatters originais com can_format() + get_priority()

@@ -1,6 +1,11 @@
 """
-Formatters para multi-deck.
-DEPRECATED: Formatters multi-deck foram removidos. Use app.comparison.formatters.
+Formatters para Multi-Deck Agent.
 """
 
-__all__ = []
+from .base import ComparisonFormatter
+from .registry import get_formatter_for_tool
+
+__all__ = [
+    "ComparisonFormatter",
+    "get_formatter_for_tool",
+]

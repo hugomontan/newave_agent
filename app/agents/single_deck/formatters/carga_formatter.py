@@ -4,13 +4,13 @@ Formatter específico para CargaMensalTool no modo single deck.
 
 from typing import Dict, Any
 from app.agents.single_deck.formatters.base import SingleDeckFormatter
-from app.agents.shared.interpreter.tool_formatting.specific_formatters import format_carga_mensal_response
+from app.agents.single_deck.nodes.helpers.tool_formatting.llm_formatter import format_tool_response_with_llm
 
 
 class CargaSingleDeckFormatter(SingleDeckFormatter):
     """
     Formatter para CargaMensalTool no modo single deck.
-    Reutiliza a lógica existente de formatação.
+    Usa LLM formatter para aplicar as instruções de formatação corretamente.
     """
     
     def format_response(
@@ -21,5 +21,10 @@ class CargaSingleDeckFormatter(SingleDeckFormatter):
     ) -> Dict[str, Any]:
         """
         Formata resposta de CargaMensalTool para single deck.
+        Usa LLM formatter para seguir as instruções de formatação (focar na pergunta, não calcular médias, etc.).
         """
-        return format_carga_mensal_response(tool_result, tool_name)
+        # Extrair query original se vier de disambiguation
+        if " - " in query:
+            query = query.split(" - ", 1)[0].strip()
+        
+        return format_tool_response_with_llm(tool_result, tool_name, query)

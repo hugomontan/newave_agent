@@ -7,11 +7,11 @@ import math
 from typing import Generator, Any, Optional
 from langgraph.graph import StateGraph, END
 from app.agents.multi_deck.state import MultiDeckState
-from app.agents.shared.rag_nodes import (
+from app.agents.multi_deck.nodes.rag_nodes import (
     rag_simple_node,
     rag_enhanced_node,
 )
-from app.agents.shared.llm_nodes import (
+from app.agents.multi_deck.nodes.llm_nodes import (
     llm_planner_node,
 )
 from app.utils.observability import get_langfuse_handler
@@ -367,7 +367,40 @@ def run_query_stream(query: str, deck_path: str, session_id: Optional[str] = Non
                     yield f"data: {json.dumps({'type': 'node_start', 'node': node_name, 'info': node_info, 'retry': current_retry})}\n\n"
                 
                 # Detalhes específicos de cada node (similar ao single deck)
-                if node_name == "comparison_interpreter":
+                if node_name == "comparison_tool_router":
+                    disambiguation = node_output.get("disambiguation")
+                    tool_route = node_output.get("tool_route", False)
+                    from_disambiguation = node_output.get("from_disambiguation", False)
+                    tool_used = node_output.get("tool_used")
+                    tool_result = node_output.get("tool_result", {})
+                    
+                    if disambiguation:
+                        has_disambiguation = True
+                        # #region agent log
+                        import json as json_module
+                        with open(r'c:\Users\Inteli\OneDrive\Desktop\nw_multi\.cursor\debug.log', 'a', encoding='utf-8') as f:
+                            f.write(json_module.dumps({
+                                "sessionId": "debug-session",
+                                "runId": "run1",
+                                "hypothesisId": "B",
+                                "location": "multi_deck/graph.py:377",
+                                "message": "Disambiguation detected, sending event",
+                                "data": {"disambiguation_keys": list(disambiguation.keys()) if disambiguation else []},
+                                "timestamp": int(__import__('time').time() * 1000)
+                            }) + '\n')
+                        # #endregion
+                        yield f"data: {json.dumps({'type': 'disambiguation', 'data': disambiguation})}\n\n"
+                    elif tool_route:
+                        if from_disambiguation:
+                            has_disambiguation = True
+                        yield f"data: {json.dumps({'type': 'node_detail', 'node': node_name, 'detail': f'✅ Tool {tool_used} executada com sucesso!'})}\n\n"
+                        if tool_result.get("success"):
+                            summary = tool_result.get("summary", {})
+                            yield f"data: {json.dumps({'type': 'node_detail', 'node': node_name, 'detail': f' {summary.get("total_registros", 0)} registros processados'})}\n\n"
+                    else:
+                        yield f"data: {json.dumps({'type': 'node_detail', 'node': node_name, 'detail': '⚠️ Nenhuma tool disponível, continuando fluxo normal'})}\n\n"
+                
+                elif node_name == "comparison_interpreter":
                     response = node_output.get("final_response") if node_output else None
                     comparison_data = node_output.get("comparison_data") if node_output else None
                     safe_print(f"[GRAPH] Comparison Interpreter retornou resposta: {len(response) if response else 0} caracteres")

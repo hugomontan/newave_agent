@@ -7,12 +7,12 @@ import math
 from typing import Generator, Any, Optional
 from langgraph.graph import StateGraph, END
 from app.agents.single_deck.state import SingleDeckState
-from app.agents.shared.rag_nodes import (
+from app.agents.single_deck.nodes.rag_nodes import (
     rag_retriever_node,
     rag_simple_node,
     rag_enhanced_node,
 )
-from app.agents.shared.llm_nodes import (
+from app.agents.single_deck.nodes.llm_nodes import (
     llm_planner_node,
 )
 from app.utils.observability import get_langfuse_handler
@@ -113,6 +113,20 @@ def should_continue_after_tool_router(state: SingleDeckState) -> str:
     """
     tool_route = state.get("tool_route", False)
     disambiguation = state.get("disambiguation")
+    
+    # #region agent log
+    import json as json_module
+    with open(r'c:\Users\Inteli\OneDrive\Desktop\nw_multi\.cursor\debug.log', 'a', encoding='utf-8') as f:
+        f.write(json_module.dumps({
+            "sessionId": "debug-session",
+            "runId": "run1",
+            "hypothesisId": "A",
+            "location": "graph.py:106",
+            "message": "Should continue after tool router",
+            "data": {"tool_route": tool_route, "has_disambiguation": bool(disambiguation), "next_node": "interpreter" if tool_route else ("END" if disambiguation else "rag_simple")},
+            "timestamp": int(__import__('time').time() * 1000)
+        }) + '\n')
+    # #endregion
     
     if disambiguation:
         # Disambiguation detectada - terminar fluxo imediatamente
@@ -442,6 +456,20 @@ def run_query_stream(query: str, deck_path: str, session_id: Optional[str] = Non
                     tool_used = node_output.get("tool_used")
                     tool_result = node_output.get("tool_result", {})
                     
+                    # #region agent log
+                    import json as json_module
+                    with open(r'c:\Users\Inteli\OneDrive\Desktop\nw_multi\.cursor\debug.log', 'a', encoding='utf-8') as f:
+                        f.write(json_module.dumps({
+                            "sessionId": "debug-session",
+                            "runId": "run1",
+                            "hypothesisId": "E",
+                            "location": "graph.py:438",
+                            "message": "Tool router output",
+                            "data": {"tool_route": tool_route, "has_disambiguation": bool(disambiguation), "tool_used": tool_used},
+                            "timestamp": int(__import__('time').time() * 1000)
+                        }) + '\n')
+                    # #endregion
+                    
                     if disambiguation:
                         has_disambiguation = True
                         yield f"data: {json.dumps({'type': 'disambiguation', 'data': disambiguation})}\n\n"
@@ -468,6 +496,21 @@ def run_query_stream(query: str, deck_path: str, session_id: Optional[str] = Non
                 elif node_name == "interpreter":
                     response = node_output.get("final_response") if node_output else None
                     safe_print(f"[GRAPH] Interpreter retornou resposta: {len(response) if response else 0} caracteres")
+                    
+                    # #region agent log
+                    import json as json_module
+                    with open(r'c:\Users\Inteli\OneDrive\Desktop\nw_multi\.cursor\debug.log', 'a', encoding='utf-8') as f:
+                        f.write(json_module.dumps({
+                            "sessionId": "debug-session",
+                            "runId": "run1",
+                            "hypothesisId": "D",
+                            "location": "graph.py:497",
+                            "message": "Interpreter output in graph",
+                            "data": {"has_response": bool(response), "response_length": len(response) if response else 0, "response_preview": response[:200] if response else None, "node_output_keys": list(node_output.keys()) if node_output else []},
+                            "timestamp": int(__import__('time').time() * 1000)
+                        }) + '\n')
+                    # #endregion
+                    
                     if response and response.strip():
                         safe_print(f"[GRAPH] Emitindo resposta do interpreter ({len(response)} caracteres)")
                         yield f"data: {json.dumps({'type': 'response_start', 'is_fallback': is_fallback})}\n\n"
@@ -475,6 +518,19 @@ def run_query_stream(query: str, deck_path: str, session_id: Optional[str] = Non
                         for i in range(0, len(response), chunk_size):
                             yield f"data: {json.dumps({'type': 'response_chunk', 'chunk': response[i:i + chunk_size]})}\n\n"
                         yield f"data: {json.dumps({'type': 'response_complete', 'response': response}, allow_nan=False)}\n\n"
+                        
+                        # #region agent log
+                        with open(r'c:\Users\Inteli\OneDrive\Desktop\nw_multi\.cursor\debug.log', 'a', encoding='utf-8') as f:
+                            f.write(json_module.dumps({
+                                "sessionId": "debug-session",
+                                "runId": "run1",
+                                "hypothesisId": "D",
+                                "location": "graph.py:505",
+                                "message": "Response sent to frontend",
+                                "data": {"response_length": len(response), "response_preview": response[:200]},
+                                "timestamp": int(__import__('time').time() * 1000)
+                            }) + '\n')
+                        # #endregion
                     else:
                         safe_print(f"[GRAPH] ⚠️ Resposta vazia do interpreter")
                         if has_disambiguation:
