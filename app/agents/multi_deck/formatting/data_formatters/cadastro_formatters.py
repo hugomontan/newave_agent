@@ -3,7 +3,7 @@ Formatadores de cadastro para comparação multi-deck.
 Para tools que retornam dados cadastrais de usinas.
 """
 from typing import Dict, Any, List, Optional
-from app.agents.multi_deck.formatters.base import ComparisonFormatter
+from app.agents.multi_deck.formatting.base import ComparisonFormatter
 
 
 class CadastroComparisonFormatter(ComparisonFormatter):

@@ -10,7 +10,6 @@ import pandas as pd
 import re
 from typing import Dict, Any, Optional
 from app.agents.single_deck.formatters.clast_formatter import ClastSingleDeckFormatter
-from app.agents.multi_deck.formatters.clast_formatter import ClastMultiDeckFormatter
 
 class ClastValoresTool(NEWAVETool):
     """
@@ -535,5 +534,10 @@ class ClastValoresTool(NEWAVETool):
         return ClastSingleDeckFormatter()
     
     def get_multi_deck_formatter(self):
-        """Retorna formatter específico para multi-deck."""
-        return ClastMultiDeckFormatter()
+        """
+        Retorna formatter específico para multi-deck.
+        Nota: O formatter é obtido automaticamente via registry em formatting/registry.py.
+        Este método é mantido para compatibilidade, mas não é mais usado.
+        """
+        from app.agents.multi_deck.formatting.data_formatters.temporal_formatters import ClastComparisonFormatter
+        return ClastComparisonFormatter()

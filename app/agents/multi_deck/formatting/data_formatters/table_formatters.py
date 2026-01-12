@@ -3,7 +3,7 @@ Formatador de tabela para comparação multi-deck.
 Para tools que retornam dados em formato tabular simples.
 """
 from typing import Dict, Any, List, Optional
-from app.agents.multi_deck.formatters.base import ComparisonFormatter
+from app.agents.multi_deck.formatting.base import ComparisonFormatter
 
 
 class TableComparisonFormatter(ComparisonFormatter):

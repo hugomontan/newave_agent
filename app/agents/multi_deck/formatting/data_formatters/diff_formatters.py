@@ -3,7 +3,7 @@ Formatadores de diff para comparação multi-deck.
 Para tools que listam modificações (adicionado/removido/alterado).
 """
 from typing import Dict, Any, List, Optional, Tuple
-from app.agents.multi_deck.formatters.base import ComparisonFormatter
+from app.agents.multi_deck.formatting.base import ComparisonFormatter
 
 
 class DiffComparisonFormatter(ComparisonFormatter):

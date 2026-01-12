@@ -65,4 +65,3 @@ class ComparisonFormatter(ABC):
             Prioridade (maior = mais específico). Padrão: 0
         """
         return 0
-

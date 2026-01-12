@@ -4,7 +4,7 @@ Para tools que retornam séries históricas (dados por período).
 """
 import math
 from typing import Dict, Any, List, Optional
-from app.agents.multi_deck.formatters.base import ComparisonFormatter
+from app.agents.multi_deck.formatting.base import ComparisonFormatter
 
 
 class ClastComparisonFormatter(ComparisonFormatter):

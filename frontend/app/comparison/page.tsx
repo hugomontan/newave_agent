@@ -41,6 +41,8 @@ interface Message {
     question: string;
     options: Array<{label: string; query: string; tool_name: string}>;
     original_query: string;
+    isLoading?: boolean;
+    selectedOption?: string;
   };
   comparisonData?: {
     deck_1: {
@@ -143,6 +145,7 @@ export default function ComparisonPage() {
   const executionOutputRef = useRef<string | null>(null);
   const retryCountRef = useRef(0);
   const comparisonDataRef = useRef<Message["comparisonData"]>(null);
+  const disambiguationMessageIdRef = useRef<string | null>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -263,6 +266,20 @@ export default function ComparisonPage() {
           setStreamingCode((prev) => {
             const newCode = prev ? prev + "\n" + event.line : event.line!;
             streamingCodeRef.current = newCode;
+            
+            // Se há uma mensagem de disambiguation em loading, atualizar código em tempo real
+            if (disambiguationMessageIdRef.current) {
+              setMessages((prevMessages) => prevMessages.map(msg => {
+                if (msg.id === disambiguationMessageIdRef.current) {
+                  return {
+                    ...msg,
+                    code: newCode,
+                  };
+                }
+                return msg;
+              }));
+            }
+            
             return newCode;
           });
         }
@@ -272,6 +289,19 @@ export default function ComparisonPage() {
         if (event.code) {
           setStreamingCode(event.code);
           streamingCodeRef.current = event.code;
+          
+          // Se há uma mensagem de disambiguation em loading, atualizar código
+          if (disambiguationMessageIdRef.current) {
+            setMessages((prevMessages) => prevMessages.map(msg => {
+              if (msg.id === disambiguationMessageIdRef.current) {
+                return {
+                  ...msg,
+                  code: event.code,
+                };
+              }
+              return msg;
+            }));
+          }
         }
         break;
 
@@ -281,10 +311,68 @@ export default function ComparisonPage() {
         if (event.stdout) {
           setExecutionOutput(event.stdout);
           executionOutputRef.current = event.stdout;
+          
+          // Tentar extrair rawData do output e atualizar mensagem de disambiguation em tempo real
+          if (disambiguationMessageIdRef.current) {
+            try {
+              const jsonMatch = event.stdout.match(/---JSON_DATA_START---([\s\S]*?)---JSON_DATA_END---/);
+              if (jsonMatch) {
+                const rawData = JSON.parse(jsonMatch[1].trim());
+                setMessages((prevMessages) => prevMessages.map(msg => {
+                  if (msg.id === disambiguationMessageIdRef.current) {
+                    return {
+                      ...msg,
+                      executionSuccess: event.success ?? false,
+                      executionOutput: event.stdout,
+                      rawData: rawData,
+                    };
+                  }
+                  return msg;
+                }));
+              } else {
+                // Atualizar mesmo sem rawData
+                setMessages((prevMessages) => prevMessages.map(msg => {
+                  if (msg.id === disambiguationMessageIdRef.current) {
+                    return {
+                      ...msg,
+                      executionSuccess: event.success ?? false,
+                      executionOutput: event.stdout,
+                    };
+                  }
+                  return msg;
+                }));
+              }
+            } catch {
+              // Ignora erro de parsing, mas atualiza executionOutput
+              setMessages((prevMessages) => prevMessages.map(msg => {
+                if (msg.id === disambiguationMessageIdRef.current) {
+                  return {
+                    ...msg,
+                    executionSuccess: event.success ?? false,
+                    executionOutput: event.stdout,
+                  };
+                }
+                return msg;
+              }));
+            }
+          }
         }
         if (event.stderr) {
           setExecutionError(event.stderr);
           executionErrorRef.current = event.stderr;
+          
+          // Atualizar erro na mensagem de disambiguation
+          if (disambiguationMessageIdRef.current) {
+            setMessages((prevMessages) => prevMessages.map(msg => {
+              if (msg.id === disambiguationMessageIdRef.current) {
+                return {
+                  ...msg,
+                  error: event.stderr,
+                };
+              }
+              return msg;
+            }));
+          }
         }
         break;
 
@@ -295,6 +383,20 @@ export default function ComparisonPage() {
           if (event.max_retries) {
             setMaxRetries(event.max_retries);
           }
+          
+          // Atualizar retryCount na mensagem de disambiguation
+          if (disambiguationMessageIdRef.current) {
+            setMessages((prevMessages) => prevMessages.map(msg => {
+              if (msg.id === disambiguationMessageIdRef.current) {
+                return {
+                  ...msg,
+                  retryCount: event.retry_count,
+                };
+              }
+              return msg;
+            }));
+          }
+          
           setAgentSteps((prev) => [
             ...prev,
             {
@@ -318,6 +420,24 @@ export default function ComparisonPage() {
           setStreamingResponse((prev) => {
             const newResponse = prev + event.chunk;
             streamingResponseRef.current = newResponse;
+            
+            // Se há uma mensagem de disambiguation em loading, atualizar ela em tempo real
+            if (disambiguationMessageIdRef.current) {
+              setMessages((prevMessages) => prevMessages.map(msg => {
+                if (msg.id === disambiguationMessageIdRef.current) {
+                  return {
+                    ...msg,
+                    content: newResponse,
+                    disambiguationData: msg.disambiguationData ? {
+                      ...msg.disambiguationData,
+                      isLoading: true
+                    } : undefined
+                  };
+                }
+                return msg;
+              }));
+            }
+            
             return newResponse;
           });
         }
@@ -342,6 +462,19 @@ export default function ComparisonPage() {
           }
           setComparisonData(event.comparison_data);
           comparisonDataRef.current = event.comparison_data;
+          
+          // Se há uma mensagem de disambiguation em loading, atualizar com comparison_data
+          if (disambiguationMessageIdRef.current) {
+            setMessages((prevMessages) => prevMessages.map(msg => {
+              if (msg.id === disambiguationMessageIdRef.current) {
+                return {
+                  ...msg,
+                  comparisonData: event.comparison_data,
+                };
+              }
+              return msg;
+            }));
+          }
         }
         break;
 
@@ -514,19 +647,34 @@ export default function ComparisonPage() {
     }
   };
 
-  const handleDisambiguationOptionClick = async (query: string) => {
+  const handleDisambiguationOptionClick = async (query: string, messageId?: string) => {
     if (!sessionId) return;
     
-    setDisambiguationData(null);
+    // Encontrar a mensagem de disambiguation e marcar como loading
+    const targetMessageId = messageId || (() => {
+      const msg = messages.find(m => m.disambiguationData && !m.disambiguationData.isLoading);
+      return msg?.id;
+    })();
     
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      role: "user",
-      content: query,
-      timestamp: new Date(),
-    };
+    if (targetMessageId) {
+      disambiguationMessageIdRef.current = targetMessageId;
+      
+      // Marcar a mensagem como loading
+      setMessages((prev) => prev.map(msg => {
+        if (msg.id === targetMessageId && msg.disambiguationData) {
+          return {
+            ...msg,
+            disambiguationData: {
+              ...msg.disambiguationData,
+              isLoading: true,
+              selectedOption: query
+            }
+          };
+        }
+        return msg;
+      }));
+    }
     
-    setMessages((prev) => [...prev, userMessage]);
     setInput("");
     setIsLoading(true);
     setAgentSteps([]);
@@ -561,43 +709,86 @@ export default function ComparisonPage() {
       const hasContent = streamingResponseRef.current && streamingResponseRef.current.trim();
       const hasData = rawData && rawData.length > 0;
       const hasCode = streamingCodeRef.current && streamingCodeRef.current.trim();
+      const hasComparisonData = comparisonDataRef.current !== null;
       
-      if (hasContent || hasData || hasCode || comparisonDataRef.current) {
-        const assistantMessage: Message = {
-          id: (Date.now() + 1).toString(),
-          role: "assistant",
-          content: streamingResponseRef.current || "",
-          code: streamingCodeRef.current || undefined,
-          executionSuccess: executionSuccessRef.current ?? false,
-          executionOutput: executionOutputRef.current,
-          rawData: rawData,
-          retryCount: retryCountRef.current,
-          error: executionErrorRef.current,
-          comparisonData: comparisonDataRef.current || undefined,
-          timestamp: new Date(),
-        };
+      // Atualizar a mensagem existente ao invés de criar nova
+      // Atualizar sempre que houver qualquer dado, mesmo sem conteúdo de texto
+      if (targetMessageId) {
+        setMessages((prev) => prev.map(msg => {
+          if (msg.id === targetMessageId) {
+            return {
+              ...msg,
+              content: streamingResponseRef.current || "",
+              code: streamingCodeRef.current || undefined,
+              executionSuccess: executionSuccessRef.current ?? false,
+              executionOutput: executionOutputRef.current,
+              rawData: rawData,
+              retryCount: retryCountRef.current,
+              error: executionErrorRef.current,
+              comparisonData: comparisonDataRef.current || undefined,
+              disambiguationData: undefined, // Remover disambiguationData após processar
+            };
+          }
+          return msg;
+        }));
+      } else {
+        // Fallback: criar nova mensagem se não encontrou a mensagem de disambiguation
+        if (hasContent || hasData || hasCode || comparisonDataRef.current) {
+          const assistantMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            role: "assistant",
+            content: streamingResponseRef.current || "",
+            code: streamingCodeRef.current || undefined,
+            executionSuccess: executionSuccessRef.current ?? false,
+            executionOutput: executionOutputRef.current,
+            rawData: rawData,
+            retryCount: retryCountRef.current,
+            error: executionErrorRef.current,
+            comparisonData: comparisonDataRef.current || undefined,
+            timestamp: new Date(),
+          };
 
-        setMessages((prev) => [...prev, assistantMessage]);
+          setMessages((prev) => [...prev, assistantMessage]);
+        }
       }
       
       setAgentSteps([]);
       setStreamingCode("");
       setStreamingResponse("");
+      disambiguationMessageIdRef.current = null;
 
     } catch (err) {
-      const errorMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: `❌ **Erro ao processar sua pergunta:**\n\n${
-          err instanceof Error ? err.message : "Erro desconhecido"
-        }`,
-        timestamp: new Date(),
-      };
+      // Em caso de erro, atualizar a mensagem de disambiguation com o erro
+      if (targetMessageId) {
+        setMessages((prev) => prev.map(msg => {
+          if (msg.id === targetMessageId) {
+            return {
+              ...msg,
+              content: `❌ **Erro ao processar sua pergunta:**\n\n${
+                err instanceof Error ? err.message : "Erro desconhecido"
+              }`,
+              disambiguationData: undefined,
+            };
+          }
+          return msg;
+        }));
+      } else {
+        const errorMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          role: "assistant",
+          content: `❌ **Erro ao processar sua pergunta:**\n\n${
+            err instanceof Error ? err.message : "Erro desconhecido"
+          }`,
+          timestamp: new Date(),
+        };
 
-      setMessages((prev) => [...prev, errorMessage]);
+        setMessages((prev) => [...prev, errorMessage]);
+      }
+      
       setAgentSteps([]);
       setStreamingCode("");
       setStreamingResponse("");
+      disambiguationMessageIdRef.current = null;
     } finally {
       setIsLoading(false);
     }
@@ -706,7 +897,7 @@ export default function ComparisonPage() {
                   />
                 ))}
                 
-                {isLoading && agentSteps.length > 0 && (
+                {isLoading && agentSteps.length > 0 && !messages.some(msg => msg.disambiguationData?.isLoading) && (
                   <AgentProgress
                     steps={agentSteps}
                     currentCode={streamingCode}

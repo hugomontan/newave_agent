@@ -71,10 +71,20 @@ def interpreter_node(state: SingleDeckState) -> dict:
                 formatter = get_formatter_for_tool(tool_instance, tool_result)
             
             query = state.get("query", "")
-            # Se a query veio de disambiguation, extrair apenas a parte original (antes do " - ")
-            if " - " in query:
+            # Se a query veio de disambiguation, extrair apenas a parte original
+            # Formato novo: "__DISAMBIG__:ToolName:original_query"
+            if query.startswith("__DISAMBIG__:"):
+                try:
+                    parts = query.split(":", 2)
+                    if len(parts) == 3:
+                        query = parts[2].strip()  # Usar apenas a query original
+                        safe_print(f"[INTERPRETER]   Query veio de disambiguation (formato novo), usando query original: {query[:100]}")
+                except Exception as e:
+                    safe_print(f"[INTERPRETER] ⚠️ Erro ao limpar query de disambiguation: {e}")
+            # Formato antigo (compatibilidade): "query - tool_name"
+            elif " - " in query:
                 query = query.split(" - ", 1)[0].strip()
-                safe_print(f"[INTERPRETER]   Query veio de disambiguation, usando query original: {query[:100]}")
+                safe_print(f"[INTERPRETER]   Query veio de disambiguation (formato antigo), usando query original: {query[:100]}")
             else:
                 safe_print(f"[INTERPRETER]   Query original: {query[:100]}")
             safe_print(f"[INTERPRETER]   Usando formatter: {formatter.__class__.__name__}")
@@ -154,6 +164,21 @@ Não encontrei arquivos de dados adequados para responder sua pergunta.
         execution_result = state.get("execution_result") or {}
         generated_code = state.get("generated_code", "")
         query = state.get("query", "")
+        
+        # Limpar query se vier de disambiguation (remover tag __DISAMBIG__)
+        if query.startswith("__DISAMBIG__:"):
+            try:
+                parts = query.split(":", 2)
+                if len(parts) == 3:
+                    query = parts[2].strip()  # Usar apenas a query original
+                    safe_print(f"[INTERPRETER] Query limpa de disambiguation: {query}")
+            except Exception as e:
+                safe_print(f"[INTERPRETER] ⚠️ Erro ao limpar query de disambiguation: {e}")
+        # Formato antigo (compatibilidade)
+        elif " - " in query:
+            query = query.split(" - ", 1)[0].strip()
+            safe_print(f"[INTERPRETER] Query limpa de disambiguation (formato antigo): {query}")
+        
         relevant_docs = state.get("relevant_docs", [])
         retry_count = state.get("retry_count", 0)
         max_retries = state.get("max_retries", 3)

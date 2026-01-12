@@ -8,7 +8,7 @@ from app.config import safe_print
 from app.utils.text_utils import clean_response_text
 from app.agents.multi_deck.nodes.helpers.tool_formatting.llm_formatter import format_tool_response_with_llm
 from app.agents.multi_deck.nodes.helpers.code_execution.formatter import format_code_execution_response
-from app.agents.multi_deck.nodes.helpers.comparison_formatter import format_comparison_response
+from app.agents.multi_deck.formatting.registry import format_comparison_response
 
 
 
@@ -34,6 +34,17 @@ def comparison_interpreter_node(state: MultiDeckState) -> dict:
             if tool_result.get("is_comparison"):
                 safe_print(f"[COMPARISON INTERPRETER] ✅ Resultado é comparação multi-deck")
                 query = state.get("query", "")
+                
+                # Limpar query se vier de disambiguation (remover tag __DISAMBIG__)
+                if query.startswith("__DISAMBIG__:"):
+                    try:
+                        parts = query.split(":", 2)
+                        if len(parts) == 3:
+                            query = parts[2].strip()  # Usar apenas a query original
+                            safe_print(f"[COMPARISON INTERPRETER] Query limpa de disambiguation: {query}")
+                    except Exception as e:
+                        safe_print(f"[COMPARISON INTERPRETER] ⚠️ Erro ao limpar query de disambiguation: {e}")
+                
                 tool_used_for_formatting = tool_result.get("tool_used", tool_used)
                 
                 # Usar format_comparison_response que já faz toda a lógica correta:
@@ -53,6 +64,17 @@ def comparison_interpreter_node(state: MultiDeckState) -> dict:
             # Tool não é comparação, processar normalmente
             safe_print(f"[COMPARISON INTERPRETER]   Data count: {len(tool_result.get('data', [])) if tool_result.get('data') else 0}")
             query = state.get("query", "")
+            
+            # Limpar query se vier de disambiguation (remover tag __DISAMBIG__)
+            if query.startswith("__DISAMBIG__:"):
+                try:
+                    parts = query.split(":", 2)
+                    if len(parts) == 3:
+                        query = parts[2].strip()  # Usar apenas a query original
+                        safe_print(f"[COMPARISON INTERPRETER] Query limpa de disambiguation: {query}")
+                except Exception as e:
+                    safe_print(f"[COMPARISON INTERPRETER] ⚠️ Erro ao limpar query de disambiguation: {e}")
+            
             result = format_tool_response_with_llm(tool_result, tool_used, query)
             safe_print(f"[COMPARISON INTERPRETER]   Resposta gerada: {len(result.get('final_response', ''))} caracteres")
             return result
@@ -89,6 +111,17 @@ Não encontrei arquivos de dados adequados para responder sua pergunta de compar
         execution_result = state.get("execution_result") or {}
         generated_code = state.get("generated_code", "")
         query = state.get("query", "")
+        
+        # Limpar query se vier de disambiguation (remover tag __DISAMBIG__)
+        if query.startswith("__DISAMBIG__:"):
+            try:
+                parts = query.split(":", 2)
+                if len(parts) == 3:
+                    query = parts[2].strip()  # Usar apenas a query original
+                    safe_print(f"[COMPARISON INTERPRETER] Query limpa de disambiguation: {query}")
+            except Exception as e:
+                safe_print(f"[COMPARISON INTERPRETER] ⚠️ Erro ao limpar query de disambiguation: {e}")
+        
         relevant_docs = state.get("relevant_docs", [])
         retry_count = state.get("retry_count", 0)
         max_retries = state.get("max_retries", 3)

@@ -3,7 +3,7 @@ Formatador para VariacaoVolumesIniciaisTool.
 Visualização: Tabela de mudanças ordenadas por magnitude, agrupada por REE em seções separadas.
 """
 from typing import Dict, Any
-from app.agents.multi_deck.formatters.base import ComparisonFormatter
+from app.agents.multi_deck.formatting.base import ComparisonFormatter
 
 
 class VariacaoVolumesIniciaisFormatter(ComparisonFormatter):

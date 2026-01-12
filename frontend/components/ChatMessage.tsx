@@ -71,6 +71,8 @@ interface Message {
     question: string;
     options: Array<{label: string; query: string; tool_name: string}>;
     original_query: string;
+    isLoading?: boolean;
+    selectedOption?: string;
   };
   requires_user_choice?: boolean;
   alternative_type?: string;
@@ -78,7 +80,7 @@ interface Message {
 
 interface ChatMessageProps {
   message: Message;
-  onOptionClick?: (query: string) => void;
+  onOptionClick?: (query: string, messageId?: string) => void;
 }
 
 export function ChatMessage({ message, onOptionClick }: ChatMessageProps) {
@@ -166,7 +168,14 @@ export function ChatMessage({ message, onOptionClick }: ChatMessageProps) {
         <div className="flex-1 min-w-0">
           {isUser ? (
             <div className="bg-[hsl(210,70%,55%)] text-white rounded-2xl rounded-tr-sm px-4 py-3">
-              <p className="whitespace-pre-wrap text-[15px] leading-relaxed">{message.content}</p>
+              <p className="whitespace-pre-wrap text-[15px] leading-relaxed">
+                {message.content.startsWith("__DISAMBIG__:") 
+                  ? (() => {
+                      const parts = message.content.split(":", 2);
+                      return parts.length === 3 ? parts[2].trim() : message.content;
+                    })()
+                  : message.content}
+              </p>
             </div>
           ) : (
             <div className="bg-[hsl(222,47%,18%)] rounded-2xl rounded-tl-sm px-4 py-3">
@@ -250,27 +259,167 @@ export function ChatMessage({ message, onOptionClick }: ChatMessageProps) {
                 {/* Disambiguation Options */}
                 {message.disambiguationData && (
                   <div className="mb-4 p-4 border border-primary/30 rounded-lg bg-primary/5">
-                    <h3 className="text-base font-semibold text-white mb-3">
-                      {message.disambiguationData.question}
-                    </h3>
-                    <div className="space-y-2">
-                      {message.disambiguationData.options.map((option, idx) => (
-                        <Button
-                          key={idx}
-                          onClick={() => onOptionClick?.(option.query)}
-                          variant="outline"
-                          className="w-full text-left justify-start bg-background/50 hover:bg-background border-border hover:border-primary/50 text-foreground"
-                        >
-                          <span className="font-bold mr-2 text-primary">{idx + 1}.</span>
-                          <span>{option.label}</span>
-                        </Button>
-                      ))}
-                    </div>
+                    {message.disambiguationData.isLoading ? (
+                      <div className="space-y-4">
+                        <div className="flex flex-col items-center justify-center py-4">
+                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mb-4"></div>
+                          <p className="text-sm text-muted-foreground">Processando sua escolha...</p>
+                        </div>
+                        {/* Mostrar conteúdo que está chegando durante o streaming */}
+                        {message.content && message.content.trim() && (
+                          <div className="prose prose-sm max-w-none prose-invert prose-headings:text-white prose-p:text-white prose-strong:text-white prose-code:text-white prose-ul:text-white prose-ol:text-white prose-li:text-white prose-a:text-blue-400 prose-blockquote:text-gray-300 prose-th:text-white prose-td:text-gray-200 border-t border-primary/20 pt-4">
+                            <ReactMarkdown
+                              remarkPlugins={[remarkGfm]}
+                              components={{
+                                h1: ({ children }) => (
+                                  <h1 className="text-xl font-semibold text-white mt-5 mb-3 tracking-tight" style={{ color: '#ffffff' }}>{children}</h1>
+                                ),
+                                h2: ({ children }) => (
+                                  <h2 className="text-lg font-semibold text-foreground mt-4 mb-2.5 border-b border-border pb-1.5 tracking-tight">
+                                    {children}
+                                  </h2>
+                                ),
+                                h3: ({ children }) => (
+                                  <h3 className="text-base font-medium text-white mt-3 mb-2 tracking-tight" style={{ color: '#ffffff' }}>{children}</h3>
+                                ),
+                                h4: ({ children }) => (
+                                  <h4 className="text-base font-semibold text-white mb-2" style={{ color: '#ffffff' }}>{children}</h4>
+                                ),
+                                h5: ({ children }) => (
+                                  <h5 className="text-sm font-semibold text-white mb-1" style={{ color: '#ffffff' }}>{children}</h5>
+                                ),
+                                h6: ({ children }) => (
+                                  <h6 className="text-sm font-medium text-white mb-1" style={{ color: '#ffffff' }}>{children}</h6>
+                                ),
+                                p: ({ children }) => (
+                                  <p className="text-white my-2.5 leading-relaxed text-[15px]">{children}</p>
+                                ),
+                                ul: ({ children }) => (
+                                  <ul className="list-disc list-inside space-y-1 my-2 text-white">{children}</ul>
+                                ),
+                                ol: ({ children }) => (
+                                  <ol className="list-decimal list-inside space-y-1 my-2 text-white">{children}</ol>
+                                ),
+                                li: ({ children }) => (
+                                  <li className="text-white text-[15px] leading-relaxed">{children}</li>
+                                ),
+                                strong: ({ children }) => (
+                                  <strong className="font-semibold text-white">{children}</strong>
+                                ),
+                                table: ({ children }) => (
+                                  <div className="overflow-x-auto my-4">
+                                    <table className="min-w-full border-collapse border border-border rounded-lg overflow-hidden">
+                                      {children}
+                                    </table>
+                                  </div>
+                                ),
+                                thead: ({ children }) => (
+                                  <thead className="bg-background">{children}</thead>
+                                ),
+                                th: ({ children }) => (
+                                  <th className="border border-border px-4 py-2.5 text-left text-xs font-semibold text-foreground uppercase tracking-wider">
+                                    {children}
+                                  </th>
+                                ),
+                                td: ({ children }) => (
+                                  <td className="border border-border px-4 py-2.5 text-sm text-foreground/90">
+                                    {children}
+                                  </td>
+                                ),
+                                blockquote: ({ children }) => (
+                                  <blockquote className="border-l-4 border-border pl-4 my-4 text-muted-foreground italic text-[15px]">
+                                    {children}
+                                  </blockquote>
+                                ),
+                                img: ({ src, alt, ...props }) => {
+                                  if (src && src.startsWith("data:image")) {
+                                    return (
+                                      <div className="my-4 flex justify-center">
+                                        <img 
+                                          src={src} 
+                                          alt={alt || "Gráfico"} 
+                                          className="max-w-full h-auto rounded-lg border border-border"
+                                          {...props}
+                                        />
+                                      </div>
+                                    );
+                                  }
+                                  return (
+                                    <div className="my-4 flex justify-center">
+                                      <img 
+                                        src={src} 
+                                        alt={alt || "Imagem"} 
+                                        className="max-w-full h-auto rounded-lg border border-border"
+                                        {...props}
+                                      />
+                                    </div>
+                                  );
+                                },
+                                code({ node, className, children, ...props }) {
+                                  const match = /language-(\w+)/.exec(className || "");
+                                  const isInline = !match;
+                                  return !isInline ? (
+                                    <div className="relative group my-3">
+                                      <SyntaxHighlighter
+                                        style={oneDark}
+                                        language={match[1]}
+                                        PreTag="div"
+                                        className="rounded-lg text-sm !bg-[#1e1e2e]"
+                                        showLineNumbers={match[1] === "python"}
+                                      >
+                                        {String(children).replace(/\n$/, "")}
+                                      </SyntaxHighlighter>
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity bg-muted hover:bg-muted/80 text-foreground h-8 w-8 p-0"
+                                        onClick={() => copyToClipboard(String(children))}
+                                      >
+                                        {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                                      </Button>
+                                    </div>
+                                  ) : (
+                                    <code
+                                      className="bg-background text-foreground px-1.5 py-0.5 rounded text-sm font-mono border border-border"
+                                      {...props}
+                                    >
+                                      {children}
+                                    </code>
+                                  );
+                                },
+                              }}
+                            >
+                              {message.content}
+                            </ReactMarkdown>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <>
+                        <h3 className="text-base font-semibold text-white mb-3">
+                          {message.disambiguationData.question}
+                        </h3>
+                        <div className="space-y-2">
+                          {message.disambiguationData.options.map((option, idx) => (
+                            <Button
+                              key={idx}
+                              onClick={() => onOptionClick?.(option.query, message.id)}
+                              variant="outline"
+                              className="w-full text-left justify-start bg-background/50 hover:bg-background border-border hover:border-primary/50 text-foreground"
+                            >
+                              <span className="font-bold mr-2 text-primary">{idx + 1}.</span>
+                              <span>{option.label}</span>
+                            </Button>
+                          ))}
+                        </div>
+                      </>
+                    )}
                   </div>
                 )}
 
                 {/* Response content with markdown - apenas se houver conteúdo e não for apenas disambiguation ou requires_user_choice */}
-                {message.content && message.content.trim() && !message.requires_user_choice && (
+                {/* Não mostrar conteúdo aqui se estiver em loading de disambiguation (já mostrado acima) */}
+                {message.content && message.content.trim() && !message.requires_user_choice && !(message.disambiguationData && message.disambiguationData.isLoading) && (
                 <div className="prose prose-sm max-w-none prose-invert prose-headings:text-white prose-p:text-white prose-strong:text-white prose-code:text-white prose-ul:text-white prose-ol:text-white prose-li:text-white prose-a:text-blue-400 prose-blockquote:text-gray-300 prose-th:text-white prose-td:text-gray-200">
                 <ReactMarkdown
                       remarkPlugins={[remarkGfm]}
@@ -401,22 +550,24 @@ export function ChatMessage({ message, onOptionClick }: ChatMessageProps) {
                 )}
               </div>
 
-              {/* Comparison View */}
+              {/* Comparison View - mostrar mesmo durante loading de disambiguation */}
               {message.comparisonData && (
                 <div className="w-full -mx-4 sm:-mx-6 md:-mx-8 px-4 sm:px-6 md:px-8">
                   <ComparisonView comparison={message.comparisonData} />
                 </div>
               )}
 
-              {/* Raw Data Table */}
+              {/* Raw Data Table - mostrar mesmo durante loading de disambiguation */}
               {message.rawData && message.rawData.length > 0 && !message.comparisonData && (
-                <DataTable 
-                  data={message.rawData} 
-                  title=" Dados Extraídos"
-                />
+                <div className="w-full -mx-4 sm:-mx-6 md:-mx-8 px-4 sm:px-6 md:px-8">
+                  <DataTable 
+                    data={message.rawData} 
+                    title=" Dados Extraídos"
+                  />
+                </div>
               )}
 
-              {/* Generated code accordion - Refined */}
+              {/* Generated code accordion - mostrar mesmo durante loading de disambiguation */}
               {message.code && (
                 <Accordion type="single" collapsible className="mt-5">
                   <AccordionItem value="code" className="border border-btg-graphite-200/60 rounded-xl overflow-hidden">

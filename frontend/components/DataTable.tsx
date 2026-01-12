@@ -69,7 +69,7 @@ export function DataTable({ data, title }: DataTableProps) {
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="w-full max-w-full"
+      className="w-full max-w-full overflow-visible"
     >
       <div className="bg-card border border-border shadow-sm rounded-lg overflow-hidden">
         <div className="pb-3 px-4 sm:px-6 pt-4 sm:pt-6">
@@ -112,15 +112,22 @@ export function DataTable({ data, title }: DataTableProps) {
           </div>
         </div>
         <div className="px-4 sm:px-6 pb-4 sm:pb-6 pt-0">
-          <div className="overflow-x-auto -mx-4 sm:mx-0">
+          <div className="overflow-x-auto -mx-4 sm:-mx-6 md:-mx-8 px-4 sm:px-6 md:px-8">
             <div className="inline-block min-w-full align-middle">
-              <table className="min-w-full border-collapse">
+              <table className="w-full border-collapse table-auto">
                 <thead>
                   <tr className="border-b border-border">
                     {columns.map((col) => (
                       <th
                         key={col}
-                        className="px-3 sm:px-4 py-2 text-left text-xs font-medium text-card-foreground uppercase tracking-wider bg-background whitespace-nowrap"
+                        className="px-3 sm:px-4 py-2.5 text-left text-xs font-medium text-card-foreground uppercase tracking-wider bg-background"
+                        style={{ 
+                          minWidth: '120px',
+                          maxWidth: '250px',
+                          wordBreak: 'break-word',
+                          overflowWrap: 'break-word'
+                        }}
+                        title={col}
                       >
                         {col}
                       </th>
@@ -133,14 +140,24 @@ export function DataTable({ data, title }: DataTableProps) {
                       key={rowIndex}
                       className="border-b border-border hover:bg-background transition-colors"
                     >
-                      {columns.map((col) => (
-                        <td
-                          key={col}
-                          className="px-3 sm:px-4 py-2 text-xs sm:text-sm text-card-foreground/90 whitespace-nowrap"
-                        >
-                          {String(row[col] ?? "")}
-                        </td>
-                      ))}
+                      {columns.map((col) => {
+                        const cellValue = String(row[col] ?? "");
+                        return (
+                          <td
+                            key={col}
+                            className="px-3 sm:px-4 py-2.5 text-xs sm:text-sm text-card-foreground/90"
+                            style={{ 
+                              minWidth: '120px',
+                              maxWidth: '250px',
+                              wordBreak: 'break-word',
+                              overflowWrap: 'break-word'
+                            }}
+                            title={cellValue.length > 50 ? cellValue : undefined}
+                          >
+                            {cellValue}
+                          </td>
+                        );
+                      })}
                     </tr>
                   ))}
                 </tbody>

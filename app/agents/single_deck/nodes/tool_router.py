@@ -25,9 +25,9 @@ from app.config import (
 # Usado nas opções de disambiguation
 # Cada descrição deve ser curta, clara e indicar o tipo de informação que a tool fornece
 TOOL_SHORT_DESCRIPTIONS = {
-    "ConfhdTool": "Dados de configuração da usina térmica",
+    "ConfhdTool": "Dados de configuração da usina hidrelétrica",
     "ClastValoresTool": "Custos de classe atribuídos",
-    "TermCadastroTool": "Dados de cadastro da usina térmica",
+    "TermCadastroTool": "Dados cadastrais da usina térmica",
     "HidrCadastroTool": "Dados cadastrais da usina hidrelétrica",
     "VazoesTool": "Vazões históricas",
     "DsvaguaTool": "Desvios de água",

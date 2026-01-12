@@ -3,7 +3,7 @@ Formatadores com liberdade total para LLM interpretar.
 Para tools que não precisam de estruturação rígida.
 """
 from typing import Dict, Any
-from app.agents.multi_deck.formatters.base import ComparisonFormatter
+from app.agents.multi_deck.formatting.base import ComparisonFormatter
 
 
 class LLMFreeFormatter(ComparisonFormatter):
