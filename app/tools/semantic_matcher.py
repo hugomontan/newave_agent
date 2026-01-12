@@ -1,17 +1,22 @@
 """
 Módulo para matching semântico de tools usando embeddings.
 """
-from typing import Optional, Tuple, Dict
+from typing import Optional, Tuple, Dict, List
 import numpy as np
 import re
 import hashlib
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from app.tools.base import NEWAVETool
 from app.rag.vectorstore import get_embeddings
 from app.config import QUERY_EXPANSION_ENABLED, SEMANTIC_MATCH_MIN_SCORE, safe_print
 
 # Cache global de embeddings das tools
-# Estrutura: {tool_name: {'description_hash': str, 'embedding': list[float]}}
+# Estrutura: {tool_name: {'description_hash': str, 'embedding': list[float], 'embedding_normalized': np.ndarray}}
 _tool_embeddings_cache: Dict[str, Dict] = {}
+
+# Cache global de embeddings de queries
+# Estrutura: {query_hash: {'expanded_query': str, 'embedding': list[float], 'embedding_normalized': np.ndarray}}
+_query_embeddings_cache: Dict[str, Dict] = {}
 
 
 def clear_tool_embeddings_cache():
@@ -33,13 +38,80 @@ def get_cache_stats() -> Dict[str, int]:
     """
     return {
         'cached_tools': len(_tool_embeddings_cache),
+        'cached_queries': len(_query_embeddings_cache),
         'total_embeddings': len(_tool_embeddings_cache)
     }
 
 
+def clear_query_embeddings_cache():
+    """
+    Limpa o cache de embeddings de queries.
+    Útil se necessário limpar o cache de queries.
+    """
+    global _query_embeddings_cache
+    _query_embeddings_cache.clear()
+    safe_print("[SEMANTIC MATCHER] 🗑️ Cache de embeddings de queries limpo")
+
+
+def _normalize_embedding(embedding: list[float]) -> np.ndarray:
+    """
+    Normaliza um embedding para uso em cálculos de similaridade.
+    
+    Args:
+        embedding: Embedding como lista de floats
+        
+    Returns:
+        Embedding normalizado como array NumPy
+    """
+    embedding_array = np.array(embedding, dtype=np.float32)
+    norm = np.linalg.norm(embedding_array)
+    if norm == 0:
+        return embedding_array
+    return embedding_array / norm
+
+
+def _get_query_embedding(expanded_query: str, embeddings_model) -> Tuple[list[float], np.ndarray]:
+    """
+    Obtém o embedding de uma query expandida, usando cache se disponível.
+    
+    Args:
+        expanded_query: Query expandida
+        embeddings_model: Modelo de embeddings
+        
+    Returns:
+        Tupla (embedding, embedding_normalized)
+    """
+    global _query_embeddings_cache
+    
+    # Calcular hash da query expandida
+    query_hash = hashlib.md5(expanded_query.encode('utf-8')).hexdigest()
+    
+    # Verificar se já temos o embedding em cache
+    if query_hash in _query_embeddings_cache:
+        cached = _query_embeddings_cache[query_hash]
+        safe_print(f"[SEMANTIC MATCHER] ✅ Embedding de query em cache")
+        return cached['embedding'], cached['embedding_normalized']
+    
+    # Gerar novo embedding
+    safe_print(f"[SEMANTIC MATCHER] 🔄 Gerando novo embedding de query...")
+    embedding = embeddings_model.embed_query(expanded_query)
+    
+    # Normalizar embedding
+    embedding_normalized = _normalize_embedding(embedding)
+    
+    # Armazenar no cache
+    _query_embeddings_cache[query_hash] = {
+        'expanded_query': expanded_query,
+        'embedding': embedding,
+        'embedding_normalized': embedding_normalized
+    }
+    
+    return embedding, embedding_normalized
+
+
 def preload_tool_embeddings(tools: list[NEWAVETool]) -> None:
     """
-    Pré-carrega os embeddings de todas as tools no cache.
+    Pré-carrega os embeddings de todas as tools no cache usando processamento paralelo.
     Útil para melhorar performance na primeira query.
     
     Args:
@@ -48,14 +120,11 @@ def preload_tool_embeddings(tools: list[NEWAVETool]) -> None:
     if not tools:
         return
     
-    safe_print(f"[SEMANTIC MATCHER] 🔄 Pré-carregando embeddings de {len(tools)} tools...")
+    safe_print(f"[SEMANTIC MATCHER] 🔄 Pré-carregando embeddings de {len(tools)} tools (paralelo)...")
     embeddings_model = get_embeddings()
     
-    for tool in tools:
-        try:
-            _get_tool_embedding(tool, embeddings_model)
-        except Exception as e:
-            safe_print(f"[SEMANTIC MATCHER] ⚠️ Erro ao pré-carregar embedding de {tool.get_name()}: {e}")
+    # Usar processamento paralelo para pré-carregar embeddings
+    _get_tool_embeddings_parallel(tools, embeddings_model, max_workers=5)
     
     cache_stats = get_cache_stats()
     safe_print(f"[SEMANTIC MATCHER] ✅ Pré-carregamento concluído: {cache_stats['cached_tools']} embeddings cacheados")
@@ -170,7 +239,7 @@ def expand_query(query: str) -> str:
     return expanded_query
 
 
-def _get_tool_embedding(tool: NEWAVETool, embeddings_model) -> list[float]:
+def _get_tool_embedding(tool: NEWAVETool, embeddings_model) -> Tuple[list[float], np.ndarray]:
     """
     Obtém o embedding de uma tool, usando cache se disponível.
     
@@ -179,7 +248,7 @@ def _get_tool_embedding(tool: NEWAVETool, embeddings_model) -> list[float]:
         embeddings_model: Modelo de embeddings
         
     Returns:
-        Embedding da descrição da tool
+        Tupla (embedding, embedding_normalized)
     """
     tool_name = tool.get_name()
     tool_description = tool.get_description()
@@ -192,7 +261,10 @@ def _get_tool_embedding(tool: NEWAVETool, embeddings_model) -> list[float]:
         cached = _tool_embeddings_cache[tool_name]
         if cached['description_hash'] == description_hash:
             safe_print(f"[SEMANTIC MATCHER]   └─ ✅ Embedding em cache (tool: {tool_name})")
-            return cached['embedding']
+            # Se não tiver normalizado no cache (compatibilidade com cache antigo), calcular
+            if 'embedding_normalized' not in cached:
+                cached['embedding_normalized'] = _normalize_embedding(cached['embedding'])
+            return cached['embedding'], cached['embedding_normalized']
         else:
             safe_print(f"[SEMANTIC MATCHER]   └─ ⚠️ Descrição mudou, regenerando embedding (tool: {tool_name})")
     
@@ -200,13 +272,17 @@ def _get_tool_embedding(tool: NEWAVETool, embeddings_model) -> list[float]:
     safe_print(f"[SEMANTIC MATCHER]   └─ 🔄 Gerando novo embedding (tool: {tool_name})")
     embedding = embeddings_model.embed_query(tool_description)
     
+    # Normalizar embedding
+    embedding_normalized = _normalize_embedding(embedding)
+    
     # Armazenar no cache
     _tool_embeddings_cache[tool_name] = {
         'description_hash': description_hash,
-        'embedding': embedding
+        'embedding': embedding,
+        'embedding_normalized': embedding_normalized
     }
     
-    return embedding
+    return embedding, embedding_normalized
 
 
 def _calculate_cosine_similarity(vec1: list[float], vec2: list[float]) -> float:
@@ -239,6 +315,91 @@ def _calculate_cosine_similarity(vec1: list[float], vec2: list[float]) -> float:
     
     # Garantir que está no range [0, 1]
     return max(0.0, min(1.0, similarity))
+
+
+def _calculate_cosine_similarity_batch(query_embedding_normalized: np.ndarray, tool_embeddings_normalized: np.ndarray) -> np.ndarray:
+    """
+    Calcula similaridade de cosseno em batch entre um vetor query e múltiplos vetores de tools.
+    Todos os vetores devem estar normalizados (já divididos por sua norma).
+    
+    Args:
+        query_embedding_normalized: Embedding da query normalizado (1D array)
+        tool_embeddings_normalized: Embeddings das tools normalizados (2D array, shape: [n_tools, embedding_dim])
+        
+    Returns:
+        Array de similaridades de cosseno (1D array, shape: [n_tools])
+    """
+    # Se tool_embeddings_normalized for 1D (apenas uma tool), converter para 2D
+    if tool_embeddings_normalized.ndim == 1:
+        tool_embeddings_normalized = tool_embeddings_normalized.reshape(1, -1)
+    
+    # Calcular produto escalar entre query e cada tool (já normalizados, então é a similaridade de cosseno)
+    # query_embedding_normalized: [embedding_dim]
+    # tool_embeddings_normalized: [n_tools, embedding_dim]
+    # Resultado: [n_tools]
+    similarities = np.dot(tool_embeddings_normalized, query_embedding_normalized)
+    
+    # Garantir que está no range [0, 1] (clipping para evitar erros numéricos)
+    similarities = np.clip(similarities, 0.0, 1.0)
+    
+    return similarities
+
+
+def _get_tool_embeddings_parallel(tools: list[NEWAVETool], embeddings_model, max_workers: int = 5) -> Dict[str, Tuple[list[float], np.ndarray]]:
+    """
+    Obtém embeddings de múltiplas tools em paralelo, usando cache quando disponível.
+    
+    Args:
+        tools: Lista de tools para obter embeddings
+        embeddings_model: Modelo de embeddings
+        max_workers: Número máximo de workers para processamento paralelo
+        
+    Returns:
+        Dict {tool_name: (embedding, embedding_normalized)}
+    """
+    results = {}
+    tools_to_process = []
+    
+    # Separar tools cacheadas das que precisam ser processadas
+    for tool in tools:
+        tool_name = tool.get_name()
+        tool_description = tool.get_description()
+        description_hash = hashlib.md5(tool_description.encode('utf-8')).hexdigest()
+        
+        if tool_name in _tool_embeddings_cache:
+            cached = _tool_embeddings_cache[tool_name]
+            if cached['description_hash'] == description_hash:
+                # Tool já está em cache
+                if 'embedding_normalized' not in cached:
+                    cached['embedding_normalized'] = _normalize_embedding(cached['embedding'])
+                results[tool_name] = (cached['embedding'], cached['embedding_normalized'])
+                continue
+        
+        # Tool precisa ser processada
+        tools_to_process.append(tool)
+    
+    # Processar tools não cacheadas em paralelo
+    if tools_to_process:
+        safe_print(f"[SEMANTIC MATCHER] Processando {len(tools_to_process)} embeddings em paralelo...")
+        
+        def process_tool(tool: NEWAVETool) -> Tuple[str, list[float], np.ndarray]:
+            """Função auxiliar para processar uma tool."""
+            try:
+                embedding, embedding_normalized = _get_tool_embedding(tool, embeddings_model)
+                return tool.get_name(), embedding, embedding_normalized
+            except Exception as e:
+                safe_print(f"[SEMANTIC MATCHER] ⚠️ Erro ao processar {tool.get_name()}: {e}")
+                return None, None, None
+        
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_tool = {executor.submit(process_tool, tool): tool for tool in tools_to_process}
+            
+            for future in as_completed(future_to_tool):
+                tool_name, embedding, embedding_normalized = future.result()
+                if tool_name is not None and embedding is not None:
+                    results[tool_name] = (embedding, embedding_normalized)
+    
+    return results
 
 
 def find_best_tool_semantic(
@@ -290,55 +451,65 @@ def find_best_tool_semantic(
         safe_print("[SEMANTIC MATCHER] Gerando embedding da query...")
         embeddings_model = get_embeddings()
         
-        # Gerar embedding da query expandida (ou original se expansion desabilitada)
-        query_embedding = embeddings_model.embed_query(expanded_query)
+        # Obter embedding da query expandida (usando cache se disponível)
+        query_embedding, query_embedding_normalized = _get_query_embedding(expanded_query, embeddings_model)
         safe_print(f"[SEMANTIC MATCHER] ✅ Embedding da query gerado (dimensão: {len(query_embedding)})")
         
-        # Calcular similaridade com cada tool
+        # Obter embeddings de todas as tools em paralelo (com cache)
+        safe_print("[SEMANTIC MATCHER] Obtendo embeddings das tools...")
+        tool_embeddings_dict = _get_tool_embeddings_parallel(tools, embeddings_model)
+        
+        # Preparar arrays para cálculo vetorizado
+        tool_names = []
+        tool_embeddings_normalized = []
+        tool_map = {}  # Mapear tool_name para tool
+        
+        for tool in tools:
+            tool_name = tool.get_name()
+            if tool_name in tool_embeddings_dict:
+                tool_names.append(tool_name)
+                _, embedding_normalized = tool_embeddings_dict[tool_name]
+                tool_embeddings_normalized.append(embedding_normalized)
+                tool_map[tool_name] = tool
+        
+        if not tool_embeddings_normalized:
+            safe_print("[SEMANTIC MATCHER] ⚠️ Nenhum embedding de tool obtido")
+            return None
+        
+        # Converter para array NumPy
+        tool_embeddings_array = np.array(tool_embeddings_normalized)
+        
+        # Calcular todas as similaridades de uma vez (vetorizado)
+        safe_print("[SEMANTIC MATCHER] Calculando similaridades com cada tool (vetorizado)...")
+        safe_print("[SEMANTIC MATCHER] " + "=" * 70)
+        similarities = _calculate_cosine_similarity_batch(query_embedding_normalized, tool_embeddings_array)
+        
+        # Processar resultados
         best_tool = None
         best_score = 0.0
-        all_scores = []  # Para ranking completo
+        all_scores = []
         
-        safe_print("[SEMANTIC MATCHER] Calculando similaridades com cada tool...")
-        safe_print("[SEMANTIC MATCHER] " + "=" * 70)
-        
-        for idx, tool in enumerate(tools, 1):
+        for idx, (tool_name, similarity) in enumerate(zip(tool_names, similarities)):
             try:
-                tool_name = tool.get_name()
-                safe_print(f"[SEMANTIC MATCHER] [{idx}/{len(tools)}] Processando: {tool_name}")
-                
-                # Obter descrição da tool
-                tool_description = tool.get_description()
-                desc_length = len(tool_description)
-                safe_print(f"[SEMANTIC MATCHER]   └─ Descrição: {desc_length} caracteres")
-                
-                # Obter embedding da descrição (usando cache se disponível)
-                tool_embedding = _get_tool_embedding(tool, embeddings_model)
-                
-                # Calcular similaridade de cosseno
-                similarity = _calculate_cosine_similarity(query_embedding, tool_embedding)
+                tool = tool_map[tool_name]
+                safe_print(f"[SEMANTIC MATCHER] [{idx+1}/{len(tool_names)}] {tool_name}: {similarity:.4f}")
                 
                 # Armazenar score para ranking
                 all_scores.append({
                     'tool': tool_name,
-                    'score': similarity,
+                    'score': float(similarity),
                     'above_threshold': similarity >= threshold
                 })
                 
                 # Atualizar melhor match se necessário
-                status = "✅ MELHOR" if similarity > best_score else "  "
-                threshold_status = "✅ ACIMA" if similarity >= threshold else "❌ ABAIXO"
-                safe_print(f"[SEMANTIC MATCHER]   └─ Similaridade: {similarity:.4f} {status} | Threshold: {threshold_status}")
-                
                 if similarity > best_score:
-                    best_score = similarity
+                    best_score = float(similarity)
                     best_tool = tool
                     
             except Exception as e:
-                # Se houver erro ao processar uma tool, continuar com as outras
-                safe_print(f"[SEMANTIC MATCHER]   └─ ❌ Erro ao processar: {e}")
+                safe_print(f"[SEMANTIC MATCHER]   └─ ❌ Erro ao processar {tool_name}: {e}")
                 all_scores.append({
-                    'tool': tool.get_name(),
+                    'tool': tool_name,
                     'score': 0.0,
                     'above_threshold': False,
                     'error': str(e)
@@ -427,28 +598,40 @@ def find_top_tools_semantic(
         # Obter modelo de embeddings
         embeddings_model = get_embeddings()
         
-        # Gerar embedding da query expandida
-        query_embedding = embeddings_model.embed_query(expanded_query)
+        # Obter embedding da query expandida (usando cache se disponível)
+        query_embedding, query_embedding_normalized = _get_query_embedding(expanded_query, embeddings_model)
         
-        # Calcular similaridade com cada tool
-        all_scores = []
+        # Obter embeddings de todas as tools em paralelo (com cache)
+        tool_embeddings_dict = _get_tool_embeddings_parallel(tools, embeddings_model)
+        
+        # Preparar arrays para cálculo vetorizado
+        tool_names = []
+        tool_embeddings_normalized = []
+        tool_map = {}  # Mapear tool_name para tool
         
         for tool in tools:
-            try:
-                tool_name = tool.get_name()
-                
-                # Obter embedding da descrição (usando cache se disponível)
-                tool_embedding = _get_tool_embedding(tool, embeddings_model)
-                
-                # Calcular similaridade de cosseno
-                similarity = _calculate_cosine_similarity(query_embedding, tool_embedding)
-                
-                # Armazenar score
-                all_scores.append((tool, similarity))
-                    
-            except Exception as e:
-                safe_print(f"[SEMANTIC MATCHER]   └─ ❌ Erro ao processar {tool.get_name()}: {e}")
-                continue
+            tool_name = tool.get_name()
+            if tool_name in tool_embeddings_dict:
+                tool_names.append(tool_name)
+                _, embedding_normalized = tool_embeddings_dict[tool_name]
+                tool_embeddings_normalized.append(embedding_normalized)
+                tool_map[tool_name] = tool
+        
+        if not tool_embeddings_normalized:
+            safe_print("[SEMANTIC MATCHER] ⚠️ Nenhum embedding de tool obtido")
+            return []
+        
+        # Converter para array NumPy
+        tool_embeddings_array = np.array(tool_embeddings_normalized)
+        
+        # Calcular todas as similaridades de uma vez (vetorizado)
+        similarities = _calculate_cosine_similarity_batch(query_embedding_normalized, tool_embeddings_array)
+        
+        # Criar lista de scores
+        all_scores = []
+        for tool_name, similarity in zip(tool_names, similarities):
+            if tool_name in tool_map:
+                all_scores.append((tool_map[tool_name], float(similarity)))
         
         # Ordenar por score decrescente
         all_scores.sort(key=lambda x: x[1], reverse=True)

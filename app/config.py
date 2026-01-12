@@ -85,7 +85,7 @@ CHROMA_DIR.mkdir(parents=True, exist_ok=True)
 # OpenAI
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-OPENAI_EMBEDDING_MODEL = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-large")
+OPENAI_EMBEDDING_MODEL = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
 
 # RAG settings
 RAG_CHUNK_SIZE = int(os.getenv("RAG_CHUNK_SIZE", "2000"))
