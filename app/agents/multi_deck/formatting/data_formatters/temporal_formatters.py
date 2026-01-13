@@ -3,7 +3,8 @@ Formatadores temporais para comparação multi-deck.
 Para tools que retornam séries históricas (dados por período).
 """
 import math
-from typing import Dict, Any, List, Optional
+import re
+from typing import Dict, Any, List, Optional, Tuple
 from app.agents.multi_deck.formatting.base import ComparisonFormatter
 
 
@@ -271,6 +272,52 @@ class ClastComparisonFormatter(ComparisonFormatter):
         # Por padrão, se não conseguir determinar, usar 2025 (ano base comum)
         return 2025
     
+    def _get_year_and_month_from_deck(self, result: Dict[str, Any]) -> Optional[Tuple[int, int]]:
+        """
+        Extrai ano e mês do deck a partir do caminho ou nome do deck.
+        
+        Args:
+            result: Resultado da tool que contém informações do deck
+            
+        Returns:
+            Tuple (ano, mês) ou None se não conseguir extrair
+        """
+        import os
+        
+        deck_path = result.get("deck_path") or result.get("deck")
+        if deck_path:
+            deck_path_str = str(deck_path)
+            
+            # Tentar extrair ano e mês do nome do deck (ex: "NW202512" -> (2025, 12))
+            # Padrão: NW + 4 dígitos (ano) + 2 dígitos (mês)
+            match = re.search(r'NW(\d{4})(\d{2})', deck_path_str)
+            if match:
+                ano = int(match.group(1))
+                mes = int(match.group(2))
+                return (ano, mes)
+        
+        return None
+    
+    def _calculate_real_year(self, indice_ano_estudo: int, ano_deck: int, mes_deck: int) -> int:
+        """
+        Calcula o ano real baseado no índice do ano do estudo, ano e mês do deck.
+        
+        Para CVU:
+        - Deck de dezembro: indice_ano_estudo=1 corresponde ao ano do deck (dezembro do ano)
+        - Deck de janeiro: indice_ano_estudo=1 corresponde ao ano do deck (janeiro do ano)
+        
+        Args:
+            indice_ano_estudo: Índice do ano do estudo (1, 2, 3, ...)
+            ano_deck: Ano do deck (ex: 2025 para NW202512)
+            mes_deck: Mês do deck (ex: 12 para NW202512)
+            
+        Returns:
+            Ano real correspondente
+        """
+        # Para CVU, o indice_ano_estudo=1 corresponde ao ano do deck
+        # Então: ano_real = ano_deck + (indice_ano_estudo - 1)
+        return ano_deck + (indice_ano_estudo - 1)
+    
     def _format_cvu_simplified(
         self,
         dados_estruturais_dec: List[Dict],
@@ -285,26 +332,45 @@ class ClastComparisonFormatter(ComparisonFormatter):
         
         Nota: Para CVU, geralmente há uma única classe térmica. Se houver múltiplas,
         usa a primeira classe encontrada (priorizando a mais frequente nos dados).
+        
+        IMPORTANTE: Cada deck tem sua própria base de ano:
+        - Deck de dezembro (NW202512): indice_ano_estudo=1 corresponde a 2025
+        - Deck de janeiro (NW202601): indice_ano_estudo=1 corresponde a 2026
         """
-        # Obter ano base do deck (tenta extrair do deck de dezembro)
-        ano_base = self._get_base_year_from_deck(result_dec)
-        # O primeiro ano do estudo (indice_ano_estudo=1) corresponde ao ano seguinte ao ano base
-        # Exemplo: deck de 2025 -> primeiro ano do estudo é 2026
+        # Extrair ano e mês de cada deck
+        dec_info = self._get_year_and_month_from_deck(result_dec)
+        jan_info = self._get_year_and_month_from_deck(result_jan)
+        
+        if dec_info is None:
+            dec_info = (2025, 12)  # Fallback
+        if jan_info is None:
+            jan_info = (2026, 1)  # Fallback
+            
+        ano_dec, mes_dec = dec_info
+        ano_jan, mes_jan = jan_info
+        
         # Identificar a classe principal (mais frequente nos dados)
         classes_count = {}
+        classe_nome_map = {}  # Mapear código -> nome para validação
         for record in dados_estruturais_dec + dados_estruturais_jan:
             classe = record.get("codigo_usina")
+            nome_usina = record.get("nome_usina", "")
             if classe is not None:
                 classes_count[classe] = classes_count.get(classe, 0) + 1
+                # Armazenar nome da usina para esta classe (pegar o primeiro nome encontrado)
+                if classe not in classe_nome_map and nome_usina:
+                    classe_nome_map[classe] = nome_usina
         
         classe_principal = None
+        nome_classe_principal = None
         if classes_count:
             # Usar a classe mais frequente
             classe_principal = max(classes_count.items(), key=lambda x: x[1])[0]
+            nome_classe_principal = classe_nome_map.get(classe_principal, f"Classe {classe_principal}")
         
-        # Agrupar por ano, filtrando pela classe principal se houver múltiplas classes
-        dec_by_ano = {}  # {ano: valor}
-        jan_by_ano = {}  # {ano: valor}
+        # Agrupar por indice_ano_estudo, filtrando pela classe principal
+        dec_by_indice = {}  # {indice_ano_estudo: valor}
+        jan_by_indice = {}  # {indice_ano_estudo: valor}
         
         # Processar dados de dezembro
         for record in dados_estruturais_dec:
@@ -313,12 +379,12 @@ class ClastComparisonFormatter(ComparisonFormatter):
             if classe_principal is not None and classe != classe_principal:
                 continue
                 
-            ano = record.get("indice_ano_estudo")
+            indice = record.get("indice_ano_estudo")
             valor = self._sanitize_number(record.get("valor"))
-            if ano is not None and valor is not None:
-                # Se já existe valor para este ano, manter o primeiro
-                if ano not in dec_by_ano:
-                    dec_by_ano[ano] = valor
+            if indice is not None and valor is not None:
+                # Se já existe valor para este indice, manter o primeiro
+                if indice not in dec_by_indice:
+                    dec_by_indice[indice] = valor
         
         # Processar dados de janeiro
         for record in dados_estruturais_jan:
@@ -327,14 +393,34 @@ class ClastComparisonFormatter(ComparisonFormatter):
             if classe_principal is not None and classe != classe_principal:
                 continue
                 
-            ano = record.get("indice_ano_estudo")
+            indice = record.get("indice_ano_estudo")
             valor = self._sanitize_number(record.get("valor"))
-            if ano is not None and valor is not None:
-                if ano not in jan_by_ano:
-                    jan_by_ano[ano] = valor
+            if indice is not None and valor is not None:
+                if indice not in jan_by_indice:
+                    jan_by_indice[indice] = valor
         
-        # Obter todos os anos únicos e ordenar
-        all_anos = sorted(set(list(dec_by_ano.keys()) + list(jan_by_ano.keys())))
+        # Criar dicionário mapeando ano real -> valores de cada deck
+        # Como os dados são comparados lado a lado, precisamos mapear corretamente
+        # O indice_ano_estudo=1 do deck dezembro corresponde a 2025
+        # O indice_ano_estudo=1 do deck janeiro corresponde a 2026
+        comparison_by_year = {}  # {ano_real: {"dec": valor, "jan": valor}}
+        
+        # Processar dados de dezembro
+        for indice, valor in dec_by_indice.items():
+            ano_real = self._calculate_real_year(indice, ano_dec, mes_dec)
+            if ano_real not in comparison_by_year:
+                comparison_by_year[ano_real] = {"dec": None, "jan": None}
+            comparison_by_year[ano_real]["dec"] = valor
+        
+        # Processar dados de janeiro
+        for indice, valor in jan_by_indice.items():
+            ano_real = self._calculate_real_year(indice, ano_jan, mes_jan)
+            if ano_real not in comparison_by_year:
+                comparison_by_year[ano_real] = {"dec": None, "jan": None}
+            comparison_by_year[ano_real]["jan"] = valor
+        
+        # Ordenar anos
+        sorted_years = sorted(comparison_by_year.keys())
         
         # Construir tabela comparativa simplificada
         comparison_table = []
@@ -342,29 +428,29 @@ class ClastComparisonFormatter(ComparisonFormatter):
         dec_values = []
         jan_values = []
         
-        for indice_ano in all_anos:
-            val_dec = dec_by_ano.get(indice_ano)
-            val_jan = jan_by_ano.get(indice_ano)
-            
-            # Calcular o ano real: ano_base + indice_ano_estudo
-            # indice_ano_estudo=1 corresponde ao primeiro ano do estudo (ano_base + 1)
-            ano_real = ano_base + indice_ano
-            
-            # Função auxiliar para arredondar e garantir que NaN vire None
-            def safe_round(value):
-                if value is None:
+        # Função auxiliar para arredondar e garantir que NaN vire None
+        def safe_round(value):
+            if value is None:
+                return None
+            try:
+                rounded = round(value, 2)
+                # Verificar se o resultado é NaN ou Inf
+                if math.isnan(rounded) or math.isinf(rounded):
                     return None
-                try:
-                    rounded = round(value, 2)
-                    # Verificar se o resultado é NaN ou Inf
-                    if math.isnan(rounded) or math.isinf(rounded):
-                        return None
-                    return rounded
-                except (ValueError, TypeError):
-                    return None
+                return rounded
+            except (ValueError, TypeError):
+                return None
+        
+        for ano_real in sorted_years:
+            val_dec = comparison_by_year[ano_real]["dec"]
+            val_jan = comparison_by_year[ano_real]["jan"]
             
             # Adicionar à tabela (sem colunas de diferença e variação %)
+            # Campo de validação: "Custos de Classe - Nome da usina"
+            classe_info = f"{classe_principal} - {nome_classe_principal}" if classe_principal is not None and nome_classe_principal else "N/A"
+            
             table_row = {
+                "classe_info": classe_info,  # Campo de validação no início
                 "data": ano_real,  # Coluna "Data" com o ano real (dinâmico)
                 "ano": ano_real,  # Também incluir campo "ano" para compatibilidade
                 "deck_1": safe_round(val_dec),
@@ -383,11 +469,11 @@ class ClastComparisonFormatter(ComparisonFormatter):
             "labels": chart_labels,
             "datasets": [
                 {
-                    "label": "Dezembro 2025",
+                    "label": f"Dezembro {ano_dec}",
                     "data": dec_values
                 },
                 {
-                    "label": "Janeiro 2026",
+                    "label": f"Janeiro {ano_jan}",
                     "data": jan_values
                 }
             ]
@@ -1294,6 +1380,7 @@ class LimitesIntercambioComparisonFormatter(ComparisonFormatter):
         """
         Formata comparação de limites de intercâmbio.
         Agrupa por par de submercados e sentido, mostrando todos os registros.
+        Se a query especificar um par específico, mostra apenas esse par.
         
         Args:
             result_dec: Resultado completo da tool para deck 1
@@ -1323,6 +1410,59 @@ class LimitesIntercambioComparisonFormatter(ComparisonFormatter):
         
         # Obter todos os pares únicos
         all_pares = set(dec_indexed.keys()) | set(jan_indexed.keys())
+        
+        # ETAPA NOVA: Detectar se a query especifica um par específico
+        from app.config import safe_print
+        safe_print(f"[FORMATTER] [DEBUG] format_comparison - Query recebida: '{query}'")
+        safe_print(f"[FORMATTER] [DEBUG] format_comparison - Total de pares encontrados antes do filtro: {len(all_pares)}")
+        for par_key in sorted(all_pares):
+            safe_print(f"[FORMATTER] [DEBUG]   Par encontrado: {par_key}")
+        
+        par_filtrado = self._extract_par_from_query(query, result_dec, result_jan)
+        safe_print(f"[FORMATTER] [DEBUG] format_comparison - Par filtrado retornado: {par_filtrado}")
+        
+        # Se um par específico foi detectado, filtrar apenas esse par
+        if par_filtrado is not None:
+            # par_filtrado é uma tupla (sub_de, sub_para) ou (sub_de, sub_para, sentido)
+            # Filtrar all_pares para incluir apenas os que correspondem ao par detectado
+            safe_print(f"[FORMATTER] [DEBUG] format_comparison - Filtrando pares com: {par_filtrado}")
+            pares_filtrados = set()
+            for par_key in all_pares:
+                parts = par_key.split("-")
+                if len(parts) >= 2:
+                    sub_de_key = parts[0]
+                    sub_para_key = parts[1]
+                    sentido_key = parts[2] if len(parts) >= 3 else None
+                    
+                    safe_print(f"[FORMATTER] [DEBUG]   Verificando par_key '{par_key}': sub_de={sub_de_key}, sub_para={sub_para_key}, sentido={sentido_key}")
+                    
+                    # Verificar se corresponde ao par filtrado
+                    if len(par_filtrado) == 2:
+                        # Apenas sub_de e sub_para foram especificados
+                        if str(par_filtrado[0]) == sub_de_key and str(par_filtrado[1]) == sub_para_key:
+                            safe_print(f"[FORMATTER] [DEBUG]     ✅ Par corresponde (sem sentido)")
+                            pares_filtrados.add(par_key)
+                        else:
+                            safe_print(f"[FORMATTER] [DEBUG]     ❌ Par não corresponde")
+                    elif len(par_filtrado) == 3:
+                        # sub_de, sub_para e sentido foram especificados
+                        if (str(par_filtrado[0]) == sub_de_key and 
+                            str(par_filtrado[1]) == sub_para_key and
+                            sentido_key is not None and str(par_filtrado[2]) == sentido_key):
+                            safe_print(f"[FORMATTER] [DEBUG]     ✅ Par corresponde (com sentido)")
+                            pares_filtrados.add(par_key)
+                        else:
+                            safe_print(f"[FORMATTER] [DEBUG]     ❌ Par não corresponde")
+            
+            safe_print(f"[FORMATTER] [DEBUG] format_comparison - Pares filtrados encontrados: {len(pares_filtrados)}")
+            for par_key in sorted(pares_filtrados):
+                safe_print(f"[FORMATTER] [DEBUG]   Par filtrado: {par_key}")
+            
+            if pares_filtrados:
+                all_pares = pares_filtrados
+                safe_print(f"[FORMATTER] [DEBUG] format_comparison - Usando {len(all_pares)} pares filtrados")
+            else:
+                safe_print(f"[FORMATTER] [DEBUG] format_comparison - ⚠️ Nenhum par correspondeu ao filtro, usando todos os pares")
         
         # Construir tabela comparativa (todos os registros) e charts_by_par
         comparison_table = []
@@ -1540,4 +1680,221 @@ class LimitesIntercambioComparisonFormatter(ComparisonFormatter):
             return float_val
         except (ValueError, TypeError):
             return None
+    
+    def _extract_par_from_query(self, query: str, result_dec: Dict[str, Any], result_jan: Dict[str, Any]) -> Optional[Tuple]:
+        """
+        Extrai par de submercados (sub_de, sub_para) ou (sub_de, sub_para, sentido) da query.
+        Retorna None se nenhum par específico for detectado.
+        
+        Args:
+            query: Query do usuário
+            result_dec: Resultado do deck 1 (para obter nomes de submercados)
+            result_jan: Resultado do deck 2 (para obter nomes de submercados)
+            
+        Returns:
+            Tupla (sub_de, sub_para) ou (sub_de, sub_para, sentido) ou None
+        """
+        from app.config import safe_print
+        
+        query_lower = query.lower()
+        safe_print(f"[FORMATTER] [DEBUG] _extract_par_from_query - Query original: '{query}'")
+        safe_print(f"[FORMATTER] [DEBUG] _extract_par_from_query - Query lower: '{query_lower}'")
+        
+        # Obter lista de submercados disponíveis dos resultados
+        subsistemas_disponiveis = []
+        for result in [result_dec, result_jan]:
+            data = result.get("data", [])
+            safe_print(f"[FORMATTER] [DEBUG] Processando {len(data)} registros de dados")
+            for record in data:
+                sub_de = record.get("submercado_de")
+                nome_de = record.get("nome_submercado_de")
+                if sub_de is not None and nome_de:
+                    subsistemas_disponiveis.append({
+                        'codigo': int(sub_de) if isinstance(sub_de, (int, float, str)) else None,
+                        'nome': str(nome_de).strip()
+                    })
+                sub_para = record.get("submercado_para")
+                nome_para = record.get("nome_submercado_para")
+                if sub_para is not None and nome_para:
+                    subsistemas_disponiveis.append({
+                        'codigo': int(sub_para) if isinstance(sub_para, (int, float, str)) else None,
+                        'nome': str(nome_para).strip()
+                    })
+        
+        # Remover duplicatas
+        seen = set()
+        subsistemas_unicos = []
+        for s in subsistemas_disponiveis:
+            if s['codigo'] is not None:
+                key = (s['codigo'], s['nome'])
+                if key not in seen:
+                    seen.add(key)
+                    subsistemas_unicos.append(s)
+        
+        safe_print(f"[FORMATTER] [DEBUG] Subsistemas únicos encontrados: {len(subsistemas_unicos)}")
+        for s in subsistemas_unicos:
+            safe_print(f"[FORMATTER] [DEBUG]   - Código {s['codigo']}: '{s['nome']}'")
+        
+        if not subsistemas_unicos:
+            safe_print(f"[FORMATTER] [DEBUG] Nenhum subsistema encontrado, retornando None")
+            return None
+        
+        # ETAPA 1: Tentar extrair números explícitos
+        patterns = [
+            r'subsistema\s*(\d+)\s*(?:para|->|→)\s*subsistema\s*(\d+)',
+            r'submercado\s*(\d+)\s*(?:para|->|→)\s*submercado\s*(\d+)',
+            r'(\d+)\s*(?:para|->|→)\s*(\d+)',
+            r'entre\s*subsistema\s*(\d+)\s*e\s*subsistema\s*(\d+)',
+            r'entre\s*submercado\s*(\d+)\s*e\s*submercado\s*(\d+)',
+        ]
+        
+        safe_print(f"[FORMATTER] [DEBUG] ETAPA 1: Tentando padrões numéricos...")
+        for i, pattern in enumerate(patterns):
+            match = re.search(pattern, query_lower)
+            if match:
+                safe_print(f"[FORMATTER] [DEBUG]   Padrão {i+1} '{pattern}' encontrou match: {match.groups()}")
+                try:
+                    sub_de = int(match.group(1))
+                    sub_para = int(match.group(2))
+                    codigos_validos = [s['codigo'] for s in subsistemas_unicos if s['codigo'] is not None]
+                    safe_print(f"[FORMATTER] [DEBUG]   Códigos extraídos: {sub_de} -> {sub_para}")
+                    safe_print(f"[FORMATTER] [DEBUG]   Códigos válidos disponíveis: {codigos_validos}")
+                    if sub_de in codigos_validos and sub_para in codigos_validos:
+                        # Verificar se há filtro de sentido
+                        sentido = None
+                        if any(kw in query_lower for kw in ["minimo", "mínimo", "obrigatorio", "obrigatório"]):
+                            sentido = 1
+                        elif any(kw in query_lower for kw in ["maximo", "máximo"]):
+                            sentido = 0
+                        
+                        if sentido is not None:
+                            safe_print(f"[FORMATTER] [DEBUG] ✅ Retornando par com sentido: ({sub_de}, {sub_para}, {sentido})")
+                            return (sub_de, sub_para, sentido)
+                        safe_print(f"[FORMATTER] [DEBUG] ✅ Retornando par sem sentido: ({sub_de}, {sub_para})")
+                        return (sub_de, sub_para)
+                    else:
+                        safe_print(f"[FORMATTER] [DEBUG]   Códigos não estão na lista de válidos")
+                except (ValueError, IndexError) as e:
+                    safe_print(f"[FORMATTER] [DEBUG]   Erro ao processar match: {e}")
+                    continue
+            else:
+                safe_print(f"[FORMATTER] [DEBUG]   Padrão {i+1} '{pattern}' não encontrou match")
+        
+        # ETAPA 2: Buscar por nomes de submercados
+        # Ordenar por tamanho do nome (mais específico primeiro)
+        subsistemas_ordenados = sorted(subsistemas_unicos, key=lambda x: len(x['nome']), reverse=True)
+        safe_print(f"[FORMATTER] [DEBUG] ETAPA 2: Buscando por nomes de submercados...")
+        safe_print(f"[FORMATTER] [DEBUG]   Subsistemas ordenados (por tamanho de nome):")
+        for s in subsistemas_ordenados:
+            safe_print(f"[FORMATTER] [DEBUG]     - '{s['nome']}' (código {s['codigo']})")
+        
+        sub_de = None
+        sub_para = None
+        
+        # Padrão especial: "entre X e Y" (ex: "entre sudeste e norte")
+        pattern_entre = re.search(r'entre\s+([^e]+?)\s+e\s+([^e]+?)(?:\s|$|,|\.)', query_lower)
+        if pattern_entre:
+            nome_1 = pattern_entre.group(1).strip()
+            nome_2 = pattern_entre.group(2).strip()
+            safe_print(f"[FORMATTER] [DEBUG]   Padrão 'entre X e Y' encontrado: '{nome_1}' e '{nome_2}'")
+            
+            # Buscar submercados que correspondem aos nomes
+            for subsistema in subsistemas_ordenados:
+                nome_sub_lower = subsistema['nome'].lower().strip()
+                if nome_sub_lower and nome_sub_lower in nome_1:
+                    sub_de = subsistema['codigo']
+                    safe_print(f"[FORMATTER] [DEBUG]     ✅ Origem encontrada: '{subsistema['nome']}' (código {sub_de}) em '{nome_1}'")
+                    break
+            
+            for subsistema in subsistemas_ordenados:
+                nome_sub_lower = subsistema['nome'].lower().strip()
+                if nome_sub_lower and nome_sub_lower in nome_2:
+                    if subsistema['codigo'] != sub_de:
+                        sub_para = subsistema['codigo']
+                        safe_print(f"[FORMATTER] [DEBUG]     ✅ Destino encontrado: '{subsistema['nome']}' (código {sub_para}) em '{nome_2}'")
+                        break
+            
+            if sub_de is not None and sub_para is not None:
+                # Verificar se há filtro de sentido
+                sentido = None
+                if any(kw in query_lower for kw in ["minimo", "mínimo", "obrigatorio", "obrigatório"]):
+                    sentido = 1
+                elif any(kw in query_lower for kw in ["maximo", "máximo"]):
+                    sentido = 0
+                
+                if sentido is not None:
+                    safe_print(f"[FORMATTER] [DEBUG] ✅ Retornando par 'entre X e Y' com sentido: ({sub_de}, {sub_para}, {sentido})")
+                    return (sub_de, sub_para, sentido)
+                safe_print(f"[FORMATTER] [DEBUG] ✅ Retornando par 'entre X e Y' sem sentido: ({sub_de}, {sub_para})")
+                return (sub_de, sub_para)
+            else:
+                safe_print(f"[FORMATTER] [DEBUG]   Padrão 'entre X e Y' não encontrou par completo (sub_de={sub_de}, sub_para={sub_para})")
+        
+        # Padrão: "X para Y" ou "X → Y" - NOVA LÓGICA SIMPLIFICADA
+        # Identificar todos os nomes de submercados na query e ordenar por posição cronológica
+        safe_print(f"[FORMATTER] [DEBUG]   Padrão 'X para Y': Buscando todos os submercados na query...")
+        
+        submercados_encontrados = []
+        for subsistema in subsistemas_ordenados:
+            codigo_sub = subsistema['codigo']
+            nome_sub = subsistema['nome']
+            nome_sub_lower = nome_sub.lower().strip()
+            
+            if nome_sub_lower and nome_sub_lower in query_lower:
+                # Encontrar todas as ocorrências do nome na query
+                pos = 0
+                while True:
+                    pos = query_lower.find(nome_sub_lower, pos)
+                    if pos == -1:
+                        break
+                    submercados_encontrados.append({
+                        'codigo': codigo_sub,
+                        'nome': nome_sub,
+                        'posicao': pos
+                    })
+                    safe_print(f"[FORMATTER] [DEBUG]     Encontrado '{nome_sub}' (código {codigo_sub}) na posição {pos}")
+                    pos += 1
+        
+        # Ordenar por posição na query (ordem cronológica)
+        submercados_encontrados.sort(key=lambda x: x['posicao'])
+        safe_print(f"[FORMATTER] [DEBUG]   Submercados encontrados em ordem cronológica:")
+        for i, sub in enumerate(submercados_encontrados):
+            safe_print(f"[FORMATTER] [DEBUG]     {i+1}. '{sub['nome']}' (código {sub['codigo']}) na posição {sub['posicao']}")
+        
+        # Se encontrou pelo menos 2 submercados diferentes, usar os 2 primeiros
+        if len(submercados_encontrados) >= 2:
+            # Remover duplicatas mantendo a ordem
+            submercados_unicos = []
+            codigos_vistos = set()
+            for sub in submercados_encontrados:
+                if sub['codigo'] not in codigos_vistos:
+                    codigos_vistos.add(sub['codigo'])
+                    submercados_unicos.append(sub)
+            
+            if len(submercados_unicos) >= 2:
+                sub_de = submercados_unicos[0]['codigo']
+                sub_para = submercados_unicos[1]['codigo']
+                safe_print(f"[FORMATTER] [DEBUG]   ✅ Par identificado por ordem cronológica:")
+                safe_print(f"[FORMATTER] [DEBUG]     Origem: '{submercados_unicos[0]['nome']}' (código {sub_de})")
+                safe_print(f"[FORMATTER] [DEBUG]     Destino: '{submercados_unicos[1]['nome']}' (código {sub_para})")
+                
+                # Verificar se há filtro de sentido
+                sentido = None
+                if any(kw in query_lower for kw in ["minimo", "mínimo", "obrigatorio", "obrigatório"]):
+                    sentido = 1
+                elif any(kw in query_lower for kw in ["maximo", "máximo"]):
+                    sentido = 0
+                
+                if sentido is not None:
+                    safe_print(f"[FORMATTER] [DEBUG] ✅ Retornando par 'X para Y' com sentido: ({sub_de}, {sub_para}, {sentido})")
+                    return (sub_de, sub_para, sentido)
+                safe_print(f"[FORMATTER] [DEBUG] ✅ Retornando par 'X para Y' sem sentido: ({sub_de}, {sub_para})")
+                return (sub_de, sub_para)
+            else:
+                safe_print(f"[FORMATTER] [DEBUG]   Apenas {len(submercados_unicos)} submercado(s) único(s) encontrado(s)")
+        else:
+            safe_print(f"[FORMATTER] [DEBUG]   Apenas {len(submercados_encontrados)} submercado(s) encontrado(s) na query")
+        
+        safe_print(f"[FORMATTER] [DEBUG] ❌ Nenhum par detectado, retornando None")
+        return None
 
