@@ -58,6 +58,7 @@ export interface Difference {
 export interface TableRow {
   data?: string | number;
   classe?: string;
+  classe_info?: string; // Campo de validação: "Custos de Classe - Nome da usina"
   ano?: string | number;
   mes?: string | number;
   deck_1?: number | null;

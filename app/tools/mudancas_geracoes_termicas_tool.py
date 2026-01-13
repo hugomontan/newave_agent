@@ -6,6 +6,7 @@ from app.tools.base import NEWAVETool
 from inewave.newave import Expt
 import os
 import pandas as pd
+import re
 from typing import Dict, Any, List, Optional
 from app.utils.deck_loader import get_december_deck_path, get_january_deck_path
 
@@ -40,8 +41,27 @@ class MudancasGeracoesTermicasTool(NEWAVETool):
             "mudancas gtmin",
             "variação gtmin",
             "variacao gtmin",
+            "variações gtmin",  # Plural
+            "variacoes gtmin",  # Plural
+            "variações de gtmin",  # Plural com "de"
+            "variacoes de gtmin",  # Plural com "de"
+            "variação de gtmin",  # Singular com "de"
+            "variacao de gtmin",  # Singular com "de"
+            "quais foram as variações de gtmin",  # Query específica
+            "quais foram as variacoes de gtmin",  # Query específica
+            "quais foram as variações gtmin",  # Query específica sem "de"
+            "quais foram as variacoes gtmin",  # Query específica sem "de"
             "análise gtmin",
             "analise gtmin",
+            "comparar gtmin",
+            "comparação gtmin",
+            "comparacao gtmin",
+            "mudanças em gerações térmicas",
+            "mudancas em geracoes termicas",
+            "variações em gerações térmicas",
+            "variacoes em geracoes termicas",
+            "geração térmica mínima",
+            "geracao termica minima",
         ]
         return any(kw in query_lower for kw in keywords)
     
@@ -103,10 +123,25 @@ class MudancasGeracoesTermicasTool(NEWAVETool):
             mapeamento_codigo_nome = self._create_codigo_nome_mapping(expt_dec, expt_jan)
             print(f"[TOOL] ✅ Mapeamento criado: {len(mapeamento_codigo_nome)} usinas mapeadas")
             
+            # ETAPA 3.5: Extrair usina da query (NOVO)
+            print("[TOOL] ETAPA 3.5: Verificando se há filtro por usina na query...")
+            codigo_usina_filtro = self._extract_usina_from_query(query, expt_dec, expt_jan, mapeamento_codigo_nome)
+            if codigo_usina_filtro is not None:
+                nome_usina_filtro = mapeamento_codigo_nome.get(codigo_usina_filtro, f"Usina {codigo_usina_filtro}")
+                print(f"[TOOL] ✅ Filtro por usina detectado: {codigo_usina_filtro} - {nome_usina_filtro}")
+            else:
+                print("[TOOL] ℹ️ Nenhum filtro por usina detectado - retornando todas as mudanças")
+            
             # ETAPA 4: Filtrar apenas registros de GTMIN
             print("[TOOL] ETAPA 4: Filtrando registros de GTMIN...")
             gtmin_dec = self._extract_gtmin_records(expt_dec)
             gtmin_jan = self._extract_gtmin_records(expt_jan)
+            
+            # Aplicar filtro por usina se especificado (NOVO)
+            if codigo_usina_filtro is not None:
+                gtmin_dec = gtmin_dec[gtmin_dec['codigo_usina'] == codigo_usina_filtro]
+                gtmin_jan = gtmin_jan[gtmin_jan['codigo_usina'] == codigo_usina_filtro]
+                print(f"[TOOL] ✅ Dados filtrados por usina {codigo_usina_filtro}")
             
             print(f"[TOOL] ✅ Registros GTMIN Dezembro: {len(gtmin_dec)}")
             print(f"[TOOL] ✅ Registros GTMIN Janeiro: {len(gtmin_jan)}")
@@ -158,13 +193,20 @@ class MudancasGeracoesTermicasTool(NEWAVETool):
                     "periodo_fim": mudanca.get("periodo_fim", "N/A")
                 })
             
+            # Ajustar descrição se houver filtro por usina (NOVO)
+            if codigo_usina_filtro is not None:
+                nome_usina_filtro = mapeamento_codigo_nome.get(codigo_usina_filtro, f"Usina {codigo_usina_filtro}")
+                description = f"Análise de {len(mudancas_ordenadas)} mudanças de GTMIN para {nome_usina_filtro} (código {codigo_usina_filtro}) entre {deck_december_name} e {deck_january_name}, ordenadas por magnitude."
+            else:
+                description = f"Análise de {len(mudancas_ordenadas)} mudanças de GTMIN entre {deck_december_name} e {deck_january_name}, ordenadas por magnitude."
+            
             return {
                 "success": True,
                 "is_comparison": True,
                 "tool": self.get_name(),
                 "comparison_table": comparison_table,
                 "stats": stats,
-                "description": f"Análise de {len(mudancas_ordenadas)} mudanças de GTMIN entre {deck_december_name} e {deck_january_name}, ordenadas por magnitude."
+                "description": description
             }
             
         except Exception as e:
@@ -275,6 +317,132 @@ class MudancasGeracoesTermicasTool(NEWAVETool):
                 print(f"[TOOL] ⚠️ Erro ao ler TERM.DAT para nomes: {e}")
         
         return mapeamento
+    
+    def _extract_usina_from_query(
+        self, 
+        query: str, 
+        expt_dec: Expt, 
+        expt_jan: Expt,
+        mapeamento_codigo_nome: Dict[int, str]
+    ) -> Optional[int]:
+        """
+        Extrai código da usina da query.
+        Busca por número ou nome da usina.
+        
+        Args:
+            query: Query do usuário
+            expt_dec: Objeto Expt do deck de dezembro
+            expt_jan: Objeto Expt do deck de janeiro
+            mapeamento_codigo_nome: Mapeamento código -> nome já criado
+            
+        Returns:
+            Código da usina ou None se não encontrado
+        """
+        query_lower = query.lower()
+        
+        # ETAPA 1: Tentar extrair número explícito
+        patterns = [
+            r'usina\s*(\d+)',
+            r'usina\s*térmica\s*(\d+)',
+            r'usina\s*termica\s*(\d+)',
+            r'usina\s*#?\s*(\d+)',
+            r'código\s*(\d+)',
+            r'codigo\s*(\d+)',
+        ]
+        
+        # Obter códigos válidos de ambos os decks
+        codigos_validos = set()
+        if expt_dec.expansoes is not None and not expt_dec.expansoes.empty:
+            codigos_validos.update(expt_dec.expansoes['codigo_usina'].unique())
+        if expt_jan.expansoes is not None and not expt_jan.expansoes.empty:
+            codigos_validos.update(expt_jan.expansoes['codigo_usina'].unique())
+        
+        for pattern in patterns:
+            match = re.search(pattern, query_lower)
+            if match:
+                try:
+                    codigo = int(match.group(1))
+                    if codigo in codigos_validos:
+                        print(f"[TOOL] ✅ Código {codigo} encontrado por padrão numérico")
+                        return codigo
+                except ValueError:
+                    continue
+        
+        # ETAPA 2: Buscar por nome da usina usando o mapeamento
+        print(f"[TOOL] Buscando usina por nome na query: '{query}'")
+        
+        if not mapeamento_codigo_nome:
+            print("[TOOL] ⚠️ Mapeamento de nomes não disponível")
+            return None
+        
+        # Criar mapeamento reverso nome -> código (ordenado por tamanho do nome, maior primeiro)
+        mapeamento_nome_codigo = {}
+        for codigo, nome in mapeamento_codigo_nome.items():
+            if nome and nome.strip() and nome != "N/A" and not nome.startswith("Usina "):
+                nome_lower = nome.lower().strip()
+                # Se já existe, manter o que tem nome mais longo (mais específico)
+                if nome_lower not in mapeamento_nome_codigo or len(nome) > len(mapeamento_codigo_nome[mapeamento_nome_codigo[nome_lower]]):
+                    mapeamento_nome_codigo[nome_lower] = codigo
+        
+        # Ordenar por tamanho do nome (maior primeiro) para priorizar matches mais específicos
+        nomes_ordenados = sorted(
+            mapeamento_nome_codigo.items(),
+            key=lambda x: len(x[0]),
+            reverse=True
+        )
+        
+        # ETAPA 2.1: Buscar match exato do nome completo (prioridade máxima)
+        for nome_lower, codigo in nomes_ordenados:
+            nome_original = mapeamento_codigo_nome[codigo]
+            
+            # Match exato do nome completo
+            if nome_lower == query_lower.strip():
+                print(f"[TOOL] ✅ Código {codigo} encontrado por match exato '{nome_original}'")
+                return codigo
+            
+            # Match exato do nome completo dentro da query (com word boundaries)
+            if nome_lower in query_lower:
+                # Verificar se não é apenas uma palavra parcial muito curta
+                if len(nome_lower) >= 4:  # Nomes com pelo menos 4 caracteres
+                    # Verificar se está como palavra completa (não parte de outra palavra)
+                    pattern = r'\b' + re.escape(nome_lower) + r'\b'
+                    if re.search(pattern, query_lower):
+                        print(f"[TOOL] ✅ Código {codigo} encontrado por nome completo '{nome_original}' na query")
+                        return codigo
+        
+        # ETAPA 2.2: Buscar por palavras-chave do nome (apenas se match exato não encontrou)
+        palavras_ignorar = {'de', 'da', 'do', 'das', 'dos', 'e', 'a', 'o', 'as', 'os', 'em', 'na', 'no', 'nas', 'nos', 'gtmin', 'variação', 'variacao', 'mudanças', 'mudancas'}
+        palavras_query = [p for p in query_lower.split() if len(p) > 2 and p not in palavras_ignorar]
+        
+        if not palavras_query:
+            return None
+        
+        # Lista de candidatos com pontuação
+        candidatos = []
+        
+        for nome_lower, codigo in nomes_ordenados:
+            nome_original = mapeamento_codigo_nome[codigo]
+            palavras_nome = [p for p in nome_lower.split() if len(p) > 2 and p not in palavras_ignorar]
+            
+            if not palavras_nome:
+                continue
+            
+            # Calcular pontuação: quantas palavras do nome estão na query
+            palavras_match = sum(1 for palavra in palavras_nome if palavra in palavras_query)
+            if palavras_match > 0:
+                # Priorizar matches com mais palavras e nomes mais longos
+                score = palavras_match * 100 + len(nome_lower)
+                candidatos.append((codigo, nome_original, score))
+        
+        if candidatos:
+            # Ordenar por pontuação (maior primeiro)
+            candidatos.sort(key=lambda x: x[2], reverse=True)
+            melhor_candidato = candidatos[0]
+            print(f"[TOOL] ✅ Código {melhor_candidato[0]} encontrado por palavras-chave '{melhor_candidato[1]}' (score: {melhor_candidato[2]})")
+            return melhor_candidato[0]
+        
+        print("[TOOL] ⚠️ Nenhuma usina encontrada na query")
+        return None
     
     def _extract_gtmin_records(self, expt: Expt) -> pd.DataFrame:
         """
@@ -556,7 +724,10 @@ class MudancasGeracoesTermicasTool(NEWAVETool):
         Queries que ativam esta tool:
         - "mudanças gtmin" ou "mudancas gtmin"
         - "variação gtmin" ou "variacao gtmin"
+        - "variações de gtmin" ou "variacoes de gtmin" (plural)
+        - "quais foram as variações de gtmin" ou "quais foram as variacoes de gtmin"
         - "análise gtmin" ou "analise gtmin"
+        - "mudanças em gerações térmicas" ou "mudancas em geracoes termicas"
         
-        Termos-chave: mudanças gtmin, variação gtmin, análise gtmin, mudancas gtmin, variacao gtmin, analise gtmin, geração mínima térmica, mudanças em gerações térmicas.
+        Termos-chave: mudanças gtmin, variação gtmin, variações de gtmin, análise gtmin, mudancas gtmin, variacao gtmin, variacoes de gtmin, analise gtmin, geração mínima térmica, mudanças em gerações térmicas, variações em gerações térmicas.
         """
