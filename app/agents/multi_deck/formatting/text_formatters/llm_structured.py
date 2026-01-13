@@ -36,38 +36,28 @@ def format_with_llm_structured(
     comparison_table = formatted.get("comparison_table", [])
     differences_summary = ""
     if comparison_table:
-        # Verificar se é formato de CVU (campos: data, deck_1, deck_2, diferenca, diferenca_percent)
+        # Verificar se é formato de CVU (campos: data/ano, deck_1, deck_2)
         first_item = comparison_table[0] if comparison_table else {}
-        is_cvu_format = "data" in first_item and "deck_1" in first_item and "deck_2" in first_item and "diferenca" in first_item
+        is_cvu_format = ("data" in first_item or "ano" in first_item) and "deck_1" in first_item and "deck_2" in first_item
         
         if is_cvu_format:
             # Formato específico para CVU - instruir explicitamente como formatar
             differences_summary = f"TABELA COMPARATIVA DE CVU com {len(comparison_table)} anos:\n\n"
             differences_summary += "FORMATO OBRIGATORIO DA TABELA:\n"
-            differences_summary += f"| Data | {deck_1_name} | {deck_2_name} | Diferenca |\n"
-            differences_summary += "|------|---------------|---------------|----------|\n"
+            differences_summary += f"| Ano | {deck_1_name} | {deck_2_name} |\n"
+            differences_summary += "|-----|---------------|---------------|\n"
             
             for item in comparison_table:
-                data = item.get("data", "")
+                # Usar campo "ano" se disponível, senão usar "data"
+                ano = item.get("ano") or item.get("data", "")
                 val1 = item.get("deck_1")
                 val2 = item.get("deck_2")
-                diff = item.get("diferenca")
-                diff_pct = item.get("diferenca_percent")
                 
                 # Formatar valores
                 val1_str = f"{val1:.2f}" if val1 is not None else "-"
                 val2_str = f"{val2:.2f}" if val2 is not None else "-"
                 
-                # Formatar diferença (nominal + percentual)
-                if diff is not None:
-                    if diff_pct is not None:
-                        diff_str = f"{diff:.2f} ({diff_pct:.2f}%)"
-                    else:
-                        diff_str = f"{diff:.2f}"
-                else:
-                    diff_str = "-"
-                
-                differences_summary += f"| {data} | {val1_str} | {val2_str} | {diff_str} |\n"
+                differences_summary += f"| {ano} | {val1_str} | {val2_str} |\n"
         else:
             # Formato genérico
             differences_summary = f"Tabela comparativa com {len(comparison_table)} registros:\n"

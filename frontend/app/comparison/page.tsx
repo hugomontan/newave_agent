@@ -95,6 +95,7 @@ interface Message {
       data?: string | number;
       classe?: string;
       ano?: string | number;
+      mes?: string | number;
       deck_1?: number | null;
       deck_2?: number | null;
       deck_1_value?: number | null;
@@ -103,8 +104,15 @@ interface Message {
       difference?: number | null;
       diferenca_percent?: number | null;
       difference_percent?: number | null;
+      par_key?: string;
+      par?: string;
+      sentido?: string;
+      tipo_mudanca_key?: string;
+      tipo_mudanca?: string;
+      tipo_mudanca_label?: string;
     }>;
     visualization_type?: string;
+    tool_name?: string;
     comparison_by_type?: Record<string, unknown>;
     comparison_by_usina?: Record<string, unknown>;
   };

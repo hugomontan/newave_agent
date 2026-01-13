@@ -1,61 +1,13 @@
 "use client";
 
 import React, { useState } from "react";
-import { DifferencesTable } from "./DifferencesTable";
+import { DifferencesTable } from "../shared";
 import { motion } from "framer-motion";
 import { ChevronDown, ChevronRight, Building2, Settings } from "lucide-react";
+import type { ComparisonData } from "../shared/types";
 
 interface ExptHierarchicalViewProps {
-  comparison: {
-    comparison_by_type?: Record<string, {
-      comparison_table: Array<{
-        codigo_usina?: number;
-        nome_usina?: string;
-        tipo: string;
-        data_inicio?: string | null;
-        data_fim?: string | null;
-        deck_1_value?: number | null;
-        deck_2_value?: number | null;
-        difference?: number | null;
-        difference_percent?: number | null;
-        status: string;
-      }>;
-      summary: {
-        total_dezembro: number;
-        total_janeiro: number;
-        added_count: number;
-        removed_count: number;
-        modified_count: number;
-      };
-    }>;
-    comparison_by_usina?: Record<string, {
-      codigo_usina: number;
-      nome_usina: string;
-      comparison_table: Array<{
-        tipo: string;
-        data_inicio?: string | null;
-        data_fim?: string | null;
-        deck_1_value?: number | null;
-        deck_2_value?: number | null;
-        difference?: number | null;
-        difference_percent?: number | null;
-        status: string;
-      }>;
-      summary: {
-        total_modificacoes_dezembro: number;
-        total_modificacoes_janeiro: number;
-        novas_modificacoes: number;
-        modificacoes_removidas: number;
-        modificacoes_alteradas: number;
-      };
-    }>;
-    deck_1: {
-      name: string;
-    };
-    deck_2: {
-      name: string;
-    };
-  };
+  comparison: ComparisonData;
 }
 
 const TIPO_LABELS: Record<string, string> = {
@@ -178,7 +130,7 @@ export function ExptHierarchicalView({ comparison }: ExptHierarchicalViewProps) 
       {/* Visualização por Tipo */}
       {activeTab === "type" && (
         <div className="space-y-4">
-          {Object.entries(comparison_by_type).map(([tipo, data]) => {
+          {Object.entries(comparison_by_type).map(([tipo, data]: [string, any]) => {
             const isExpanded = expandedTypes.has(tipo);
             const tipoLabel = TIPO_LABELS[tipo] || tipo;
             const { summary, comparison_table } = data;
@@ -238,7 +190,7 @@ export function ExptHierarchicalView({ comparison }: ExptHierarchicalViewProps) 
       {/* Visualização por Usina */}
       {activeTab === "usina" && (
         <div className="space-y-4">
-          {Object.entries(comparison_by_usina).map(([codigo, data]) => {
+          {Object.entries(comparison_by_usina).map(([codigo, data]: [string, any]) => {
             const isExpanded = expandedUsinas.has(codigo);
             const { nome_usina, summary, comparison_table } = data;
 
@@ -305,4 +257,3 @@ export function ExptHierarchicalView({ comparison }: ExptHierarchicalViewProps) 
     </motion.div>
   );
 }
-

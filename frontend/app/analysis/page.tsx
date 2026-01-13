@@ -77,6 +77,55 @@ interface Message {
         data: (number | null)[];
       }>;
     } | null;
+    charts_by_par?: Record<string, {
+      par: string;
+      sentido: string;
+      chart_data: {
+        labels: string[];
+        datasets: Array<{
+          label: string;
+          data: (number | null)[];
+        }>;
+      } | null;
+      chart_config?: {
+        type: string;
+        title: string;
+        x_axis: string;
+        y_axis: string;
+      };
+    }>;
+    differences?: Array<{
+      field: string;
+      period: string;
+      deck_1_value: number;
+      deck_2_value: number;
+      difference: number;
+      difference_percent: number;
+    }>;
+    comparison_table?: Array<{
+      data?: string | number;
+      classe?: string;
+      ano?: string | number;
+      mes?: string | number;
+      deck_1?: number | null;
+      deck_2?: number | null;
+      deck_1_value?: number | null;
+      deck_2_value?: number | null;
+      diferenca?: number | null;
+      difference?: number | null;
+      diferenca_percent?: number | null;
+      difference_percent?: number | null;
+      par_key?: string;
+      par?: string;
+      sentido?: string;
+      tipo_mudanca_key?: string;
+      tipo_mudanca?: string;
+      tipo_mudanca_label?: string;
+    }>;
+    visualization_type?: string;
+    tool_name?: string;
+    comparison_by_type?: Record<string, unknown>;
+    comparison_by_usina?: Record<string, unknown>;
   };
 }
 

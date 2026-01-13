@@ -2,19 +2,11 @@
 
 import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronUp, Download } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-
-interface Difference {
-  field: string;
-  period: string;
-  periodo_coluna?: string;  // Período no formato "12-2025 até 01-2026"
-  deck_1_value: number;
-  deck_2_value: number;
-  difference?: number | null;  // Pode ser null para inclusões/exclusões
-  difference_percent?: number | null;  // Pode ser null para inclusões/exclusões
-  is_inclusao_ou_exclusao?: boolean;  // Flag para ocultar diferença/variação
-}
+import { formatNumber, formatMonth, formatPercent } from "./formatters";
+import { exportToCSV } from "./csvExport";
+import type { Difference } from "./types";
 
 interface DifferencesTableProps {
   differences: Difference[];
@@ -23,22 +15,37 @@ interface DifferencesTableProps {
   firstColumnLabel?: string;  // Label da primeira coluna ("Usina" ou "Ano")
 }
 
-function formatNumber(value: number): string {
-  if (value === null || value === undefined) return "-";
-  return value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-function formatPercent(value: number): string {
-  if (value === null || value === undefined) return "-";
-  const sign = value >= 0 ? "+" : "";
-  return `${sign}${value.toFixed(2)}%`;
-}
-
 export function DifferencesTable({ differences, deck1Name, deck2Name, firstColumnLabel = "Usina" }: DifferencesTableProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const maxInitial = 15;
   const hasMore = differences.length > maxInitial;
   const displayedDifferences = isExpanded ? differences : differences.slice(0, maxInitial);
+
+  const handleDownloadCSV = () => {
+    const hasMes = differences.some(d => d.mes !== undefined && d.mes !== null);
+    const hasPeriodoColuna = differences.some(d => d.periodo_coluna);
+    const hasDifference = differences.some(d => !d.is_inclusao_ou_exclusao && d.difference !== null && d.difference !== undefined);
+
+    const csvData = differences.map((diff) => {
+      const row: Record<string, string | number | null> = {
+        [firstColumnLabel]: diff.period,
+        [deck1Name]: diff.deck_1_value ?? null,
+        [deck2Name]: diff.deck_2_value ?? null,
+      };
+      if (hasMes && diff.mes !== undefined && diff.mes !== null) {
+        row.Mês = formatMonth(diff.mes);
+      }
+      if (hasPeriodoColuna && diff.periodo_coluna) {
+        row.Período = diff.periodo_coluna;
+      }
+      if (hasDifference && !diff.is_inclusao_ou_exclusao && diff.difference !== null && diff.difference !== undefined) {
+        row.Diferença = diff.difference;
+        row["Variação %"] = diff.difference_percent ?? null;
+      }
+      return row;
+    });
+    exportToCSV(csvData, "comparacao");
+  };
 
   console.log("[DifferencesTable] Renderizando:", differences?.length || 0, "diferenças");
 
@@ -65,9 +72,19 @@ export function DifferencesTable({ differences, deck1Name, deck2Name, firstColum
         <h3 className="text-base sm:text-lg font-semibold text-card-foreground">
            Tabela Comparativa
         </h3>
-        <span className="text-sm text-muted-foreground">
-          {differences.length} registros
-        </span>
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-muted-foreground">
+            {differences.length} registros
+          </span>
+          <button
+            onClick={handleDownloadCSV}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-card-foreground bg-background/50 hover:bg-background/70 border border-border rounded-lg transition-colors"
+            title="Baixar como CSV"
+          >
+            <Download className="w-4 h-4" />
+            CSV
+          </button>
+        </div>
       </div>
 
       <div className="overflow-x-auto -mx-4 sm:mx-0">
@@ -78,6 +95,11 @@ export function DifferencesTable({ differences, deck1Name, deck2Name, firstColum
                 <th className="px-3 sm:px-4 py-3 text-left text-xs font-semibold text-card-foreground uppercase tracking-wider whitespace-nowrap">
                   {firstColumnLabel}
                 </th>
+                {differences.some(d => d.mes !== undefined && d.mes !== null) && (
+                  <th className="px-3 sm:px-4 py-3 text-left text-xs font-semibold text-card-foreground uppercase tracking-wider whitespace-nowrap">
+                    Mês
+                  </th>
+                )}
                 {differences.some(d => d.periodo_coluna) && (
                   <th className="px-3 sm:px-4 py-3 text-left text-xs font-semibold text-card-foreground uppercase tracking-wider whitespace-nowrap">
                     Período
@@ -115,6 +137,11 @@ export function DifferencesTable({ differences, deck1Name, deck2Name, firstColum
                     <td className="px-3 sm:px-4 py-2.5 text-sm text-card-foreground font-medium whitespace-nowrap">
                       {diff.period}
                     </td>
+                    {diff.mes !== undefined && diff.mes !== null && (
+                      <td className="px-3 sm:px-4 py-2.5 text-sm text-muted-foreground whitespace-nowrap">
+                        {formatMonth(diff.mes)}
+                      </td>
+                    )}
                     {diff.periodo_coluna && (
                       <td className="px-3 sm:px-4 py-2.5 text-sm text-muted-foreground whitespace-nowrap">
                         {diff.periodo_coluna}

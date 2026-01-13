@@ -300,17 +300,14 @@ REGRAS CRÍTICAS - SIGA OBRIGATORIAMENTE:
    - Destaque diferenças significativas (>1% ou valores novos/removidos)
 
 4. FORMATO ESPECIAL PARA CVU (Custo Variável Unitário):
-   - Se receber uma tabela comparativa com campos "data", "deck_1", "deck_2", "diferenca", "diferenca_percent":
+   - Se receber uma tabela comparativa com campos "ano"/"data", "deck_1", "deck_2":
    - Formate a tabela EXATAMENTE assim:
-     | Data | {deck_1_name} | {deck_2_name} | Diferença |
-     |------|---------------|---------------|-----------|
-     | [ano] | [valor] | [valor] | [diferença nominal] ([diferença %]%) |
-   - O campo "data" contém os anos - use diretamente como "Data"
+     | Ano | {deck_1_name} | {deck_2_name} |
+     |-----|---------------|---------------|
+     | [ano] | [valor] | [valor] |
+   - O campo "ano" ou "data" contém os anos - use diretamente como "Ano"
    - O campo "deck_1" contém os valores do deck 1 - use diretamente
    - O campo "deck_2" contém os valores do deck 2 - use diretamente  
-   - O campo "diferenca" contém a diferença nominal - use diretamente
-   - O campo "diferenca_percent" contém a diferença percentual - combine com a diferença nominal no formato: "valor (percent%)"
-   - Exemplo: Se diferenca=76.82 e diferenca_percent=17.84, escreva "76.82 (17.84%)"
    - MOSTRE TODOS os anos na tabela - não agrupe nem resuma
 
 =====================================================================

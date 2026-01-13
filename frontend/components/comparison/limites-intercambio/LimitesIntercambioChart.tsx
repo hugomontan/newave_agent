@@ -12,25 +12,21 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { motion } from "framer-motion";
+import type { ChartData } from "../shared/types";
 
-interface ComparisonChartProps {
-  data: {
-    labels: string[];
-    datasets: Array<{
-      label: string;
-      data: (number | null)[];
-    }>;
-  };
+interface LimitesIntercambioChartProps {
+  data: ChartData;
+  par?: string;
+  sentido?: string;
 }
 
-export function ComparisonChart({ data }: ComparisonChartProps) {
+export function LimitesIntercambioChart({ data, par, sentido }: LimitesIntercambioChartProps) {
   // Validar dados
   if (!data || !data.labels || data.labels.length === 0 || !data.datasets || data.datasets.length === 0) {
-    console.warn("[ComparisonChart] Dados inválidos ou vazios:", data);
     return (
       <div className="bg-card border border-border rounded-lg p-4 sm:p-6 w-full">
         <h3 className="text-base sm:text-lg font-semibold mb-4 text-card-foreground">
-          Comparação Visual
+          {par && sentido ? `${par} - ${sentido}` : "Limites de Intercâmbio"}
         </h3>
         <p className="text-sm text-muted-foreground">
           Não foi possível gerar o gráfico. Dados insuficientes.
@@ -81,6 +77,9 @@ export function ComparisonChart({ data }: ComparisonChartProps) {
   // Cores para as linhas
   const colors = ["#8884d8", "#82ca9d", "#ffc658", "#ff7300"];
 
+  // Título dinâmico
+  const chartTitle = par && sentido ? `${par} - ${sentido}` : "Limites de Intercâmbio";
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -88,17 +87,16 @@ export function ComparisonChart({ data }: ComparisonChartProps) {
       className="bg-card border border-border rounded-lg p-4 sm:p-6 w-full"
     >
       <h3 className="text-base sm:text-lg font-semibold mb-4 text-card-foreground">
-        Comparação Visual
+        {chartTitle}
       </h3>
-      
-      <div className="w-full overflow-x-auto">
-        <ResponsiveContainer width="100%" height={350} minHeight={300}>
+      <div className="w-full min-w-[600px] overflow-hidden">
+        <ResponsiveContainer width="100%" height={400}>
           <LineChart
             data={chartData}
             margin={{
-              top: 5,
-              right: 10,
-              left: 10,
+              top: 10,
+              right: 110,
+              left: 0,
               bottom: 5,
             }}
           >
@@ -106,18 +104,21 @@ export function ComparisonChart({ data }: ComparisonChartProps) {
             <XAxis 
               dataKey="periodo" 
               stroke="#9ca3af"
-              tick={{ fill: "#9ca3af", fontSize: 12 }}
+              tick={{ fill: "#9ca3af", fontSize: 14 }}
               angle={-45}
               textAnchor="end"
-              height={60}
+              height={80}
             />
             <YAxis 
               stroke="#9ca3af"
-              tick={{ fill: "#9ca3af", fontSize: 12 }}
-              width={80}
+              tick={{ fill: "#9ca3af", fontSize: 14 }}
+              width={100}
               domain={yAxisDomain}
               tickFormatter={(value) => {
-                // Formatar valores grandes com separador de milhar
+                // Formatar valores grandes com separador de milhar, sem decimais quando inteiro
+                if (Number.isInteger(value)) {
+                  return value.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+                }
                 return value.toLocaleString('pt-BR');
               }}
             />
@@ -127,16 +128,16 @@ export function ComparisonChart({ data }: ComparisonChartProps) {
                 border: "1px solid #374151",
                 borderRadius: "6px",
                 color: "#f3f4f6",
-                fontSize: "12px",
+                fontSize: "14px",
               }}
             />
             <Legend 
-              wrapperStyle={{ color: "#9ca3af", fontSize: "12px" }}
+              wrapperStyle={{ color: "#9ca3af", fontSize: "14px" }}
             />
             {data.datasets.map((dataset, index) => (
               <Line
                 key={dataset.label}
-                type="linear"  // Linha reta, sem suavização
+                type="linear"
                 dataKey={dataset.label}
                 stroke={colors[index % colors.length]}
                 strokeWidth={2}
@@ -151,4 +152,3 @@ export function ComparisonChart({ data }: ComparisonChartProps) {
     </motion.div>
   );
 }
-

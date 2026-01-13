@@ -57,6 +57,23 @@ interface Message {
         data: (number | null)[];
       }>;
     } | null;
+    charts_by_par?: Record<string, {
+      par: string;
+      sentido: string;
+      chart_data: {
+        labels: string[];
+        datasets: Array<{
+          label: string;
+          data: (number | null)[];
+        }>;
+      } | null;
+      chart_config?: {
+        type: string;
+        title: string;
+        x_axis: string;
+        y_axis: string;
+      };
+    }>;
     differences?: Array<{
       field: string;
       period: string;
@@ -65,6 +82,30 @@ interface Message {
       difference: number;
       difference_percent: number;
     }>;
+    comparison_table?: Array<{
+      data?: string | number;
+      classe?: string;
+      ano?: string | number;
+      mes?: string | number;
+      deck_1?: number | null;
+      deck_2?: number | null;
+      deck_1_value?: number | null;
+      deck_2_value?: number | null;
+      diferenca?: number | null;
+      difference?: number | null;
+      diferenca_percent?: number | null;
+      difference_percent?: number | null;
+      par_key?: string;
+      par?: string;
+      sentido?: string;
+      tipo_mudanca_key?: string;
+      tipo_mudanca?: string;
+      tipo_mudanca_label?: string;
+    }>;
+    visualization_type?: string;
+    tool_name?: string;
+    comparison_by_type?: Record<string, unknown>;
+    comparison_by_usina?: Record<string, unknown>;
   };
   disambiguationData?: {
     type: string;
@@ -148,7 +189,7 @@ export function ChatMessage({ message, onOptionClick }: ChatMessageProps) {
       transition={{ duration: 0.2, ease: "easeOut" }}
       className={`flex ${isUser ? "justify-end" : "justify-start"} mb-8`}
     >
-      <div className={`flex items-start gap-3.5 max-w-[85%] ${isUser ? "flex-row-reverse" : ""}`}>
+      <div className={`flex items-start gap-3.5 max-w-[95%] ${isUser ? "flex-row-reverse" : ""}`}>
         {/* Avatar */}
         <div
           className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
@@ -552,8 +593,10 @@ export function ChatMessage({ message, onOptionClick }: ChatMessageProps) {
 
               {/* Comparison View - mostrar mesmo durante loading de disambiguation */}
               {message.comparisonData && (
-                <div className="w-full -mx-4 sm:-mx-6 md:-mx-8 px-4 sm:px-6 md:px-8">
-                  <ComparisonView comparison={message.comparisonData} />
+                <div className="w-full -mx-4 sm:-mx-6 md:-mx-8 px-4 sm:px-6 md:px-8 max-w-full">
+                  <div className="min-w-0 w-full">
+                    <ComparisonView comparison={message.comparisonData} />
+                  </div>
                 </div>
               )}
 

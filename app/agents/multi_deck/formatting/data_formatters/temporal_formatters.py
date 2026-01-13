@@ -212,6 +212,65 @@ class ClastComparisonFormatter(ComparisonFormatter):
         ]
         return any(kw in query_lower for kw in cvu_keywords)
     
+    def _get_base_year_from_deck(self, result: Dict[str, Any]) -> Optional[int]:
+        """
+        Tenta extrair o ano base do deck a partir do caminho ou nome do deck.
+        O ano base é o ano do deck, e o primeiro ano do estudo (indice_ano_estudo=1) 
+        corresponde ao ano seguinte (ano_base + 1).
+        
+        Exemplo: Se o deck é "NW202512" (dezembro de 2025), o ano base é 2025,
+        e o primeiro ano do estudo (indice_ano_estudo=1) é 2026.
+        """
+        import re
+        import os
+        
+        # Tentar extrair do caminho do deck se disponível
+        deck_path = result.get("deck_path") or result.get("deck")
+        if deck_path:
+            # Converter Path para string se necessário
+            deck_path_str = str(deck_path)
+            
+            # Tentar extrair ano do nome do deck (ex: "NW202512" -> 2025)
+            # Padrão: NW + 4 dígitos (ano) + 2 dígitos (mês)
+            ano_match = re.search(r'NW(\d{4})\d{2}', deck_path_str)
+            if ano_match:
+                ano_base = int(ano_match.group(1))
+                return ano_base
+            
+            # Tentar padrão genérico de 4 dígitos que possa ser um ano (2000-2100)
+            ano_match = re.search(r'(20[0-5]\d)', deck_path_str)
+            if ano_match:
+                ano_base = int(ano_match.group(1))
+                return ano_base
+            
+            # Tentar ler do DGER.DAT se o caminho for um diretório válido
+            if os.path.isdir(deck_path_str):
+                dger_path = os.path.join(deck_path_str, "DGER.DAT")
+                if not os.path.exists(dger_path):
+                    dger_path = os.path.join(deck_path_str, "dger.dat")
+                
+                if os.path.exists(dger_path):
+                    try:
+                        with open(dger_path, 'r', encoding='latin-1') as f:
+                            lines = f.readlines()
+                            if len(lines) > 20:
+                                reg21 = lines[20].strip()
+                                # Procurar por padrão de 4 dígitos que possa ser um ano (2000-2100)
+                                anos_match = re.findall(r'\b(20[0-5]\d)\b', reg21)
+                                if anos_match:
+                                    # Pegar o primeiro ano encontrado (geralmente é o ano do estudo)
+                                    ano_encontrado = int(anos_match[0])
+                                    # O ano base geralmente é um ano antes do primeiro ano do histórico
+                                    # Mas para CVU, precisamos do ano do deck, não do histórico
+                                    # Vamos assumir que o ano do deck está próximo do ano encontrado
+                                    return ano_encontrado
+                    except Exception:
+                        pass
+        
+        # Se não encontrou, usar padrão baseado no nome do deck comum (NW202512 = 2025)
+        # Por padrão, se não conseguir determinar, usar 2025 (ano base comum)
+        return 2025
+    
     def _format_cvu_simplified(
         self,
         dados_estruturais_dec: List[Dict],
@@ -221,12 +280,16 @@ class ClastComparisonFormatter(ComparisonFormatter):
     ) -> Dict[str, Any]:
         """
         Formata comparação de CVU de forma simplificada:
-        - Tabela: Data (anos), Deck 1, Deck 2, Diferença (nominal + %)
+        - Tabela: Ano (dinâmico baseado no deck), Deck 1, Deck 2
         - Gráfico: uma linha por deck, eixo Y = CVU, eixo X = Anos
         
         Nota: Para CVU, geralmente há uma única classe térmica. Se houver múltiplas,
         usa a primeira classe encontrada (priorizando a mais frequente nos dados).
         """
+        # Obter ano base do deck (tenta extrair do deck de dezembro)
+        ano_base = self._get_base_year_from_deck(result_dec)
+        # O primeiro ano do estudo (indice_ano_estudo=1) corresponde ao ano seguinte ao ano base
+        # Exemplo: deck de 2025 -> primeiro ano do estudo é 2026
         # Identificar a classe principal (mais frequente nos dados)
         classes_count = {}
         for record in dados_estruturais_dec + dados_estruturais_jan:
@@ -279,25 +342,13 @@ class ClastComparisonFormatter(ComparisonFormatter):
         dec_values = []
         jan_values = []
         
-        for ano in all_anos:
-            val_dec = dec_by_ano.get(ano)
-            val_jan = jan_by_ano.get(ano)
+        for indice_ano in all_anos:
+            val_dec = dec_by_ano.get(indice_ano)
+            val_jan = jan_by_ano.get(indice_ano)
             
-            # Calcular diferença (deck novo - deck antigo = janeiro - dezembro)
-            diff = None
-            diff_percent = None
-            
-            if val_dec is not None and val_jan is not None:
-                diff = val_jan - val_dec
-                diff_percent = ((val_jan - val_dec) / val_dec * 100) if val_dec != 0 else 0
-            elif val_jan is not None:
-                # Apenas em janeiro (adicionado)
-                diff = val_jan
-                diff_percent = None
-            elif val_dec is not None:
-                # Apenas em dezembro (removido)
-                diff = -val_dec
-                diff_percent = None
+            # Calcular o ano real: ano_base + indice_ano_estudo
+            # indice_ano_estudo=1 corresponde ao primeiro ano do estudo (ano_base + 1)
+            ano_real = ano_base + indice_ano
             
             # Função auxiliar para arredondar e garantir que NaN vire None
             def safe_round(value):
@@ -312,28 +363,18 @@ class ClastComparisonFormatter(ComparisonFormatter):
                 except (ValueError, TypeError):
                     return None
             
-            # Adicionar à tabela
+            # Adicionar à tabela (sem colunas de diferença e variação %)
             table_row = {
-                "data": ano,  # Coluna "Data" com o ano
+                "data": ano_real,  # Coluna "Data" com o ano real (dinâmico)
+                "ano": ano_real,  # Também incluir campo "ano" para compatibilidade
                 "deck_1": safe_round(val_dec),
                 "deck_2": safe_round(val_jan),
             }
             
-            # Adicionar diferença (nominal + porcentagem)
-            if diff is not None:
-                table_row["diferenca"] = safe_round(diff)
-                if diff_percent is not None:
-                    table_row["diferenca_percent"] = safe_round(diff_percent)
-                else:
-                    table_row["diferenca_percent"] = None
-            else:
-                table_row["diferenca"] = None
-                table_row["diferenca_percent"] = None
-            
             comparison_table.append(table_row)
             
             # Dados para gráfico
-            chart_labels.append(f"Ano {ano}")
+            chart_labels.append(f"Ano {ano_real}")
             dec_values.append(safe_round(val_dec))
             jan_values.append(safe_round(val_jan))
         
@@ -726,7 +767,7 @@ class CargaComparisonFormatter(ComparisonFormatter):
                 except (ValueError, TypeError):
                     pass
             
-            # Função auxiliar para arredondar e garantir que NaN vire None
+            # Função auxiliar para arredondar e garantir que NaN vire None, sem decimais quando inteiro
             def safe_round(value):
                 if value is None:
                     return None
@@ -735,29 +776,23 @@ class CargaComparisonFormatter(ComparisonFormatter):
                     # Verificar se o resultado é NaN ou Inf
                     if math.isnan(rounded) or math.isinf(rounded):
                         return None
+                    # Se for número inteiro, retornar sem decimais
+                    if rounded == int(rounded):
+                        return int(rounded)
                     return rounded
                 except (ValueError, TypeError):
                     return None
             
-            # Adicionar à tabela (mesmo formato do CVU)
+            # Adicionar à tabela (sem diferença/variação conforme solicitado para SISTEMA.DAT)
             table_row = {
-                "data": periodo_label,  # Coluna "Data" com ano-mês formatado (ex: "Dez/2025")
+                "data": periodo_label,  # Coluna "Data" com mês-ano formatado (ex: "Dez/2025")
                 "ano": ano,  # Ano extraído do periodo_key (para detecção no frontend)
                 "mes": mes,  # Mês extraído do periodo_key (para detecção no frontend)
                 "deck_1": safe_round(val_dec),
                 "deck_2": safe_round(val_jan),
             }
             
-            # Adicionar diferença (nominal + porcentagem)
-            if diff is not None:
-                table_row["diferenca"] = safe_round(diff)
-                if diff_percent is not None:
-                    table_row["diferenca_percent"] = safe_round(diff_percent)
-                else:
-                    table_row["diferenca_percent"] = None
-            else:
-                table_row["diferenca"] = None
-                table_row["diferenca_percent"] = None
+            # REMOVIDO: Colunas diferença e variação conforme solicitado para SISTEMA.DAT
             
             comparison_table.append(table_row)
             
@@ -1236,7 +1271,7 @@ class LimitesIntercambioComparisonFormatter(ComparisonFormatter):
     """
     Formatador para LimitesIntercambioTool.
     Visualização: Tabelas comparativas separadas por par de submercados.
-    Apenas linhas com diferenças são incluídas.
+    Todos os registros são incluídos, independente de serem iguais ou não.
     """
     
     def can_format(self, tool_name: str, result_structure: Dict[str, Any]) -> bool:
@@ -1258,7 +1293,7 @@ class LimitesIntercambioComparisonFormatter(ComparisonFormatter):
     ) -> Dict[str, Any]:
         """
         Formata comparação de limites de intercâmbio.
-        Agrupa por par de submercados e sentido, mostrando apenas diferenças.
+        Agrupa por par de submercados e sentido, mostrando todos os registros.
         
         Args:
             result_dec: Resultado completo da tool para deck 1
@@ -1289,7 +1324,7 @@ class LimitesIntercambioComparisonFormatter(ComparisonFormatter):
         # Obter todos os pares únicos
         all_pares = set(dec_indexed.keys()) | set(jan_indexed.keys())
         
-        # Construir tabela comparativa (apenas linhas com diferenças) e charts_by_par
+        # Construir tabela comparativa (todos os registros) e charts_by_par
         comparison_table = []
         charts_by_par = {}
         
@@ -1313,9 +1348,10 @@ class LimitesIntercambioComparisonFormatter(ComparisonFormatter):
                 # Obter todos os períodos únicos para este par
                 all_periodos = sorted(set(dec_records.keys()) | set(jan_records.keys()))
                 
-                # Construir dados do gráfico para este par (incluir todos os períodos, não apenas diferenças)
+                # Construir dados do gráfico e tabela para este par (incluir TODOS os períodos)
                 par_dec_values = []
                 par_jan_values = []
+                par_labels = []  # Labels formatados para o gráfico
                 
                 for periodo in all_periodos:
                     dec_record = dec_records.get(periodo, {})
@@ -1328,43 +1364,25 @@ class LimitesIntercambioComparisonFormatter(ComparisonFormatter):
                     par_dec_values.append(self._safe_round(val_dec))
                     par_jan_values.append(self._safe_round(val_jan))
                     
-                    # Calcular diferença para tabela (apenas diferenças)
-                    diff = None
-                    diff_percent = None
+                    # Formatar período como mês-ano (ex: "Dez/2025") para labels do gráfico
+                    periodo_formatted = self._format_period_label(periodo)
+                    par_labels.append(periodo_formatted)
                     
-                    if val_dec is not None and val_jan is not None:
-                        diff = val_jan - val_dec
-                        # Incluir apenas se houver diferença
-                        if diff != 0:
-                            diff_percent = ((val_jan - val_dec) / val_dec * 100) if val_dec != 0 else None
-                    elif val_jan is not None:
-                        # Apenas no deck 2 (adicionado)
-                        diff = val_jan
-                        diff_percent = None
-                    elif val_dec is not None:
-                        # Apenas no deck 1 (removido)
-                        diff = -val_dec
-                        diff_percent = None
+                    # Incluir TODOS os registros na tabela, independente de serem iguais ou não
+                    periodo_formatted_table = self._format_period_label(periodo)
                     
-                    # Incluir apenas linhas com diferenças na tabela
-                    if diff is not None and diff != 0:
-                        # Formatar período como YYYY-MM
-                        periodo_formatted = periodo  # Já vem no formato YYYY-MM
-                        
-                        comparison_table.append({
-                            "data": periodo_formatted,
-                            "par_key": par_key,
-                            "par": par_label,
-                            "sentido": sentido_label,
-                            "deck_1": self._safe_round(val_dec),
-                            "deck_2": self._safe_round(val_jan),
-                            "diferenca": self._safe_round(diff),
-                            "diferenca_percent": self._safe_round(diff_percent) if diff_percent is not None else None
-                        })
+                    comparison_table.append({
+                        "data": periodo_formatted_table,  # Formato mês-ano
+                        "par_key": par_key,
+                        "par": par_label,
+                        "sentido": sentido_label,
+                        "deck_1": self._safe_round(val_dec),
+                        "deck_2": self._safe_round(val_jan),
+                    })
                 
-                # Criar chart_data para este par
+                # Criar chart_data para este par (usar labels formatados)
                 par_chart_data = {
-                    "labels": all_periodos,
+                    "labels": par_labels,  # Usar labels formatados (mês/ano)
                     "datasets": [
                         {
                             "label": deck_1_label,
@@ -1398,7 +1416,7 @@ class LimitesIntercambioComparisonFormatter(ComparisonFormatter):
             "charts_by_par": charts_by_par,
             "visualization_type": "limites_intercambio",
             "summary": {
-                "total_differences": len(comparison_table),
+                "total_registros": len(comparison_table),
                 "pares_afetados": pares_afetados
             }
         }
@@ -1480,8 +1498,23 @@ class LimitesIntercambioComparisonFormatter(ComparisonFormatter):
         # Fallback: usar código
         return f"Subsistema {codigo}"
     
+    def _format_period_label(self, periodo_key: str) -> str:
+        """
+        Formata chave de período (ex: "2025-12") para label legível (ex: "12/2025").
+        """
+        try:
+            if "-" in periodo_key:
+                parts = periodo_key.split("-")
+                if len(parts) == 2:
+                    ano = parts[0]
+                    mes = int(parts[1])
+                    return f"{mes:02d}/{ano}"
+            return periodo_key
+        except (ValueError, IndexError):
+            return periodo_key
+    
     def _safe_round(self, value) -> Optional[float]:
-        """Arredonda valor com tratamento de NaN/None."""
+        """Arredonda valor com tratamento de NaN/None, sem decimais quando inteiro."""
         if value is None:
             return None
         try:
@@ -1489,6 +1522,9 @@ class LimitesIntercambioComparisonFormatter(ComparisonFormatter):
             # Verificar se o resultado é NaN ou Inf
             if math.isnan(rounded) or math.isinf(rounded):
                 return None
+            # Se for número inteiro, retornar sem decimais
+            if rounded == int(rounded):
+                return int(rounded)
             return rounded
         except (ValueError, TypeError):
             return None
