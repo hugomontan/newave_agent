@@ -11,7 +11,7 @@ def format_clast_simple_comparison(
     deck_2_name: str
 ) -> str:
     """
-    Formata resposta simples para ClastValoresTool: apenas título.
+    Formata resposta simples para ClastValoresTool: título + informação de validação.
     A tabela e o gráfico são renderizados pelo componente ComparisonView no frontend.
     
     Args:
@@ -20,7 +20,7 @@ def format_clast_simple_comparison(
         deck_2_name: Nome do deck 2
         
     Returns:
-        String markdown com apenas o título (sem tabela, pois será renderizada pelo componente)
+        String markdown com título e informação de validação (sem tabela, pois será renderizada pelo componente)
     """
     if not comparison_table:
         return "## Comparação de CVU\n\nNenhum dado disponível para comparação."
@@ -29,9 +29,15 @@ def format_clast_simple_comparison(
     first_item = comparison_table[0] if comparison_table else {}
     is_cvu_format = "data" in first_item and "deck_1" in first_item and "deck_2" in first_item
     
+    # Extrair informação de validação (classe_info) se disponível
+    classe_info = first_item.get("classe_info")
+    
     if is_cvu_format:
-        # Apenas título - a tabela será renderizada pelo componente ComparisonView
-        return "## Comparação de CVU\n"
+        # Título + informação de validação
+        response = "## Comparação de CVU\n"
+        if classe_info:
+            response += f"\n**Custos de Classe - Nome da usina:** {classe_info}\n"
+        return response
     else:
         # Apenas título - a tabela será renderizada pelo componente ComparisonView
         return "## Comparação de Custos\n"
@@ -86,6 +92,30 @@ def format_limites_intercambio_simple_comparison(
     
     # Apenas título - a tabela será renderizada pelo componente ComparisonView
     return "## Comparação de Limites de Intercâmbio\n"
+
+
+def format_vazao_minima_simple_comparison(
+    comparison_table: List[Dict[str, Any]],
+    deck_1_name: str,
+    deck_2_name: str
+) -> str:
+    """
+    Formata resposta simples para MudancasVazaoMinimaTool: apenas título.
+    A tabela é renderizada pelo componente ComparisonView no frontend.
+    
+    Args:
+        comparison_table: Lista de dicionários com dados da comparação
+        deck_1_name: Nome do deck 1
+        deck_2_name: Nome do deck 2
+        
+    Returns:
+        String markdown com apenas o título (sem tabela, pois será renderizada pelo componente)
+    """
+    if not comparison_table:
+        return "## Comparação de Mudanças de Vazão Mínima\n\nNenhum dado disponível para comparação."
+    
+    # Apenas título - a tabela será renderizada pelo componente ComparisonView
+    return "## Comparação de Mudanças de Vazão Mínima\n"
 
 
 def format_gtmin_simple_comparison(

@@ -39,6 +39,9 @@ export function ComparisonRouter({ comparison }: ComparisonRouterProps) {
     case "gtmin_changes_table":
       return <GTMINView comparison={comparison} />;
 
+    case "vazao_minima_changes_table":
+      return <GTMINView comparison={comparison} />;
+
     default:
       // Fallback: retornar mensagem
       return (

@@ -14,6 +14,7 @@ from .diff_formatters import DiffComparisonFormatter
 from .cadastro_formatters import CadastroComparisonFormatter
 from .table_formatters import TableComparisonFormatter
 from .gtmin_formatters import MudancasGeracoesTermicasFormatter
+from .vazao_minima_formatters import MudancasVazaoMinimaFormatter
 from .volume_inicial_formatters import VariacaoVolumesIniciaisFormatter
 from .llm_free_formatters import LLMFreeFormatter
 
@@ -27,6 +28,7 @@ __all__ = [
     "CadastroComparisonFormatter",
     "TableComparisonFormatter",
     "MudancasGeracoesTermicasFormatter",
+    "MudancasVazaoMinimaFormatter",
     "VariacaoVolumesIniciaisFormatter",
     "LLMFreeFormatter",
 ]

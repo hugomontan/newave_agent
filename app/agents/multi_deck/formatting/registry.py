@@ -26,6 +26,9 @@ from .data_formatters.llm_free_formatters import (
 from .data_formatters.gtmin_formatters import (
     MudancasGeracoesTermicasFormatter,
 )
+from .data_formatters.vazao_minima_formatters import (
+    MudancasVazaoMinimaFormatter,
+)
 from .data_formatters.volume_inicial_formatters import (
     VariacaoVolumesIniciaisFormatter,
 )
@@ -35,6 +38,7 @@ from .data_formatters.volume_inicial_formatters import (
 FORMATTERS = [
     VariacaoVolumesIniciaisFormatter(),  # Alta prioridade - muito específico para volumes iniciais
     MudancasGeracoesTermicasFormatter(),  # Alta prioridade - muito específico para GTMIN
+    MudancasVazaoMinimaFormatter(),  # Alta prioridade - muito específico para VAZMIN/VAZMINT
     ClastComparisonFormatter(),
     CargaComparisonFormatter(),
     VazoesComparisonFormatter(),
@@ -107,6 +111,7 @@ def format_comparison_response(
         format_carga_simple_comparison,
         format_limites_intercambio_simple_comparison,
         format_gtmin_simple_comparison,
+        format_vazao_minima_simple_comparison,
         format_volumes_iniciais_simple_comparison,
         generate_fallback_comparison_response
     )
@@ -246,6 +251,13 @@ def format_comparison_response(
     elif tool_used == "MudancasGeracoesTermicasTool":
         safe_print(f"[INTERPRETER] [COMPARISON] MudancasGeracoesTermicasTool - formato simplificado (apenas tabela)")
         final_response = format_gtmin_simple_comparison(
+            formatted.get("comparison_table", []),
+            deck_1_name,
+            deck_2_name
+        )
+    elif tool_used == "MudancasVazaoMinimaTool":
+        safe_print(f"[INTERPRETER] [COMPARISON] MudancasVazaoMinimaTool - formato simplificado (apenas tabela)")
+        final_response = format_vazao_minima_simple_comparison(
             formatted.get("comparison_table", []),
             deck_1_name,
             deck_2_name
