@@ -272,6 +272,52 @@ class ClastComparisonFormatter(ComparisonFormatter):
         # Por padrão, se não conseguir determinar, usar 2025 (ano base comum)
         return 2025
     
+    def _get_year_and_month_from_deck(self, result: Dict[str, Any]) -> Optional[Tuple[int, int]]:
+        """
+        Extrai ano e mês do deck a partir do caminho ou nome do deck.
+        
+        Args:
+            result: Resultado da tool que contém informações do deck
+            
+        Returns:
+            Tuple (ano, mês) ou None se não conseguir extrair
+        """
+        import os
+        
+        deck_path = result.get("deck_path") or result.get("deck")
+        if deck_path:
+            deck_path_str = str(deck_path)
+            
+            # Tentar extrair ano e mês do nome do deck (ex: "NW202512" -> (2025, 12))
+            # Padrão: NW + 4 dígitos (ano) + 2 dígitos (mês)
+            match = re.search(r'NW(\d{4})(\d{2})', deck_path_str)
+            if match:
+                ano = int(match.group(1))
+                mes = int(match.group(2))
+                return (ano, mes)
+        
+        return None
+    
+    def _calculate_real_year(self, indice_ano_estudo: int, ano_deck: int, mes_deck: int) -> int:
+        """
+        Calcula o ano real baseado no índice do ano do estudo, ano e mês do deck.
+        
+        Para CVU:
+        - Deck de dezembro: indice_ano_estudo=1 corresponde ao ano do deck (dezembro do ano)
+        - Deck de janeiro: indice_ano_estudo=1 corresponde ao ano do deck (janeiro do ano)
+        
+        Args:
+            indice_ano_estudo: Índice do ano do estudo (1, 2, 3, ...)
+            ano_deck: Ano do deck (ex: 2025 para NW202512)
+            mes_deck: Mês do deck (ex: 12 para NW202512)
+            
+        Returns:
+            Ano real correspondente
+        """
+        # Para CVU, o indice_ano_estudo=1 corresponde ao ano do deck
+        # Então: ano_real = ano_deck + (indice_ano_estudo - 1)
+        return ano_deck + (indice_ano_estudo - 1)
+    
     def _format_cvu_simplified(
         self,
         dados_estruturais_dec: List[Dict],
@@ -286,11 +332,23 @@ class ClastComparisonFormatter(ComparisonFormatter):
         
         Nota: Para CVU, geralmente há uma única classe térmica. Se houver múltiplas,
         usa a primeira classe encontrada (priorizando a mais frequente nos dados).
+        
+        IMPORTANTE: Cada deck tem sua própria base de ano:
+        - Deck de dezembro (NW202512): indice_ano_estudo=1 corresponde a 2025
+        - Deck de janeiro (NW202601): indice_ano_estudo=1 corresponde a 2026
         """
-        # Obter ano base do deck (tenta extrair do deck de dezembro)
-        ano_base = self._get_base_year_from_deck(result_dec)
-        # O primeiro ano do estudo (indice_ano_estudo=1) corresponde ao ano seguinte ao ano base
-        # Exemplo: deck de 2025 -> primeiro ano do estudo é 2026
+        # Extrair ano e mês de cada deck
+        dec_info = self._get_year_and_month_from_deck(result_dec)
+        jan_info = self._get_year_and_month_from_deck(result_jan)
+        
+        if dec_info is None:
+            dec_info = (2025, 12)  # Fallback
+        if jan_info is None:
+            jan_info = (2026, 1)  # Fallback
+            
+        ano_dec, mes_dec = dec_info
+        ano_jan, mes_jan = jan_info
+        
         # Identificar a classe principal (mais frequente nos dados)
         classes_count = {}
         classe_nome_map = {}  # Mapear código -> nome para validação
@@ -310,9 +368,9 @@ class ClastComparisonFormatter(ComparisonFormatter):
             classe_principal = max(classes_count.items(), key=lambda x: x[1])[0]
             nome_classe_principal = classe_nome_map.get(classe_principal, f"Classe {classe_principal}")
         
-        # Agrupar por ano, filtrando pela classe principal se houver múltiplas classes
-        dec_by_ano = {}  # {ano: valor}
-        jan_by_ano = {}  # {ano: valor}
+        # Agrupar por indice_ano_estudo, filtrando pela classe principal
+        dec_by_indice = {}  # {indice_ano_estudo: valor}
+        jan_by_indice = {}  # {indice_ano_estudo: valor}
         
         # Processar dados de dezembro
         for record in dados_estruturais_dec:
@@ -321,12 +379,12 @@ class ClastComparisonFormatter(ComparisonFormatter):
             if classe_principal is not None and classe != classe_principal:
                 continue
                 
-            ano = record.get("indice_ano_estudo")
+            indice = record.get("indice_ano_estudo")
             valor = self._sanitize_number(record.get("valor"))
-            if ano is not None and valor is not None:
-                # Se já existe valor para este ano, manter o primeiro
-                if ano not in dec_by_ano:
-                    dec_by_ano[ano] = valor
+            if indice is not None and valor is not None:
+                # Se já existe valor para este indice, manter o primeiro
+                if indice not in dec_by_indice:
+                    dec_by_indice[indice] = valor
         
         # Processar dados de janeiro
         for record in dados_estruturais_jan:
@@ -335,14 +393,34 @@ class ClastComparisonFormatter(ComparisonFormatter):
             if classe_principal is not None and classe != classe_principal:
                 continue
                 
-            ano = record.get("indice_ano_estudo")
+            indice = record.get("indice_ano_estudo")
             valor = self._sanitize_number(record.get("valor"))
-            if ano is not None and valor is not None:
-                if ano not in jan_by_ano:
-                    jan_by_ano[ano] = valor
+            if indice is not None and valor is not None:
+                if indice not in jan_by_indice:
+                    jan_by_indice[indice] = valor
         
-        # Obter todos os anos únicos e ordenar
-        all_anos = sorted(set(list(dec_by_ano.keys()) + list(jan_by_ano.keys())))
+        # Criar dicionário mapeando ano real -> valores de cada deck
+        # Como os dados são comparados lado a lado, precisamos mapear corretamente
+        # O indice_ano_estudo=1 do deck dezembro corresponde a 2025
+        # O indice_ano_estudo=1 do deck janeiro corresponde a 2026
+        comparison_by_year = {}  # {ano_real: {"dec": valor, "jan": valor}}
+        
+        # Processar dados de dezembro
+        for indice, valor in dec_by_indice.items():
+            ano_real = self._calculate_real_year(indice, ano_dec, mes_dec)
+            if ano_real not in comparison_by_year:
+                comparison_by_year[ano_real] = {"dec": None, "jan": None}
+            comparison_by_year[ano_real]["dec"] = valor
+        
+        # Processar dados de janeiro
+        for indice, valor in jan_by_indice.items():
+            ano_real = self._calculate_real_year(indice, ano_jan, mes_jan)
+            if ano_real not in comparison_by_year:
+                comparison_by_year[ano_real] = {"dec": None, "jan": None}
+            comparison_by_year[ano_real]["jan"] = valor
+        
+        # Ordenar anos
+        sorted_years = sorted(comparison_by_year.keys())
         
         # Construir tabela comparativa simplificada
         comparison_table = []
@@ -350,26 +428,22 @@ class ClastComparisonFormatter(ComparisonFormatter):
         dec_values = []
         jan_values = []
         
-        for indice_ano in all_anos:
-            val_dec = dec_by_ano.get(indice_ano)
-            val_jan = jan_by_ano.get(indice_ano)
-            
-            # Calcular o ano real: ano_base + indice_ano_estudo
-            # indice_ano_estudo=1 corresponde ao primeiro ano do estudo (ano_base + 1)
-            ano_real = ano_base + indice_ano
-            
-            # Função auxiliar para arredondar e garantir que NaN vire None
-            def safe_round(value):
-                if value is None:
+        # Função auxiliar para arredondar e garantir que NaN vire None
+        def safe_round(value):
+            if value is None:
+                return None
+            try:
+                rounded = round(value, 2)
+                # Verificar se o resultado é NaN ou Inf
+                if math.isnan(rounded) or math.isinf(rounded):
                     return None
-                try:
-                    rounded = round(value, 2)
-                    # Verificar se o resultado é NaN ou Inf
-                    if math.isnan(rounded) or math.isinf(rounded):
-                        return None
-                    return rounded
-                except (ValueError, TypeError):
-                    return None
+                return rounded
+            except (ValueError, TypeError):
+                return None
+        
+        for ano_real in sorted_years:
+            val_dec = comparison_by_year[ano_real]["dec"]
+            val_jan = comparison_by_year[ano_real]["jan"]
             
             # Adicionar à tabela (sem colunas de diferença e variação %)
             # Campo de validação: "Custos de Classe - Nome da usina"
@@ -395,11 +469,11 @@ class ClastComparisonFormatter(ComparisonFormatter):
             "labels": chart_labels,
             "datasets": [
                 {
-                    "label": "Dezembro 2025",
+                    "label": f"Dezembro {ano_dec}",
                     "data": dec_values
                 },
                 {
-                    "label": "Janeiro 2026",
+                    "label": f"Janeiro {ano_jan}",
                     "data": jan_values
                 }
             ]

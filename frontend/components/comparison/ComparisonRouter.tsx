@@ -4,6 +4,7 @@ import React from "react";
 import { CargaMensalView } from "./carga-mensal";
 import { LimitesIntercambioView } from "./limites-intercambio";
 import { GTMINView } from "./gtmin";
+import { VazaoMinimaView } from "./vazao-minima";
 import { CVUView } from "./cvu";
 import type { ComparisonData } from "./shared/types";
 
@@ -40,7 +41,7 @@ export function ComparisonRouter({ comparison }: ComparisonRouterProps) {
       return <GTMINView comparison={comparison} />;
 
     case "vazao_minima_changes_table":
-      return <GTMINView comparison={comparison} />;
+      return <VazaoMinimaView comparison={comparison} />;
 
     default:
       // Fallback: retornar mensagem

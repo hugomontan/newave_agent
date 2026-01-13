@@ -112,7 +112,7 @@ def format_vazao_minima_simple_comparison(
         String markdown com apenas o título (sem tabela, pois será renderizada pelo componente)
     """
     if not comparison_table:
-        return "## Comparação de Mudanças de Vazão Mínima\n\nNenhum dado disponível para comparação."
+        return f"## Comparação de Mudanças de Vazão Mínima\n\nNão houveram mudanças registradas do deck {deck_1_name} para o deck {deck_2_name}."
     
     # Apenas título - a tabela será renderizada pelo componente ComparisonView
     return "## Comparação de Mudanças de Vazão Mínima\n"

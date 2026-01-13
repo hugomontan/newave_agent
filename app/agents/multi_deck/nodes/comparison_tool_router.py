@@ -10,7 +10,7 @@ import json as json_module
 from typing import Optional, Dict, Any, List
 from concurrent.futures import ThreadPoolExecutor
 from app.agents.multi_deck.state import MultiDeckState
-from app.agents.multi_deck.tools import get_available_tools
+from app.agents.multi_deck.tools import get_available_tools as get_multi_deck_tools
 from app.tools.semantic_matcher import find_best_tool_semantic, find_top_tools_semantic
 from app.tools.base import NEWAVETool
 from app.config import (
@@ -89,11 +89,17 @@ def comparison_tool_router_node(state: MultiDeckState) -> dict:
         safe_print("[TOOL ROUTER] ❌ Deck path não especificado")
         return {"tool_route": False}
     
-    # Obter todas as tools disponíveis
-    safe_print("[TOOL ROUTER] Obtendo tools disponiveis...")
+    # Obter todas as tools disponíveis (modo comparison)
+    safe_print("[TOOL ROUTER] Obtendo tools disponiveis (modo comparison)...")
     try:
-        tools = get_available_tools(deck_path)
+        tools = get_multi_deck_tools(deck_path)
         safe_print(f"[TOOL ROUTER] [OK] {len(tools)} tools disponiveis")
+        tool_names = [t.get_name() for t in tools]
+        safe_print(f"[TOOL ROUTER]   Tools: {', '.join(tool_names)}")
+        if "MudancasVazaoMinimaTool" in tool_names:
+            safe_print(f"[TOOL ROUTER]   ✅ MudancasVazaoMinimaTool encontrada no registry")
+        else:
+            safe_print(f"[TOOL ROUTER]   ⚠️ MudancasVazaoMinimaTool NÃO encontrada no registry")
     except Exception as e:
         safe_print(f"[TOOL ROUTER] ❌ Erro ao obter tools: {e}")
         import traceback
@@ -353,6 +359,49 @@ def comparison_tool_router_node(state: MultiDeckState) -> dict:
             "desvios de água", "desvios de agua", "desvio de água", "desvio de agua",
             "desvios-agua", "desvios-água", "desvios_agua", "desvios_água",
             "desvio-agua", "desvio-água", "desvio_agua", "desvio_água"
+        ],
+        # MudancasGeracoesTermicasTool deve ser verificada ANTES de MudancasVazaoMinimaTool
+        # para capturar queries de GTMIN antes das genéricas de vazão mínima
+        "MudancasGeracoesTermicasTool": [
+            "mudanças gtmin", "mudancas gtmin",
+            "variação gtmin", "variacao gtmin",
+            "variações gtmin", "variacoes gtmin",  # Plural
+            "variações de gtmin", "variacoes de gtmin",  # Plural com "de"
+            "variação de gtmin", "variacao de gtmin",  # Singular com "de"
+            "quais foram as variações de gtmin", "quais foram as variacoes de gtmin",  # Query específica
+            "quais foram as variações gtmin", "quais foram as variacoes gtmin",  # Query específica sem "de"
+            "análise gtmin", "analise gtmin",
+            "comparar gtmin", "comparação gtmin", "comparacao gtmin",
+            "mudanças em gerações térmicas", "mudancas em geracoes termicas",
+            "variações em gerações térmicas", "variacoes em geracoes termicas",
+            "variação em gerações térmicas", "variacao em geracoes termicas",
+            "geração térmica mínima", "geracao termica minima",
+            "gtmin de",  # Para capturar "gtmin de cubatão"
+        ],
+        # MudancasVazaoMinimaTool deve ser verificada ANTES de ModifOperacaoTool
+        # para capturar queries de comparação de vazão mínima
+        # IMPORTANTE: palavras-chave genéricas como "quais foram as variações" foram removidas
+        # para evitar conflito com GTMIN. Agora só ativa com termos específicos de vazão mínima.
+        "MudancasVazaoMinimaTool": [
+            # Palavras-chave genéricas primeiro (para capturar queries simples como "vazão mínima")
+            "vazão mínima", "vazao minima", "vazão minima", "vazao mínima",
+            "vazao-minima", "vazão-mínima", "vazao_minima", "vazão_mínima",
+            # Palavras-chave específicas (para capturar queries mais detalhadas)
+            "mudanças vazão mínima", "mudancas vazao minima",
+            "variação vazão mínima", "variacao vazao minima",
+            "variação da vazão mínima", "variacao da vazao minima",
+            "variação de vazão mínima", "variacao de vazao minima",
+            "variações vazão mínima", "variacoes vazao minima",  # Plural
+            "variações de vazão mínima", "variacoes de vazao minima",  # Plural
+            "quais foram as variações de vazão mínima", "quais foram as variacoes de vazao minima",  # Query específica com contexto
+            "quais foram as variações vazão mínima", "quais foram as variacoes vazao minima",  # Query específica sem "de"
+            "análise vazão mínima", "analise vazao minima",
+            "comparar vazão mínima", "comparar vazao minima",
+            "comparação vazão mínima", "comparacao vazao minima",
+            "mudanças vazmin", "mudancas vazmin",
+            "mudanças vazmint", "mudancas vazmint",
+            "variações vazmin", "variacoes vazmin",
+            "variações vazmint", "variacoes vazmint",
         ],
         "ModifOperacaoTool": [
             "vazão mínima", "vazao minima", "vazão minima", "vazao mínima",

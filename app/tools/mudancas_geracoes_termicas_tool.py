@@ -41,8 +41,27 @@ class MudancasGeracoesTermicasTool(NEWAVETool):
             "mudancas gtmin",
             "variação gtmin",
             "variacao gtmin",
+            "variações gtmin",  # Plural
+            "variacoes gtmin",  # Plural
+            "variações de gtmin",  # Plural com "de"
+            "variacoes de gtmin",  # Plural com "de"
+            "variação de gtmin",  # Singular com "de"
+            "variacao de gtmin",  # Singular com "de"
+            "quais foram as variações de gtmin",  # Query específica
+            "quais foram as variacoes de gtmin",  # Query específica
+            "quais foram as variações gtmin",  # Query específica sem "de"
+            "quais foram as variacoes gtmin",  # Query específica sem "de"
             "análise gtmin",
             "analise gtmin",
+            "comparar gtmin",
+            "comparação gtmin",
+            "comparacao gtmin",
+            "mudanças em gerações térmicas",
+            "mudancas em geracoes termicas",
+            "variações em gerações térmicas",
+            "variacoes em geracoes termicas",
+            "geração térmica mínima",
+            "geracao termica minima",
         ]
         return any(kw in query_lower for kw in keywords)
     
@@ -705,7 +724,10 @@ class MudancasGeracoesTermicasTool(NEWAVETool):
         Queries que ativam esta tool:
         - "mudanças gtmin" ou "mudancas gtmin"
         - "variação gtmin" ou "variacao gtmin"
+        - "variações de gtmin" ou "variacoes de gtmin" (plural)
+        - "quais foram as variações de gtmin" ou "quais foram as variacoes de gtmin"
         - "análise gtmin" ou "analise gtmin"
+        - "mudanças em gerações térmicas" ou "mudancas em geracoes termicas"
         
-        Termos-chave: mudanças gtmin, variação gtmin, análise gtmin, mudancas gtmin, variacao gtmin, analise gtmin, geração mínima térmica, mudanças em gerações térmicas.
+        Termos-chave: mudanças gtmin, variação gtmin, variações de gtmin, análise gtmin, mudancas gtmin, variacao gtmin, variacoes de gtmin, analise gtmin, geração mínima térmica, mudanças em gerações térmicas, variações em gerações térmicas.
         """
