@@ -5,6 +5,8 @@ Se houver ambiguidade (múltiplas tools com scores similares), gera disambiguati
 
 Para Multi-Deck Agent - com lógica de comparação (executa em ambos os decks).
 """
+import os
+import json as json_module
 from typing import Optional, Dict, Any, List
 from concurrent.futures import ThreadPoolExecutor
 from app.agents.multi_deck.state import MultiDeckState
@@ -21,6 +23,21 @@ from app.config import (
     DISAMBIGUATION_MIN_SCORE,
     safe_print
 )
+
+# Função auxiliar para escrever no log de debug de forma segura
+def _write_debug_log(data: dict):
+    """Escreve no arquivo de debug, criando o diretório se necessário."""
+    try:
+        log_path = r'c:\Users\Inteli\OneDrive\Desktop\nw_multi\.cursor\debug.log'
+        log_dir = os.path.dirname(log_path)
+        # Criar diretório se não existir
+        os.makedirs(log_dir, exist_ok=True)
+        # Escrever no arquivo
+        with open(log_path, 'a', encoding='utf-8') as f:
+            f.write(json_module.dumps(data) + '\n')
+    except Exception:
+        # Silenciosamente ignorar erros de log para não interromper o fluxo
+        pass
 
 # Mapeamento de descrições curtas fixas para cada tool
 # Usado nas opções de disambiguation
@@ -289,18 +306,16 @@ def comparison_tool_router_node(state: MultiDeckState) -> dict:
                 safe_print(f"[TOOL ROUTER]   Query que será usada na tool: {query_to_use}")
                 safe_print(f"[TOOL ROUTER]   [COMPARISON] Executando em ambos os decks...")
                 
-                import json as json_module
                 # #region agent log
-                with open(r'c:\Users\Inteli\OneDrive\Desktop\nw_multi\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                    f.write(json_module.dumps({
-                        "sessionId": "debug-session",
-                        "runId": "run1",
-                        "hypothesisId": "G",
-                        "location": "comparison_tool_router.py:disambiguation",
-                        "message": "Tool identified from disambiguation, executing directly",
-                        "data": {"tool_name": disambiguation_tool_name, "original_query": query_to_use[:50]},
-                        "timestamp": int(__import__('time').time() * 1000)
-                    }) + '\n')
+                _write_debug_log({
+                    "sessionId": "debug-session",
+                    "runId": "run1",
+                    "hypothesisId": "G",
+                    "location": "comparison_tool_router.py:disambiguation",
+                    "message": "Tool identified from disambiguation, executing directly",
+                    "data": {"tool_name": disambiguation_tool_name, "original_query": query_to_use[:50]},
+                    "timestamp": int(__import__('time').time() * 1000)
+                })
                 # #endregion
                 
                 result = _execute_tool_comparison(selected_tool.__class__, disambiguation_tool_name, query_to_use)
@@ -387,17 +402,15 @@ def comparison_tool_router_node(state: MultiDeckState) -> dict:
             )
             
             # #region agent log
-            import json as json_module
-            with open(r'c:\Users\Inteli\OneDrive\Desktop\nw_multi\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                f.write(json_module.dumps({
-                    "sessionId": "debug-session",
-                    "runId": "run1",
-                    "hypothesisId": "E",
-                    "location": "comparison_tool_router.py:375",
-                    "message": "Semantic matching called",
-                    "data": {"query_for_semantic": query_for_semantic[:50], "is_from_disambiguation": is_from_disambiguation, "results_count": len(semantic_results) if semantic_results else 0},
-                    "timestamp": int(__import__('time').time() * 1000)
-                }) + '\n')
+            _write_debug_log({
+                "sessionId": "debug-session",
+                "runId": "run1",
+                "hypothesisId": "E",
+                "location": "comparison_tool_router.py:375",
+                "message": "Semantic matching called",
+                "data": {"query_for_semantic": query_for_semantic[:50], "is_from_disambiguation": is_from_disambiguation, "results_count": len(semantic_results) if semantic_results else 0},
+                "timestamp": int(__import__('time').time() * 1000)
+            })
             # #endregion
             
             if semantic_results:
@@ -408,16 +421,15 @@ def comparison_tool_router_node(state: MultiDeckState) -> dict:
                 safe_print(f"[TOOL ROUTER]   Total de tools retornadas: {len(semantic_results)}")
                 
                 # #region agent log
-                with open(r'c:\Users\Inteli\OneDrive\Desktop\nw_multi\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                    f.write(json_module.dumps({
-                        "sessionId": "debug-session",
-                        "runId": "run1",
-                        "hypothesisId": "D",
-                        "location": "comparison_tool_router.py:395",
-                        "message": "Semantic matching results",
-                        "data": {"top_tool": tool_name, "top_score": top_score, "is_from_disambiguation": is_from_disambiguation},
-                        "timestamp": int(__import__('time').time() * 1000)
-                    }) + '\n')
+                _write_debug_log({
+                    "sessionId": "debug-session",
+                    "runId": "run1",
+                    "hypothesisId": "D",
+                    "location": "comparison_tool_router.py:395",
+                    "message": "Semantic matching results",
+                    "data": {"top_tool": tool_name, "top_score": top_score, "is_from_disambiguation": is_from_disambiguation},
+                    "timestamp": int(__import__('time').time() * 1000)
+                })
                 # #endregion
                 
                 # REGRA CRÍTICA: Se veio de disambiguation, SEMPRE executar a tool diretamente, sem verificar score ou ambiguidade
@@ -428,16 +440,15 @@ def comparison_tool_router_node(state: MultiDeckState) -> dict:
                     safe_print(f"[TOOL ROUTER]   Query que sera usada na tool: {original_query_for_tool}")
                     safe_print(f"[TOOL ROUTER]   [COMPARISON] Executando em ambos os decks...")
                     # #region agent log
-                    with open(r'c:\Users\Inteli\OneDrive\Desktop\nw_multi\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                        f.write(json_module.dumps({
-                            "sessionId": "debug-session",
-                            "runId": "run1",
-                            "hypothesisId": "D",
-                            "location": "comparison_tool_router.py:410",
-                            "message": "Executing tool from disambiguation (always execute)",
-                            "data": {"tool_name": tool_name, "score": top_score, "original_query": original_query_for_tool[:50]},
-                            "timestamp": int(__import__('time').time() * 1000)
-                        }) + '\n')
+                    _write_debug_log({
+                        "sessionId": "debug-session",
+                        "runId": "run1",
+                        "hypothesisId": "D",
+                        "location": "comparison_tool_router.py:410",
+                        "message": "Executing tool from disambiguation (always execute)",
+                        "data": {"tool_name": tool_name, "score": top_score, "original_query": original_query_for_tool[:50]},
+                        "timestamp": int(__import__('time').time() * 1000)
+                    })
                     # #endregion
                     result = _execute_tool_comparison(top_tool.__class__, tool_name, original_query_for_tool)
                     result["from_disambiguation"] = True
@@ -471,16 +482,15 @@ def comparison_tool_router_node(state: MultiDeckState) -> dict:
                     safe_print(f"[TOOL ROUTER]   Status: [OK] Score >= {SEMANTIC_MATCH_MIN_SCORE:.3f} (tool sera executada)")
                     safe_print(f"[TOOL ROUTER]   [COMPARISON] Executando em ambos os decks...")
                     # #region agent log
-                    with open(r'c:\Users\Inteli\OneDrive\Desktop\nw_multi\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                        f.write(json_module.dumps({
-                            "sessionId": "debug-session",
-                            "runId": "run1",
-                            "hypothesisId": "D",
-                            "location": "comparison_tool_router.py:445",
-                            "message": "Executing tool from semantic matching (normal query)",
-                            "data": {"tool_name": tool_name, "score": top_score},
-                            "timestamp": int(__import__('time').time() * 1000)
-                        }) + '\n')
+                    _write_debug_log({
+                        "sessionId": "debug-session",
+                        "runId": "run1",
+                        "hypothesisId": "D",
+                        "location": "comparison_tool_router.py:445",
+                        "message": "Executing tool from semantic matching (normal query)",
+                        "data": {"tool_name": tool_name, "score": top_score},
+                        "timestamp": int(__import__('time').time() * 1000)
+                    })
                     # #endregion
                     return _execute_tool_comparison(top_tool.__class__, tool_name)
                 else:
@@ -508,16 +518,15 @@ def comparison_tool_router_node(state: MultiDeckState) -> dict:
                             safe_print(f"[TOOL ROUTER]   Query que sera usada na tool: {original_query_for_tool}")
                             safe_print(f"[TOOL ROUTER]   [COMPARISON] Executando em ambos os decks...")
                             # #region agent log
-                            with open(r'c:\Users\Inteli\OneDrive\Desktop\nw_multi\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                                f.write(json_module.dumps({
-                                    "sessionId": "debug-session",
-                                    "runId": "run1",
-                                    "hypothesisId": "D",
-                                    "location": "comparison_tool_router.py:470",
-                                    "message": "Executing tool from disambiguation with threshold 0.0",
-                                    "data": {"tool_name": tool_name, "score": top_score, "original_query": original_query_for_tool[:50]},
-                                    "timestamp": int(__import__('time').time() * 1000)
-                                }) + '\n')
+                            _write_debug_log({
+                                "sessionId": "debug-session",
+                                "runId": "run1",
+                                "hypothesisId": "D",
+                                "location": "comparison_tool_router.py:470",
+                                "message": "Executing tool from disambiguation with threshold 0.0",
+                                "data": {"tool_name": tool_name, "score": top_score, "original_query": original_query_for_tool[:50]},
+                                "timestamp": int(__import__('time').time() * 1000)
+                            })
                             # #endregion
                             result = _execute_tool_comparison(top_tool.__class__, tool_name, original_query_for_tool)
                             result["from_disambiguation"] = True

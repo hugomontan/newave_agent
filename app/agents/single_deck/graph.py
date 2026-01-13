@@ -4,6 +4,8 @@ Graph para Single Deck Agent - especializado para consultas de um único deck.
 
 import json
 import math
+import os
+import json as json_module
 from typing import Generator, Any, Optional
 from langgraph.graph import StateGraph, END
 from app.agents.single_deck.state import SingleDeckState
@@ -17,6 +19,21 @@ from app.agents.single_deck.nodes.llm_nodes import (
 )
 from app.utils.observability import get_langfuse_handler
 from app.config import safe_print
+
+# Função auxiliar para escrever no log de debug de forma segura
+def _write_debug_log(data: dict):
+    """Escreve no arquivo de debug, criando o diretório se necessário."""
+    try:
+        log_path = r'c:\Users\Inteli\OneDrive\Desktop\nw_multi\.cursor\debug.log'
+        log_dir = os.path.dirname(log_path)
+        # Criar diretório se não existir
+        os.makedirs(log_dir, exist_ok=True)
+        # Escrever no arquivo
+        with open(log_path, 'a', encoding='utf-8') as f:
+            f.write(json_module.dumps(data) + '\n')
+    except Exception:
+        # Silenciosamente ignorar erros de log para não interromper o fluxo
+        pass
 
 
 # Constantes
@@ -115,17 +132,15 @@ def should_continue_after_tool_router(state: SingleDeckState) -> str:
     disambiguation = state.get("disambiguation")
     
     # #region agent log
-    import json as json_module
-    with open(r'c:\Users\Inteli\OneDrive\Desktop\nw_multi\.cursor\debug.log', 'a', encoding='utf-8') as f:
-        f.write(json_module.dumps({
-            "sessionId": "debug-session",
-            "runId": "run1",
-            "hypothesisId": "A",
-            "location": "graph.py:106",
-            "message": "Should continue after tool router",
-            "data": {"tool_route": tool_route, "has_disambiguation": bool(disambiguation), "next_node": "interpreter" if tool_route else ("END" if disambiguation else "rag_simple")},
-            "timestamp": int(__import__('time').time() * 1000)
-        }) + '\n')
+    _write_debug_log({
+        "sessionId": "debug-session",
+        "runId": "run1",
+        "hypothesisId": "A",
+        "location": "graph.py:106",
+        "message": "Should continue after tool router",
+        "data": {"tool_route": tool_route, "has_disambiguation": bool(disambiguation), "next_node": "interpreter" if tool_route else ("END" if disambiguation else "rag_simple")},
+        "timestamp": int(__import__('time').time() * 1000)
+    })
     # #endregion
     
     if disambiguation:
@@ -457,17 +472,15 @@ def run_query_stream(query: str, deck_path: str, session_id: Optional[str] = Non
                     tool_result = node_output.get("tool_result", {})
                     
                     # #region agent log
-                    import json as json_module
-                    with open(r'c:\Users\Inteli\OneDrive\Desktop\nw_multi\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                        f.write(json_module.dumps({
-                            "sessionId": "debug-session",
-                            "runId": "run1",
-                            "hypothesisId": "E",
-                            "location": "graph.py:438",
-                            "message": "Tool router output",
-                            "data": {"tool_route": tool_route, "has_disambiguation": bool(disambiguation), "tool_used": tool_used},
-                            "timestamp": int(__import__('time').time() * 1000)
-                        }) + '\n')
+                    _write_debug_log({
+                        "sessionId": "debug-session",
+                        "runId": "run1",
+                        "hypothesisId": "E",
+                        "location": "graph.py:438",
+                        "message": "Tool router output",
+                        "data": {"tool_route": tool_route, "has_disambiguation": bool(disambiguation), "tool_used": tool_used},
+                        "timestamp": int(__import__('time').time() * 1000)
+                    })
                     # #endregion
                     
                     if disambiguation:
@@ -498,17 +511,15 @@ def run_query_stream(query: str, deck_path: str, session_id: Optional[str] = Non
                     safe_print(f"[GRAPH] Interpreter retornou resposta: {len(response) if response else 0} caracteres")
                     
                     # #region agent log
-                    import json as json_module
-                    with open(r'c:\Users\Inteli\OneDrive\Desktop\nw_multi\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                        f.write(json_module.dumps({
-                            "sessionId": "debug-session",
-                            "runId": "run1",
-                            "hypothesisId": "D",
-                            "location": "graph.py:497",
-                            "message": "Interpreter output in graph",
-                            "data": {"has_response": bool(response), "response_length": len(response) if response else 0, "response_preview": response[:200] if response else None, "node_output_keys": list(node_output.keys()) if node_output else []},
-                            "timestamp": int(__import__('time').time() * 1000)
-                        }) + '\n')
+                    _write_debug_log({
+                        "sessionId": "debug-session",
+                        "runId": "run1",
+                        "hypothesisId": "D",
+                        "location": "graph.py:497",
+                        "message": "Interpreter output in graph",
+                        "data": {"has_response": bool(response), "response_length": len(response) if response else 0, "response_preview": response[:200] if response else None, "node_output_keys": list(node_output.keys()) if node_output else []},
+                        "timestamp": int(__import__('time').time() * 1000)
+                    })
                     # #endregion
                     
                     if response and response.strip():
@@ -520,16 +531,15 @@ def run_query_stream(query: str, deck_path: str, session_id: Optional[str] = Non
                         yield f"data: {json.dumps({'type': 'response_complete', 'response': response}, allow_nan=False)}\n\n"
                         
                         # #region agent log
-                        with open(r'c:\Users\Inteli\OneDrive\Desktop\nw_multi\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                            f.write(json_module.dumps({
-                                "sessionId": "debug-session",
-                                "runId": "run1",
-                                "hypothesisId": "D",
-                                "location": "graph.py:505",
-                                "message": "Response sent to frontend",
-                                "data": {"response_length": len(response), "response_preview": response[:200]},
-                                "timestamp": int(__import__('time').time() * 1000)
-                            }) + '\n')
+                        _write_debug_log({
+                            "sessionId": "debug-session",
+                            "runId": "run1",
+                            "hypothesisId": "D",
+                            "location": "graph.py:505",
+                            "message": "Response sent to frontend",
+                            "data": {"response_length": len(response), "response_preview": response[:200]},
+                            "timestamp": int(__import__('time').time() * 1000)
+                        })
                         # #endregion
                     else:
                         safe_print(f"[GRAPH] ⚠️ Resposta vazia do interpreter")

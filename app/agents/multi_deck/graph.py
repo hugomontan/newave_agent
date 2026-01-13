@@ -4,6 +4,8 @@ Graph para Multi-Deck Agent - especializado para comparações entre decks.
 
 import json
 import math
+import os
+import json as json_module
 from typing import Generator, Any, Optional
 from langgraph.graph import StateGraph, END
 from app.agents.multi_deck.state import MultiDeckState
@@ -17,6 +19,21 @@ from app.agents.multi_deck.nodes.llm_nodes import (
 from app.utils.observability import get_langfuse_handler
 from app.config import safe_print
 from app.utils.deck_loader import get_december_deck_path, get_january_deck_path
+
+# Função auxiliar para escrever no log de debug de forma segura
+def _write_debug_log(data: dict):
+    """Escreve no arquivo de debug, criando o diretório se necessário."""
+    try:
+        log_path = r'c:\Users\Inteli\OneDrive\Desktop\nw_multi\.cursor\debug.log'
+        log_dir = os.path.dirname(log_path)
+        # Criar diretório se não existir
+        os.makedirs(log_dir, exist_ok=True)
+        # Escrever no arquivo
+        with open(log_path, 'a', encoding='utf-8') as f:
+            f.write(json_module.dumps(data) + '\n')
+    except Exception:
+        # Silenciosamente ignorar erros de log para não interromper o fluxo
+        pass
 
 
 # Constantes
@@ -377,17 +394,15 @@ def run_query_stream(query: str, deck_path: str, session_id: Optional[str] = Non
                     if disambiguation:
                         has_disambiguation = True
                         # #region agent log
-                        import json as json_module
-                        with open(r'c:\Users\Inteli\OneDrive\Desktop\nw_multi\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                            f.write(json_module.dumps({
-                                "sessionId": "debug-session",
-                                "runId": "run1",
-                                "hypothesisId": "B",
-                                "location": "multi_deck/graph.py:377",
-                                "message": "Disambiguation detected, sending event",
-                                "data": {"disambiguation_keys": list(disambiguation.keys()) if disambiguation else []},
-                                "timestamp": int(__import__('time').time() * 1000)
-                            }) + '\n')
+                        _write_debug_log({
+                            "sessionId": "debug-session",
+                            "runId": "run1",
+                            "hypothesisId": "B",
+                            "location": "multi_deck/graph.py:377",
+                            "message": "Disambiguation detected, sending event",
+                            "data": {"disambiguation_keys": list(disambiguation.keys()) if disambiguation else []},
+                            "timestamp": int(__import__('time').time() * 1000)
+                        })
                         # #endregion
                         yield f"data: {json.dumps({'type': 'disambiguation', 'data': disambiguation})}\n\n"
                     elif tool_route:

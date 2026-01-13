@@ -2,12 +2,29 @@
 Node que interpreta os resultados e gera a resposta final formatada em Markdown (single deck).
 """
 
+import os
+import json as json_module
 from app.agents.single_deck.state import SingleDeckState
 from app.config import safe_print
 from app.utils.text_utils import clean_response_text
 from app.agents.single_deck.nodes.helpers.code_execution.formatter import format_code_execution_response
 from app.agents.single_deck.formatters.registry import get_formatter_for_tool
 from app.agents.single_deck.tools import get_available_tools
+
+# Função auxiliar para escrever no log de debug de forma segura
+def _write_debug_log(data: dict):
+    """Escreve no arquivo de debug, criando o diretório se necessário."""
+    try:
+        log_path = r'c:\Users\Inteli\OneDrive\Desktop\nw_multi\.cursor\debug.log'
+        log_dir = os.path.dirname(log_path)
+        # Criar diretório se não existir
+        os.makedirs(log_dir, exist_ok=True)
+        # Escrever no arquivo
+        with open(log_path, 'a', encoding='utf-8') as f:
+            f.write(json_module.dumps(data) + '\n')
+    except Exception:
+        # Silenciosamente ignorar erros de log para não interromper o fluxo
+        pass
 
 
 def interpreter_node(state: SingleDeckState) -> dict:
@@ -20,17 +37,15 @@ def interpreter_node(state: SingleDeckState) -> dict:
     3. Caso contrário: interpreta resultados de execução de código
     """
     # #region agent log
-    import json as json_module
-    with open(r'c:\Users\Inteli\OneDrive\Desktop\nw_multi\.cursor\debug.log', 'a', encoding='utf-8') as f:
-        f.write(json_module.dumps({
-            "sessionId": "debug-session",
-            "runId": "run1",
-            "hypothesisId": "A",
-            "location": "interpreter.py:13",
-            "message": "Interpreter node called",
-            "data": {"has_tool_result": bool(state.get("tool_result")), "tool_used": state.get("tool_used"), "tool_route": state.get("tool_route", False)},
-            "timestamp": int(__import__('time').time() * 1000)
-        }) + '\n')
+    _write_debug_log({
+        "sessionId": "debug-session",
+        "runId": "run1",
+        "hypothesisId": "A",
+        "location": "interpreter.py:13",
+        "message": "Interpreter node called",
+        "data": {"has_tool_result": bool(state.get("tool_result")), "tool_used": state.get("tool_used"), "tool_route": state.get("tool_route", False)},
+        "timestamp": int(__import__('time').time() * 1000)
+    })
     # #endregion
     
     try:
@@ -42,16 +57,15 @@ def interpreter_node(state: SingleDeckState) -> dict:
             safe_print(f"[INTERPRETER]   Success: {tool_result.get('success', False)}")
             
             # #region agent log
-            with open(r'c:\Users\Inteli\OneDrive\Desktop\nw_multi\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                f.write(json_module.dumps({
-                    "sessionId": "debug-session",
-                    "runId": "run1",
-                    "hypothesisId": "B",
-                    "location": "interpreter.py:27",
-                    "message": "Tool result found, starting formatting",
-                    "data": {"tool_used": tool_used, "success": tool_result.get('success', False), "has_data": bool(tool_result.get('data'))},
-                    "timestamp": int(__import__('time').time() * 1000)
-                }) + '\n')
+            _write_debug_log({
+                "sessionId": "debug-session",
+                "runId": "run1",
+                "hypothesisId": "B",
+                "location": "interpreter.py:27",
+                "message": "Tool result found, starting formatting",
+                "data": {"tool_used": tool_used, "success": tool_result.get('success', False), "has_data": bool(tool_result.get('data'))},
+                "timestamp": int(__import__('time').time() * 1000)
+            })
             # #endregion
             
             # Obter tool instance para usar no registry
@@ -90,32 +104,30 @@ def interpreter_node(state: SingleDeckState) -> dict:
             safe_print(f"[INTERPRETER]   Usando formatter: {formatter.__class__.__name__}")
             
             # #region agent log
-            with open(r'c:\Users\Inteli\OneDrive\Desktop\nw_multi\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                f.write(json_module.dumps({
-                    "sessionId": "debug-session",
-                    "runId": "run1",
-                    "hypothesisId": "C",
-                    "location": "interpreter.py:48",
-                    "message": "Formatter obtained, about to format",
-                    "data": {"formatter_class": formatter.__class__.__name__, "query": query[:50]},
-                    "timestamp": int(__import__('time').time() * 1000)
-                }) + '\n')
+            _write_debug_log({
+                "sessionId": "debug-session",
+                "runId": "run1",
+                "hypothesisId": "C",
+                "location": "interpreter.py:48",
+                "message": "Formatter obtained, about to format",
+                "data": {"formatter_class": formatter.__class__.__name__, "query": query[:50]},
+                "timestamp": int(__import__('time').time() * 1000)
+            })
             # #endregion
             
             # Formatar resposta usando o formatter
             result = formatter.format_response(tool_result, tool_used, query)
             
             # #region agent log
-            with open(r'c:\Users\Inteli\OneDrive\Desktop\nw_multi\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                f.write(json_module.dumps({
-                    "sessionId": "debug-session",
-                    "runId": "run1",
-                    "hypothesisId": "D",
-                    "location": "interpreter.py:51",
-                    "message": "Formatter result obtained",
-                    "data": {"has_final_response": bool(result.get('final_response')), "response_length": len(result.get('final_response', '')), "response_preview": result.get('final_response', '')[:100]},
-                    "timestamp": int(__import__('time').time() * 1000)
-                }) + '\n')
+            _write_debug_log({
+                "sessionId": "debug-session",
+                "runId": "run1",
+                "hypothesisId": "D",
+                "location": "interpreter.py:51",
+                "message": "Formatter result obtained",
+                "data": {"has_final_response": bool(result.get('final_response')), "response_length": len(result.get('final_response', '')), "response_preview": result.get('final_response', '')[:100]},
+                "timestamp": int(__import__('time').time() * 1000)
+            })
             # #endregion
             
             safe_print(f"[INTERPRETER]   Resposta gerada: {len(result.get('final_response', ''))} caracteres")

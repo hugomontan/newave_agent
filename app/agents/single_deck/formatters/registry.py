@@ -3,6 +3,8 @@ Registry de formatters para single deck.
 Atribui formatter baseado na tool executada.
 """
 
+import os
+import json as json_module
 from typing import Dict, Any, Optional
 from app.agents.single_deck.formatters.base import SingleDeckFormatter
 from app.tools.base import NEWAVETool
@@ -13,6 +15,21 @@ from app.agents.single_deck.formatters.carga_formatter import CargaSingleDeckFor
 
 # Formatter genérico (fallback)
 from app.agents.single_deck.formatters.generic_formatter import GenericSingleDeckFormatter
+
+# Função auxiliar para escrever no log de debug de forma segura
+def _write_debug_log(data: dict):
+    """Escreve no arquivo de debug, criando o diretório se necessário."""
+    try:
+        log_path = r'c:\Users\Inteli\OneDrive\Desktop\nw_multi\.cursor\debug.log'
+        log_dir = os.path.dirname(log_path)
+        # Criar diretório se não existir
+        os.makedirs(log_dir, exist_ok=True)
+        # Escrever no arquivo
+        with open(log_path, 'a', encoding='utf-8') as f:
+            f.write(json_module.dumps(data) + '\n')
+    except Exception:
+        # Silenciosamente ignorar erros de log para não interromper o fluxo
+        pass
 
 
 def get_formatter_for_tool(
@@ -37,18 +54,16 @@ def get_formatter_for_tool(
     from app.config import safe_print
     
     # #region agent log
-    import json as json_module
     tool_name = tool.get_name()
-    with open(r'c:\Users\Inteli\OneDrive\Desktop\nw_multi\.cursor\debug.log', 'a', encoding='utf-8') as f:
-        f.write(json_module.dumps({
-            "sessionId": "debug-session",
-            "runId": "run1",
-            "hypothesisId": "C",
-            "location": "registry.py:18",
-            "message": "Getting formatter for tool",
-            "data": {"tool_name": tool_name, "has_formatter_in_result": "formatter_single_deck" in tool_result, "has_get_method": hasattr(tool, 'get_single_deck_formatter')},
-            "timestamp": int(__import__('time').time() * 1000)
-        }) + '\n')
+    _write_debug_log({
+        "sessionId": "debug-session",
+        "runId": "run1",
+        "hypothesisId": "C",
+        "location": "registry.py:18",
+        "message": "Getting formatter for tool",
+        "data": {"tool_name": tool_name, "has_formatter_in_result": "formatter_single_deck" in tool_result, "has_get_method": hasattr(tool, 'get_single_deck_formatter')},
+        "timestamp": int(__import__('time').time() * 1000)
+    })
     # #endregion
     
     # Prioridade 1: Formatter retornado pela tool no resultado
@@ -57,16 +72,15 @@ def get_formatter_for_tool(
         if formatter is not None:
             safe_print(f"[SINGLE DECK REGISTRY] Formatter obtido do resultado da tool")
             # #region agent log
-            with open(r'c:\Users\Inteli\OneDrive\Desktop\nw_multi\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                f.write(json_module.dumps({
-                    "sessionId": "debug-session",
-                    "runId": "run1",
-                    "hypothesisId": "C",
-                    "location": "registry.py:44",
-                    "message": "Formatter from tool result",
-                    "data": {"formatter_class": formatter.__class__.__name__},
-                    "timestamp": int(__import__('time').time() * 1000)
-                }) + '\n')
+            _write_debug_log({
+                "sessionId": "debug-session",
+                "runId": "run1",
+                "hypothesisId": "C",
+                "location": "registry.py:44",
+                "message": "Formatter from tool result",
+                "data": {"formatter_class": formatter.__class__.__name__},
+                "timestamp": int(__import__('time').time() * 1000)
+            })
             # #endregion
             return formatter
     
@@ -77,16 +91,15 @@ def get_formatter_for_tool(
             if formatter is not None:
                 safe_print(f"[SINGLE DECK REGISTRY] Formatter obtido via método da tool")
                 # #region agent log
-                with open(r'c:\Users\Inteli\OneDrive\Desktop\nw_multi\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                    f.write(json_module.dumps({
-                        "sessionId": "debug-session",
-                        "runId": "run1",
-                        "hypothesisId": "C",
-                        "location": "registry.py:52",
-                        "message": "Formatter from tool method",
-                        "data": {"formatter_class": formatter.__class__.__name__},
-                        "timestamp": int(__import__('time').time() * 1000)
-                    }) + '\n')
+                _write_debug_log({
+                    "sessionId": "debug-session",
+                    "runId": "run1",
+                    "hypothesisId": "C",
+                    "location": "registry.py:52",
+                    "message": "Formatter from tool method",
+                    "data": {"formatter_class": formatter.__class__.__name__},
+                    "timestamp": int(__import__('time').time() * 1000)
+                })
                 # #endregion
                 return formatter
         except Exception as e:
@@ -104,16 +117,15 @@ def get_formatter_for_tool(
         safe_print(f"[SINGLE DECK REGISTRY] Formatter mapeado por nome: {tool_name}")
         formatter = formatter_map[tool_name]
         # #region agent log
-        with open(r'c:\Users\Inteli\OneDrive\Desktop\nw_multi\.cursor\debug.log', 'a', encoding='utf-8') as f:
-            f.write(json_module.dumps({
-                "sessionId": "debug-session",
-                "runId": "run1",
-                "hypothesisId": "C",
-                "location": "registry.py:67",
-                "message": "Formatter from name mapping",
-                "data": {"formatter_class": formatter.__class__.__name__},
-                "timestamp": int(__import__('time').time() * 1000)
-            }) + '\n')
+        _write_debug_log({
+            "sessionId": "debug-session",
+            "runId": "run1",
+            "hypothesisId": "C",
+            "location": "registry.py:67",
+            "message": "Formatter from name mapping",
+            "data": {"formatter_class": formatter.__class__.__name__},
+            "timestamp": int(__import__('time').time() * 1000)
+        })
         # #endregion
         return formatter
     
@@ -121,15 +133,14 @@ def get_formatter_for_tool(
     safe_print(f"[SINGLE DECK REGISTRY] Usando formatter genérico (fallback)")
     formatter = GenericSingleDeckFormatter()
     # #region agent log
-    with open(r'c:\Users\Inteli\OneDrive\Desktop\nw_multi\.cursor\debug.log', 'a', encoding='utf-8') as f:
-        f.write(json_module.dumps({
-            "sessionId": "debug-session",
-            "runId": "run1",
-            "hypothesisId": "C",
-            "location": "registry.py:71",
-            "message": "Formatter generic fallback",
-            "data": {"formatter_class": formatter.__class__.__name__},
-            "timestamp": int(__import__('time').time() * 1000)
-        }) + '\n')
+    _write_debug_log({
+        "sessionId": "debug-session",
+        "runId": "run1",
+        "hypothesisId": "C",
+        "location": "registry.py:71",
+        "message": "Formatter generic fallback",
+        "data": {"formatter_class": formatter.__class__.__name__},
+        "timestamp": int(__import__('time').time() * 1000)
+    })
     # #endregion
     return formatter

@@ -136,7 +136,7 @@ export function ComparisonChart({ data }: ComparisonChartProps) {
             {data.datasets.map((dataset, index) => (
               <Line
                 key={dataset.label}
-                type="monotone"
+                type="linear"  // Linha reta, sem suavização
                 dataKey={dataset.label}
                 stroke={colors[index % colors.length]}
                 strokeWidth={2}

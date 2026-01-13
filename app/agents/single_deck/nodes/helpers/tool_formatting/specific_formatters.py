@@ -162,9 +162,9 @@ def generate_cvu_chart(dados_estruturais: list, classe_nome: str = None) -> Opti
         if not anos or not custos:
             return None
         
-        # Criar gráfico
+        # Criar gráfico (linha reta, sem suavização)
         plt.figure(figsize=(10, 6))
-        plt.plot(anos, custos, marker='o', linewidth=2, markersize=8)
+        plt.plot(anos, custos, marker='o', linewidth=2, markersize=8)  # Linha linear, sem interpolação
         plt.xlabel('Ano', fontsize=12, fontweight='bold')
         plt.ylabel('CVU ($/MWh)', fontsize=12, fontweight='bold')
         

@@ -6,6 +6,8 @@ Se houver ambiguidade (múltiplas tools com scores similares), gera disambiguati
 Para Single Deck Agent - sem lógica de comparação.
 """
 from typing import Optional, Dict, Any, List
+import os
+import json as json_module
 from app.agents.single_deck.state import SingleDeckState
 from app.agents.single_deck.tools import get_available_tools
 from app.tools.semantic_matcher import find_best_tool_semantic, find_top_tools_semantic
@@ -20,6 +22,21 @@ from app.config import (
     DISAMBIGUATION_MIN_SCORE,
     safe_print
 )
+
+# Função auxiliar para escrever no log de debug de forma segura
+def _write_debug_log(data: dict):
+    """Escreve no arquivo de debug, criando o diretório se necessário."""
+    try:
+        log_path = r'c:\Users\Inteli\OneDrive\Desktop\nw_multi\.cursor\debug.log'
+        log_dir = os.path.dirname(log_path)
+        # Criar diretório se não existir
+        os.makedirs(log_dir, exist_ok=True)
+        # Escrever no arquivo
+        with open(log_path, 'a', encoding='utf-8') as f:
+            f.write(json_module.dumps(data) + '\n')
+    except Exception:
+        # Silenciosamente ignorar erros de log para não interromper o fluxo
+        pass
 
 # Mapeamento de descrições curtas fixas para cada tool
 # Usado nas opções de disambiguation
@@ -194,18 +211,16 @@ def tool_router_node(state: SingleDeckState) -> dict:
                 safe_print(f"[TOOL ROUTER]   -> Executando tool diretamente sem semantic matching")
                 safe_print(f"[TOOL ROUTER]   Query que será usada na tool: {query_to_use}")
                 
-                import json as json_module
                 # #region agent log
-                with open(r'c:\Users\Inteli\OneDrive\Desktop\nw_multi\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                    f.write(json_module.dumps({
-                        "sessionId": "debug-session",
-                        "runId": "run1",
-                        "hypothesisId": "G",
-                        "location": "tool_router.py:disambiguation",
-                        "message": "Tool identified from disambiguation, executing directly",
-                        "data": {"tool_name": disambiguation_tool_name, "original_query": query_to_use[:50]},
-                        "timestamp": int(__import__('time').time() * 1000)
-                    }) + '\n')
+                _write_debug_log({
+                    "sessionId": "debug-session",
+                    "runId": "run1",
+                    "hypothesisId": "G",
+                    "location": "tool_router.py:disambiguation",
+                    "message": "Tool identified from disambiguation, executing directly",
+                    "data": {"tool_name": disambiguation_tool_name, "original_query": query_to_use[:50]},
+                    "timestamp": int(__import__('time').time() * 1000)
+                })
                 # #endregion
                 
                 result = _execute_tool(selected_tool, disambiguation_tool_name, query_to_use)
@@ -300,17 +315,15 @@ def tool_router_node(state: SingleDeckState) -> dict:
             )
             
             # #region agent log
-            import json as json_module
-            with open(r'c:\Users\Inteli\OneDrive\Desktop\nw_multi\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                f.write(json_module.dumps({
-                    "sessionId": "debug-session",
-                    "runId": "run1",
-                    "hypothesisId": "F",
-                    "location": "tool_router.py:247",
-                    "message": "Semantic matching called",
-                    "data": {"query_for_semantic": query_for_semantic[:50], "is_from_disambiguation": is_from_disambiguation, "results_count": len(semantic_results) if semantic_results else 0},
-                    "timestamp": int(__import__('time').time() * 1000)
-                }) + '\n')
+            _write_debug_log({
+                "sessionId": "debug-session",
+                "runId": "run1",
+                "hypothesisId": "F",
+                "location": "tool_router.py:247",
+                "message": "Semantic matching called",
+                "data": {"query_for_semantic": query_for_semantic[:50], "is_from_disambiguation": is_from_disambiguation, "results_count": len(semantic_results) if semantic_results else 0},
+                "timestamp": int(__import__('time').time() * 1000)
+            })
             # #endregion
             
             if semantic_results:
@@ -327,16 +340,15 @@ def tool_router_node(state: SingleDeckState) -> dict:
                     safe_print(f"[TOOL ROUTER]   Tool selecionada: {tool_name} (score: {top_score:.4f})")
                     safe_print(f"[TOOL ROUTER]   Query que sera usada na tool: {original_query_for_tool}")
                     # #region agent log
-                    with open(r'c:\Users\Inteli\OneDrive\Desktop\nw_multi\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                        f.write(json_module.dumps({
-                            "sessionId": "debug-session",
-                            "runId": "run1",
-                            "hypothesisId": "H",
-                            "location": "tool_router.py:295",
-                            "message": "Executing tool from disambiguation (always execute)",
-                            "data": {"tool_name": tool_name, "score": top_score, "original_query": original_query_for_tool[:50]},
-                            "timestamp": int(__import__('time').time() * 1000)
-                        }) + '\n')
+                    _write_debug_log({
+                        "sessionId": "debug-session",
+                        "runId": "run1",
+                        "hypothesisId": "H",
+                        "location": "tool_router.py:295",
+                        "message": "Executing tool from disambiguation (always execute)",
+                        "data": {"tool_name": tool_name, "score": top_score, "original_query": original_query_for_tool[:50]},
+                        "timestamp": int(__import__('time').time() * 1000)
+                    })
                     # #endregion
                     result = _execute_tool(top_tool, tool_name, original_query_for_tool)
                     result["from_disambiguation"] = True
@@ -370,16 +382,15 @@ def tool_router_node(state: SingleDeckState) -> dict:
                     # Sem ambiguidade, executar tool diretamente
                     safe_print(f"[TOOL ROUTER]   Status: [OK] Score >= {SEMANTIC_MATCH_MIN_SCORE:.3f} (tool sera executada)")
                     # #region agent log
-                    with open(r'c:\Users\Inteli\OneDrive\Desktop\nw_multi\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                        f.write(json_module.dumps({
-                            "sessionId": "debug-session",
-                            "runId": "run1",
-                            "hypothesisId": "H",
-                            "location": "tool_router.py:330",
-                            "message": "Executing tool from semantic matching (normal query)",
-                            "data": {"tool_name": tool_name, "score": top_score},
-                            "timestamp": int(__import__('time').time() * 1000)
-                        }) + '\n')
+                    _write_debug_log({
+                        "sessionId": "debug-session",
+                        "runId": "run1",
+                        "hypothesisId": "H",
+                        "location": "tool_router.py:330",
+                        "message": "Executing tool from semantic matching (normal query)",
+                        "data": {"tool_name": tool_name, "score": top_score},
+                        "timestamp": int(__import__('time').time() * 1000)
+                    })
                     # #endregion
                     return _execute_tool(top_tool, tool_name)
                 else:
@@ -406,16 +417,15 @@ def tool_router_node(state: SingleDeckState) -> dict:
                             safe_print(f"[TOOL ROUTER] ✅ Tool encontrada com threshold 0.0: {tool_name} (score: {top_score:.4f})")
                             safe_print(f"[TOOL ROUTER]   Query que sera usada na tool: {original_query_for_tool}")
                             # #region agent log
-                            with open(r'c:\Users\Inteli\OneDrive\Desktop\nw_multi\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                                f.write(json_module.dumps({
-                                    "sessionId": "debug-session",
-                                    "runId": "run1",
-                                    "hypothesisId": "H",
-                                    "location": "tool_router.py:350",
-                                    "message": "Executing tool from disambiguation with threshold 0.0",
-                                    "data": {"tool_name": tool_name, "score": top_score, "original_query": original_query_for_tool[:50]},
-                                    "timestamp": int(__import__('time').time() * 1000)
-                                }) + '\n')
+                            _write_debug_log({
+                                "sessionId": "debug-session",
+                                "runId": "run1",
+                                "hypothesisId": "H",
+                                "location": "tool_router.py:350",
+                                "message": "Executing tool from disambiguation with threshold 0.0",
+                                "data": {"tool_name": tool_name, "score": top_score, "original_query": original_query_for_tool[:50]},
+                                "timestamp": int(__import__('time').time() * 1000)
+                            })
                             # #endregion
                             result = _execute_tool(top_tool, tool_name, original_query_for_tool)
                             result["from_disambiguation"] = True
