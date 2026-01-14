@@ -29,14 +29,14 @@ from .data_formatters.gtmin_formatters import (
 from .data_formatters.vazao_minima_formatters import (
     MudancasVazaoMinimaFormatter,
 )
-from .data_formatters.volume_inicial_formatters import (
-    VariacaoVolumesIniciaisFormatter,
+from .data_formatters.variacao_reservatorio_inicial_formatters import (
+    VariacaoReservatorioInicialFormatter,
 )
 
 
 # Lista de formatadores (em ordem de prioridade - mais específicos primeiro)
 FORMATTERS = [
-    VariacaoVolumesIniciaisFormatter(),  # Alta prioridade - muito específico para volumes iniciais
+    VariacaoReservatorioInicialFormatter(),  # Alta prioridade - muito específico para reservatório inicial por usina
     MudancasGeracoesTermicasFormatter(),  # Alta prioridade - muito específico para GTMIN
     MudancasVazaoMinimaFormatter(),  # Alta prioridade - muito específico para VAZMIN/VAZMINT
     ClastComparisonFormatter(),
@@ -112,7 +112,7 @@ def format_comparison_response(
         format_limites_intercambio_simple_comparison,
         format_gtmin_simple_comparison,
         format_vazao_minima_simple_comparison,
-        format_volumes_iniciais_simple_comparison,
+        format_reservatorio_inicial_simple_comparison,
         generate_fallback_comparison_response
     )
     from .text_formatters.llm_structured import format_with_llm_structured
@@ -262,13 +262,16 @@ def format_comparison_response(
             deck_1_name,
             deck_2_name
         )
-    elif tool_used == "VariacaoVolumesIniciaisTool":
-        safe_print(f"[INTERPRETER] [COMPARISON] VariacaoVolumesIniciaisTool - formato simplificado com introdução")
-        final_response = format_volumes_iniciais_simple_comparison(
+    elif tool_used == "VariacaoReservatorioInicialTool":
+        safe_print(f"[INTERPRETER] [COMPARISON] VariacaoReservatorioInicialTool - formato simplificado (apenas tabela e gráfico)")
+        safe_print(f"[INTERPRETER] [COMPARISON] chart_data presente: {formatted.get('chart_data') is not None}")
+        if formatted.get('chart_data'):
+            safe_print(f"[INTERPRETER] [COMPARISON] chart_data labels: {formatted.get('chart_data', {}).get('labels', [])}")
+            safe_print(f"[INTERPRETER] [COMPARISON] chart_data datasets: {len(formatted.get('chart_data', {}).get('datasets', []))}")
+        final_response = format_reservatorio_inicial_simple_comparison(
             formatted.get("comparison_table", []),
             deck_1_name,
-            deck_2_name,
-            formatted.get("stats", {})
+            deck_2_name
         )
     else:
         # Gerar resposta do LLM baseada no tipo de visualização
@@ -300,6 +303,16 @@ def format_comparison_response(
     safe_print(f"[INTERPRETER] [COMPARISON] Retornando comparison_data com chart_data: {comparison_data.get('chart_data') is not None}")
     if comparison_data.get('chart_data'):
         safe_print(f"[INTERPRETER] [COMPARISON] chart_data final - labels: {len(comparison_data.get('chart_data', {}).get('labels', []))}, datasets: {len(comparison_data.get('chart_data', {}).get('datasets', []))}")
+    
+    # Debug adicional para VariacaoReservatorioInicialTool
+    if tool_used == "VariacaoReservatorioInicialTool":
+        safe_print(f"[INTERPRETER] [COMPARISON] [DEBUG] VariacaoReservatorioInicialTool - comparison_data keys: {list(comparison_data.keys())}")
+        safe_print(f"[INTERPRETER] [COMPARISON] [DEBUG] visualization_type: {comparison_data.get('visualization_type')}")
+        safe_print(f"[INTERPRETER] [COMPARISON] [DEBUG] tool_name: {comparison_data.get('tool_name')}")
+        safe_print(f"[INTERPRETER] [COMPARISON] [DEBUG] comparison_table length: {len(comparison_data.get('comparison_table', []))}")
+        safe_print(f"[INTERPRETER] [COMPARISON] [DEBUG] chart_data presente: {comparison_data.get('chart_data') is not None}")
+        if comparison_data.get('comparison_by_type'):
+            safe_print(f"[INTERPRETER] [COMPARISON] [DEBUG] comparison_by_type keys: {list(comparison_data.get('comparison_by_type', {}).keys())}")
     
     return {
         "final_response": final_response,

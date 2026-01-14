@@ -127,16 +127,6 @@ interface ChatMessageProps {
 export function ChatMessage({ message, onOptionClick }: ChatMessageProps) {
   const isUser = message.role === "user";
   const [copied, setCopied] = useState(false);
-  
-  // Debug: verificar se requires_user_choice está presente
-  console.log("[ChatMessage] Renderizando mensagem:", {
-    requires_user_choice: message.requires_user_choice,
-    alternative_type: message.alternative_type,
-    has_requires_user_choice: !!message.requires_user_choice,
-    has_alternative_type: !!message.alternative_type,
-    will_render_buttons: !!(message.requires_user_choice && message.alternative_type),
-    content_preview: message.content?.substring(0, 100)
-  });
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);

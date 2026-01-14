@@ -8,7 +8,8 @@ from .simple import (
     format_carga_simple_comparison,
     format_limites_intercambio_simple_comparison,
     format_gtmin_simple_comparison,
-    format_volumes_iniciais_simple_comparison,
+    format_vazao_minima_simple_comparison,
+    format_reservatorio_inicial_simple_comparison,
     generate_fallback_comparison_response,
 )
 from .llm_structured import format_with_llm_structured
@@ -19,7 +20,8 @@ __all__ = [
     "format_carga_simple_comparison",
     "format_limites_intercambio_simple_comparison",
     "format_gtmin_simple_comparison",
-    "format_volumes_iniciais_simple_comparison",
+    "format_vazao_minima_simple_comparison",
+    "format_reservatorio_inicial_simple_comparison",
     "generate_fallback_comparison_response",
     "format_with_llm_structured",
     "format_with_llm_free",

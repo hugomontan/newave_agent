@@ -21,12 +21,12 @@ from app.tools.term_cadastro_tool import TermCadastroTool
 from app.tools.multi_deck_comparison_tool import MultiDeckComparisonTool
 from app.tools.mudancas_geracoes_termicas_tool import MudancasGeracoesTermicasTool
 from app.tools.mudancas_vazao_minima_tool import MudancasVazaoMinimaTool
-from app.tools.variacao_volumes_iniciais_tool import VariacaoVolumesIniciaisTool
+from app.tools.variacao_reservatorio_inicial_tool import VariacaoReservatorioInicialTool
 
 
 # Registry de tools para modo comparison (lista completa, independente)
 TOOLS_REGISTRY_COMPARISON = [
-    VariacaoVolumesIniciaisTool,  # Tool específica para variação de volumes iniciais (prioridade sobre outras)
+    VariacaoReservatorioInicialTool,  # Tool específica para variação de reservatório inicial por usina (prioridade sobre outras)
     MudancasGeracoesTermicasTool,  # Tool específica para mudanças de GTMIN (prioridade sobre MultiDeckComparisonTool)
     MudancasVazaoMinimaTool,  # Tool específica para mudanças de VAZMIN/VAZMINT (prioridade sobre ModifOperacaoTool)
     MultiDeckComparisonTool,  # Primeira para interceptar todas as queries em modo comparison

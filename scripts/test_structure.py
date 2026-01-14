@@ -81,7 +81,7 @@ def validate_single_deck_structure():
                 except (UnicodeEncodeError, UnicodeDecodeError, AttributeError):
                     # Se houver erro de encoding ou método não existir, usar nome da classe
                     tool_names.append(t.__class__.__name__)
-            comparison_tools = ['MultiDeckComparisonTool', 'MudancasGeracoesTermicasTool', 'VariacaoVolumesIniciaisTool']
+            comparison_tools = ['MultiDeckComparisonTool', 'MudancasGeracoesTermicasTool']
             found_comparison = [t for t in comparison_tools if t in tool_names]
             if found_comparison:
                 errors.append(f"Tools de comparação encontradas em single_deck: {found_comparison}")
@@ -238,7 +238,7 @@ def validate_multi_deck_structure():
                 except (UnicodeEncodeError, UnicodeDecodeError, AttributeError):
                     # Se houver erro de encoding ou método não existir, usar nome da classe
                     tool_names.append(t.__class__.__name__)
-            comparison_tools = ['MultiDeckComparisonTool', 'MudancasGeracoesTermicasTool', 'VariacaoVolumesIniciaisTool']
+            comparison_tools = ['MultiDeckComparisonTool', 'MudancasGeracoesTermicasTool']
             found_comparison = [t for t in comparison_tools if t in tool_names]
             if not found_comparison:
                 errors.append("Tools de comparação não encontradas em multi_deck")

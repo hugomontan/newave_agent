@@ -59,7 +59,8 @@ TOOL_SHORT_DESCRIPTIONS = {
     "CadicTool": "Cargas e ofertas adicionais",
     "MultiDeckComparisonTool": "Comparação entre dois decks NEWAVE",
     "MudancasGeracoesTermicasTool": "Mudanças de geração térmica mínima",
-    "VariacaoVolumesIniciaisTool": "Variação de volumes iniciais",
+    "VariacaoReservatorioInicialTool": "Variação de reservatório inicial por usina (v.inic)",
+    "MudancasVazaoMinimaTool": "Mudanças de vazão mínima",
 }
 
 
@@ -736,7 +737,6 @@ def _identify_tool_from_context(context: str, tools: list[NEWAVETool]) -> Option
         "cadastro de usinas termoelétricas": "TermCadastroTool",
         "comparação entre dois decks": "MultiDeckComparisonTool",
         "mudanças de geração térmica mínima": "MudancasGeracoesTermicasTool",
-        "variação de volumes iniciais": "VariacaoVolumesIniciaisTool",
     }
     
     context_normalized = context.strip().lower()

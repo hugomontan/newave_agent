@@ -426,6 +426,12 @@ def run_query_stream(query: str, deck_path: str, session_id: Optional[str] = Non
                         for i in range(0, len(response), chunk_size):
                             yield f"data: {json.dumps({'type': 'response_chunk', 'chunk': response[i:i + chunk_size]})}\n\n"
                         cleaned_comparison_data = _clean_nan_for_json(comparison_data) if comparison_data else None
+                        # Debug: verificar dados antes de enviar
+                        if cleaned_comparison_data:
+                            safe_print(f"[GRAPH] [DEBUG] Enviando comparison_data - visualization_type: {cleaned_comparison_data.get('visualization_type')}")
+                            safe_print(f"[GRAPH] [DEBUG] Enviando comparison_data - tool_name: {cleaned_comparison_data.get('tool_name')}")
+                            safe_print(f"[GRAPH] [DEBUG] Enviando comparison_data - keys: {list(cleaned_comparison_data.keys())}")
+                            safe_print(f"[GRAPH] [DEBUG] Enviando comparison_data - chart_data presente: {cleaned_comparison_data.get('chart_data') is not None}")
                         yield f"data: {json.dumps({'type': 'response_complete', 'response': response, 'comparison_data': cleaned_comparison_data}, allow_nan=False)}\n\n"
                 
                 if not (node_name == "comparison_tool_router" and node_output.get("disambiguation")):

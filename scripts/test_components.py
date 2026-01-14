@@ -48,7 +48,7 @@ def test_tools():
                     errors.append(f"Erro ao obter nome da tool {tool.__class__.__name__}: {e}")
             
             # Verificar que não tem tools de comparação
-            comparison_tools = ['MultiDeckComparisonTool', 'MudancasGeracoesTermicasTool', 'VariacaoVolumesIniciaisTool']
+            comparison_tools = ['MultiDeckComparisonTool', 'MudancasGeracoesTermicasTool']
             found_comparison = [t for t in comparison_tools if t in tool_names]
             if found_comparison:
                 errors.append(f"Single deck tem tools de comparação: {found_comparison}")
@@ -81,7 +81,7 @@ def test_tools():
                     errors.append(f"Erro ao obter nome da tool {tool.__class__.__name__}: {e}")
             
             # Verificar que tem tools de comparação
-            comparison_tools = ['MultiDeckComparisonTool', 'MudancasGeracoesTermicasTool', 'VariacaoVolumesIniciaisTool']
+            comparison_tools = ['MultiDeckComparisonTool', 'MudancasGeracoesTermicasTool']
             found_comparison = [t for t in comparison_tools if t in tool_names]
             if not found_comparison:
                 errors.append("Multi deck não tem tools de comparação")

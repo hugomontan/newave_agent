@@ -137,7 +137,7 @@ export default function ComparisonPage() {
   const [executionOutput, setExecutionOutput] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
   const [maxRetries, setMaxRetries] = useState(3);
-  const [comparisonData, setComparisonData] = useState<Message["comparisonData"]>(null);
+  const [comparisonData, setComparisonData] = useState<Message["comparisonData"] | null>(null);
   const [disambiguationData, setDisambiguationData] = useState<{
     type: string;
     question: string;
@@ -152,7 +152,7 @@ export default function ComparisonPage() {
   const executionErrorRef = useRef<string | null>(null);
   const executionOutputRef = useRef<string | null>(null);
   const retryCountRef = useRef(0);
-  const comparisonDataRef = useRef<Message["comparisonData"]>(null);
+  const comparisonDataRef = useRef<Message["comparisonData"] | null>(null);
   const disambiguationMessageIdRef = useRef<string | null>(null);
 
   const scrollToBottom = () => {
@@ -216,14 +216,14 @@ export default function ComparisonPage() {
         setExecutionError(null);
         setExecutionOutput(null);
         setRetryCount(0);
-        setComparisonData(null);
+        setComparisonData(null as any);
         streamingCodeRef.current = "";
         streamingResponseRef.current = "";
         executionSuccessRef.current = null;
         executionErrorRef.current = null;
         executionOutputRef.current = null;
         retryCountRef.current = 0;
-        comparisonDataRef.current = null;
+        comparisonDataRef.current = null as any;
         break;
 
       case "node_start":
@@ -408,8 +408,8 @@ export default function ComparisonPage() {
           setAgentSteps((prev) => [
             ...prev,
             {
-              node: `retry_${event.retry_count}`,
-              name: `Tentativa ${event.retry_count + 1}/${event.max_retries || 3}`,
+              node: `retry_${event.retry_count || 0}`,
+              name: `Tentativa ${(event.retry_count || 0) + 1}/${event.max_retries || 3}`,
               icon: "🔄",
               description: event.message || "Corrigindo código com base no erro...",
               status: "running" as const,
@@ -457,19 +457,8 @@ export default function ComparisonPage() {
           streamingResponseRef.current = event.response;
         }
         if (event.comparison_data) {
-          console.log("[FRONTEND] comparison_data recebido no response_complete:", event.comparison_data);
-          console.log("[FRONTEND] comparison_table presente:", event.comparison_data.comparison_table !== undefined);
-          console.log("[FRONTEND] comparison_table length:", event.comparison_data.comparison_table?.length);
-          if (event.comparison_data.comparison_table && event.comparison_data.comparison_table.length > 0) {
-            console.log("[FRONTEND] primeiro item comparison_table:", event.comparison_data.comparison_table[0]);
-          }
-          console.log("[FRONTEND] chart_data presente:", event.comparison_data.chart_data !== undefined);
-          if (event.comparison_data.chart_data) {
-            console.log("[FRONTEND] chart_data labels:", event.comparison_data.chart_data.labels);
-            console.log("[FRONTEND] chart_data datasets:", event.comparison_data.chart_data.datasets);
-          }
-          setComparisonData(event.comparison_data);
-          comparisonDataRef.current = event.comparison_data;
+          setComparisonData(event.comparison_data as any);
+          comparisonDataRef.current = event.comparison_data as any;
           
           // Se há uma mensagem de disambiguation em loading, atualizar com comparison_data
           if (disambiguationMessageIdRef.current) {
@@ -477,8 +466,8 @@ export default function ComparisonPage() {
               if (msg.id === disambiguationMessageIdRef.current) {
                 return {
                   ...msg,
-                  comparisonData: event.comparison_data,
-                };
+                  comparisonData: event.comparison_data as any,
+                } as Message;
               }
               return msg;
             }));
@@ -562,6 +551,8 @@ export default function ComparisonPage() {
       const hasCode = streamingCodeRef.current && streamingCodeRef.current.trim();
       
       if (hasContent || hasData || hasCode || comparisonDataRef.current) {
+        const currentComparisonData = comparisonDataRef.current as Message["comparisonData"] | null;
+        
         const assistantMessage: Message = {
           id: (Date.now() + 1).toString(),
           role: "assistant",
@@ -572,7 +563,7 @@ export default function ComparisonPage() {
           rawData: rawData,
           retryCount: retryCountRef.current,
           error: executionErrorRef.current,
-          comparisonData: comparisonDataRef.current || undefined,
+          comparisonData: currentComparisonData || undefined,
           timestamp: new Date(),
         };
 

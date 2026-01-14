@@ -114,6 +114,23 @@ export interface StreamEvent {
         data: (number | null)[];
       }>;
     } | null;
+    charts_by_par?: Record<string, {
+      par: string;
+      sentido: string;
+      chart_data: {
+        labels: string[];
+        datasets: Array<{
+          label: string;
+          data: (number | null)[];
+        }>;
+      } | null;
+      chart_config?: {
+        type: string;
+        title: string;
+        x_axis: string;
+        y_axis: string;
+      };
+    }>;
     differences?: Array<{
       field: string;
       period: string;
@@ -122,6 +139,13 @@ export interface StreamEvent {
       difference: number;
       difference_percent: number;
     }>;
+    comparison_table?: Array<any>;
+    visualization_type?: string;
+    tool_name?: string;
+    comparison_by_type?: Record<string, any>;
+    comparison_by_usina?: Record<string, any>;
+    comparison_by_ree?: Record<string, any>;
+    stats?: Record<string, any>;
   } | null;
   retry_count?: number;
   max_retries?: number;

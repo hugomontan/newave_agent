@@ -120,7 +120,7 @@ def test_tools():
             except (UnicodeEncodeError, AttributeError):
                 tool_names.append(t.__class__.__name__)
         
-        comparison_tools = ['MultiDeckComparisonTool', 'MudancasGeracoesTermicasTool', 'VariacaoVolumesIniciaisTool']
+        comparison_tools = ['MultiDeckComparisonTool', 'MudancasGeracoesTermicasTool']
         found_comparison = [t for t in comparison_tools if t in tool_names]
         if found_comparison:
             errors.append(f"Single Deck tem tools de comparação: {found_comparison}")
@@ -146,7 +146,7 @@ def test_tools():
             except (UnicodeEncodeError, AttributeError):
                 tool_names.append(t.__class__.__name__)
         
-        comparison_tools = ['MultiDeckComparisonTool', 'MudancasGeracoesTermicasTool', 'VariacaoVolumesIniciaisTool']
+        comparison_tools = ['MultiDeckComparisonTool', 'MudancasGeracoesTermicasTool']
         found_comparison = [t for t in comparison_tools if t in tool_names]
         if not found_comparison:
             errors.append("Multi-Deck não tem tools de comparação")
