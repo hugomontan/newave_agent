@@ -1,0 +1,1 @@
+export { CadastroTermView } from "./CadastroTermView";

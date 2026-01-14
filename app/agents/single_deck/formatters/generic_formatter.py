@@ -13,6 +13,14 @@ class GenericSingleDeckFormatter(SingleDeckFormatter):
     Fallback quando não há formatter específico.
     """
     
+    def can_format(self, tool_name: str, result_structure: Dict[str, Any]) -> bool:
+        """Sempre pode formatar (fallback)."""
+        return True
+    
+    def get_priority(self) -> int:
+        """Prioridade muito baixa - apenas fallback."""
+        return -1
+    
     def format_response(
         self,
         tool_result: Dict[str, Any],

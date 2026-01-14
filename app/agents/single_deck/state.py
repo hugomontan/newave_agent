@@ -42,6 +42,9 @@ class SingleDeckState(TypedDict):
     # Campos para Comparação (usado para comparison_data do single deck)
     comparison_data: Optional[dict]  # Dados de comparação/visualização
     
+    # Campos para Visualização Single Deck
+    visualization_data: Optional[dict]  # Dados de visualização estruturados
+    
     # Campos para LLM Mode
     llm_instructions: Optional[str]
     

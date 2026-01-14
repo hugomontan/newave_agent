@@ -1,6 +1,6 @@
 """
 Registry de formatters para single deck.
-Atribui formatter baseado na tool executada.
+Atribui formatter baseado na tool executada usando can_format() e get_priority().
 """
 
 import os
@@ -9,12 +9,40 @@ from typing import Dict, Any, Optional
 from app.agents.single_deck.formatters.base import SingleDeckFormatter
 from app.tools.base import NEWAVETool
 
-# Formatters específicos do single deck
-from app.agents.single_deck.formatters.clast_formatter import ClastSingleDeckFormatter
-from app.agents.single_deck.formatters.carga_formatter import CargaSingleDeckFormatter
+# Formatters específicos do single deck (modularização completa - 1 por tool)
+from app.agents.single_deck.formatters.data_formatters import (
+    ClastSingleDeckFormatter,
+    CargaMensalSingleDeckFormatter,
+    CadicSingleDeckFormatter,
+    VazoesSingleDeckFormatter,
+    DsvaguaSingleDeckFormatter,
+    LimitesIntercambioSingleDeckFormatter,
+    CadastroHidrSingleDeckFormatter,
+    CadastroTermSingleDeckFormatter,
+    ConfhdSingleDeckFormatter,
+    UsinasNaoSimuladasSingleDeckFormatter,
+    ModifOperacaoSingleDeckFormatter,
+    RestricaoEletricaSingleDeckFormatter,
+)
 
 # Formatter genérico (fallback)
 from app.agents.single_deck.formatters.generic_formatter import GenericSingleDeckFormatter
+
+# Lista de formatters ordenada por prioridade (maior primeiro)
+SINGLE_DECK_FORMATTERS = [
+    ClastSingleDeckFormatter(),
+    CargaMensalSingleDeckFormatter(),
+    CadicSingleDeckFormatter(),
+    VazoesSingleDeckFormatter(),
+    DsvaguaSingleDeckFormatter(),
+    LimitesIntercambioSingleDeckFormatter(),
+    CadastroHidrSingleDeckFormatter(),
+    CadastroTermSingleDeckFormatter(),
+    UsinasNaoSimuladasSingleDeckFormatter(),
+    ModifOperacaoSingleDeckFormatter(),
+    RestricaoEletricaSingleDeckFormatter(),
+    ConfhdSingleDeckFormatter(),
+]
 
 # Função auxiliar para escrever no log de debug de forma segura
 def _write_debug_log(data: dict):
@@ -41,7 +69,7 @@ def get_formatter_for_tool(
     
     Estratégia:
     1. Tenta obter formatter da própria tool (get_single_deck_formatter())
-    2. Se não houver, tenta mapear pelo nome da tool
+    2. Se não houver, usa can_format() e get_priority() para selecionar o melhor formatter
     3. Se não encontrar, usa formatter genérico
     
     Args:
@@ -53,35 +81,13 @@ def get_formatter_for_tool(
     """
     from app.config import safe_print
     
-    # #region agent log
     tool_name = tool.get_name()
-    _write_debug_log({
-        "sessionId": "debug-session",
-        "runId": "run1",
-        "hypothesisId": "C",
-        "location": "registry.py:18",
-        "message": "Getting formatter for tool",
-        "data": {"tool_name": tool_name, "has_formatter_in_result": "formatter_single_deck" in tool_result, "has_get_method": hasattr(tool, 'get_single_deck_formatter')},
-        "timestamp": int(__import__('time').time() * 1000)
-    })
-    # #endregion
     
     # Prioridade 1: Formatter retornado pela tool no resultado
     if "formatter_single_deck" in tool_result:
         formatter = tool_result["formatter_single_deck"]
         if formatter is not None:
             safe_print(f"[SINGLE DECK REGISTRY] Formatter obtido do resultado da tool")
-            # #region agent log
-            _write_debug_log({
-                "sessionId": "debug-session",
-                "runId": "run1",
-                "hypothesisId": "C",
-                "location": "registry.py:44",
-                "message": "Formatter from tool result",
-                "data": {"formatter_class": formatter.__class__.__name__},
-                "timestamp": int(__import__('time').time() * 1000)
-            })
-            # #endregion
             return formatter
     
     # Prioridade 2: Formatter obtido via método da tool (se existir)
@@ -90,57 +96,23 @@ def get_formatter_for_tool(
             formatter = tool.get_single_deck_formatter()
             if formatter is not None:
                 safe_print(f"[SINGLE DECK REGISTRY] Formatter obtido via método da tool")
-                # #region agent log
-                _write_debug_log({
-                    "sessionId": "debug-session",
-                    "runId": "run1",
-                    "hypothesisId": "C",
-                    "location": "registry.py:52",
-                    "message": "Formatter from tool method",
-                    "data": {"formatter_class": formatter.__class__.__name__},
-                    "timestamp": int(__import__('time').time() * 1000)
-                })
-                # #endregion
                 return formatter
         except Exception as e:
             safe_print(f"[SINGLE DECK REGISTRY] Erro ao obter formatter da tool: {e}")
-            # Continuar para próxima prioridade
     
-    # Prioridade 3: Mapeamento por nome da tool
-    formatter_map = {
-        "ClastValoresTool": ClastSingleDeckFormatter(),
-        "CargaMensalTool": CargaSingleDeckFormatter(),
-        # Adicionar outros mapeamentos conforme necessário
-    }
+    # Prioridade 3: Usar can_format() e get_priority() para selecionar o melhor formatter
+    # Ordenar formatters por prioridade (maior primeiro)
+    sorted_formatters = sorted(
+        SINGLE_DECK_FORMATTERS,
+        key=lambda f: f.get_priority(),
+        reverse=True
+    )
     
-    if tool_name in formatter_map:
-        safe_print(f"[SINGLE DECK REGISTRY] Formatter mapeado por nome: {tool_name}")
-        formatter = formatter_map[tool_name]
-        # #region agent log
-        _write_debug_log({
-            "sessionId": "debug-session",
-            "runId": "run1",
-            "hypothesisId": "C",
-            "location": "registry.py:67",
-            "message": "Formatter from name mapping",
-            "data": {"formatter_class": formatter.__class__.__name__},
-            "timestamp": int(__import__('time').time() * 1000)
-        })
-        # #endregion
-        return formatter
+    for formatter in sorted_formatters:
+        if formatter.can_format(tool_name, tool_result):
+            safe_print(f"[SINGLE DECK REGISTRY] Formatter selecionado: {formatter.__class__.__name__} (prioridade: {formatter.get_priority()})")
+            return formatter
     
     # Fallback: formatter genérico
     safe_print(f"[SINGLE DECK REGISTRY] Usando formatter genérico (fallback)")
-    formatter = GenericSingleDeckFormatter()
-    # #region agent log
-    _write_debug_log({
-        "sessionId": "debug-session",
-        "runId": "run1",
-        "hypothesisId": "C",
-        "location": "registry.py:71",
-        "message": "Formatter generic fallback",
-        "data": {"formatter_class": formatter.__class__.__name__},
-        "timestamp": int(__import__('time').time() * 1000)
-    })
-    # #endregion
-    return formatter
+    return GenericSingleDeckFormatter()

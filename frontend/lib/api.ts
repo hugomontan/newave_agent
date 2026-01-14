@@ -92,6 +92,41 @@ export interface StreamEvent {
   response?: string;
   requires_user_choice?: boolean;
   alternative_type?: string;
+  visualization_data?: {
+    table?: Array<Record<string, unknown>>;
+    chart_data?: {
+      labels: string[];
+      datasets: Array<{
+        label: string;
+        data: (number | null)[];
+      }>;
+    } | null;
+    charts_by_par?: Record<string, {
+      par: string;
+      sentido: string;
+      chart_data: {
+        labels: string[];
+        datasets: Array<{
+          label: string;
+          data: (number | null)[];
+        }>;
+      };
+      chart_config?: {
+        type: string;
+        title: string;
+        x_axis: string;
+        y_axis: string;
+      };
+    }>;
+    visualization_type?: string;
+    chart_config?: {
+      type: string;
+      title: string;
+      x_axis: string;
+      y_axis: string;
+    };
+    tool_name?: string;
+  };
   comparison_data?: {
     deck_1: {
       name: string;

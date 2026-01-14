@@ -1,0 +1,1 @@
+export { UsinasNaoSimuladasView } from "./UsinasNaoSimuladasView";

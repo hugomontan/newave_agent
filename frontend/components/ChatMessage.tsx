@@ -21,8 +21,10 @@ import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { DataTable } from "./DataTable";
 import { ComparisonView } from "./ComparisonView";
+import { SingleDeckRouter } from "./single-deck/SingleDeckRouter";
 import { motion } from "framer-motion";
 import { Copy, Check, Download, User, Bot } from "lucide-react";
+import type { SingleDeckVisualizationData } from "./single-deck/shared/types";
 
 interface Message {
   id: string;
@@ -117,6 +119,7 @@ interface Message {
   };
   requires_user_choice?: boolean;
   alternative_type?: string;
+  visualizationData?: SingleDeckVisualizationData;
 }
 
 interface ChatMessageProps {
@@ -590,8 +593,17 @@ export function ChatMessage({ message, onOptionClick }: ChatMessageProps) {
                 </div>
               )}
 
+              {/* Single Deck Visualization */}
+              {message.visualizationData && (
+                <div className="w-full -mx-4 sm:-mx-6 md:-mx-8 px-4 sm:px-6 md:px-8 max-w-full">
+                  <div className="min-w-0 w-full">
+                    <SingleDeckRouter visualizationData={message.visualizationData} />
+                  </div>
+                </div>
+              )}
+
               {/* Raw Data Table - mostrar mesmo durante loading de disambiguation */}
-              {message.rawData && message.rawData.length > 0 && !message.comparisonData && (
+              {message.rawData && message.rawData.length > 0 && !message.comparisonData && !message.visualizationData && (
                 <div className="w-full -mx-4 sm:-mx-6 md:-mx-8 px-4 sm:px-6 md:px-8">
                   <DataTable 
                     data={message.rawData} 

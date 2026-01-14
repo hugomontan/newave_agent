@@ -118,6 +118,9 @@ def interpreter_node(state: SingleDeckState) -> dict:
             # Formatar resposta usando o formatter
             result = formatter.format_response(tool_result, tool_used, query)
             
+            # Extrair visualization_data se presente
+            visualization_data = result.get("visualization_data")
+            
             # #region agent log
             _write_debug_log({
                 "sessionId": "debug-session",
@@ -125,13 +128,24 @@ def interpreter_node(state: SingleDeckState) -> dict:
                 "hypothesisId": "D",
                 "location": "interpreter.py:51",
                 "message": "Formatter result obtained",
-                "data": {"has_final_response": bool(result.get('final_response')), "response_length": len(result.get('final_response', '')), "response_preview": result.get('final_response', '')[:100]},
+                "data": {
+                    "has_final_response": bool(result.get('final_response')),
+                    "has_visualization_data": visualization_data is not None,
+                    "response_length": len(result.get('final_response', '')),
+                    "response_preview": result.get('final_response', '')[:100]
+                },
                 "timestamp": int(__import__('time').time() * 1000)
             })
             # #endregion
             
             safe_print(f"[INTERPRETER]   Resposta gerada: {len(result.get('final_response', ''))} caracteres")
-            return result
+            if visualization_data:
+                safe_print(f"[INTERPRETER]   Visualization data presente: {visualization_data.get('visualization_type', 'N/A')}")
+            
+            return {
+                "final_response": result.get("final_response", ""),
+                "visualization_data": visualization_data
+            }
         
         # Verificar se há disambiguation
         disambiguation = state.get("disambiguation")

@@ -55,6 +55,41 @@ interface Message {
   };
   requires_user_choice?: boolean;
   alternative_type?: string;
+  visualizationData?: {
+    table?: Array<Record<string, unknown>>;
+    chart_data?: {
+      labels: string[];
+      datasets: Array<{
+        label: string;
+        data: (number | null)[];
+      }>;
+    } | null;
+    charts_by_par?: Record<string, {
+      par: string;
+      sentido: string;
+      chart_data: {
+        labels: string[];
+        datasets: Array<{
+          label: string;
+          data: (number | null)[];
+        }>;
+      };
+      chart_config?: {
+        type: string;
+        title: string;
+        x_axis: string;
+        y_axis: string;
+      };
+    }>;
+    visualization_type?: string;
+    chart_config?: {
+      type: string;
+      title: string;
+      x_axis: string;
+      y_axis: string;
+    };
+    tool_name?: string;
+  };
   comparisonData?: {
     deck_1: {
       name: string;
@@ -169,6 +204,7 @@ export default function AnalysisPage() {
   const executionOutputRef = useRef<string | null>(null);
   const retryCountRef = useRef(0);
   const comparisonDataRef = useRef<Message["comparisonData"]>(null);
+  const visualizationDataRef = useRef<Message["visualizationData"]>(null);
   const requiresUserChoiceRef = useRef(false);
   const alternativeTypeRef = useRef<string | undefined>(undefined);
   const disambiguationMessageIdRef = useRef<string | null>(null);
@@ -271,6 +307,7 @@ export default function AnalysisPage() {
         executionOutputRef.current = null;
         retryCountRef.current = 0;
         comparisonDataRef.current = null;
+        visualizationDataRef.current = null;
         break;
 
       case "node_start":
@@ -542,6 +579,24 @@ export default function AnalysisPage() {
             }));
           }
         }
+        
+        if (event.visualization_data) {
+          console.log("[FRONTEND] visualization_data recebido:", event.visualization_data.tool_name);
+          visualizationDataRef.current = event.visualization_data;
+          
+          // Se há uma mensagem de disambiguation em loading, atualizar com visualization_data
+          if (disambiguationMessageIdRef.current) {
+            setMessages((prevMessages) => prevMessages.map(msg => {
+              if (msg.id === disambiguationMessageIdRef.current) {
+                return {
+                  ...msg,
+                  visualizationData: event.visualization_data,
+                };
+              }
+              return msg;
+            }));
+          }
+        }
         break;
 
       case "disambiguation":
@@ -598,6 +653,7 @@ export default function AnalysisPage() {
     setRetryCount(0);
     setComparisonData(null);
     comparisonDataRef.current = null;
+    visualizationDataRef.current = null;
 
     try {
       for await (const event of sendQueryStream(sessionId, userMessage.content)) {
@@ -634,6 +690,7 @@ export default function AnalysisPage() {
           retryCount: retryCountRef.current,
           error: executionErrorRef.current,
           comparisonData: comparisonDataRef.current || undefined,
+          visualizationData: visualizationDataRef.current || undefined,
           requires_user_choice: requiresUserChoiceRef.current ? true : undefined,
           alternative_type: alternativeTypeRef.current,
           timestamp: new Date(),
@@ -760,6 +817,7 @@ export default function AnalysisPage() {
     setRetryCount(0);
     setComparisonData(null);
     comparisonDataRef.current = null;
+    visualizationDataRef.current = null;
 
     try {
       for await (const event of sendQueryStream(sessionId, query)) {
@@ -800,6 +858,7 @@ export default function AnalysisPage() {
               retryCount: retryCountRef.current,
               error: executionErrorRef.current,
               comparisonData: comparisonDataRef.current || undefined,
+              visualizationData: visualizationDataRef.current || undefined,
               requires_user_choice: requiresUserChoiceRef.current ? true : undefined,
               alternative_type: alternativeTypeRef.current,
               disambiguationData: undefined, // Remover disambiguationData após processar
@@ -821,6 +880,7 @@ export default function AnalysisPage() {
             retryCount: retryCountRef.current,
             error: executionErrorRef.current,
             comparisonData: comparisonDataRef.current || undefined,
+            visualizationData: visualizationDataRef.current || undefined,
             requires_user_choice: requiresUserChoiceRef.current ? true : undefined,
             alternative_type: alternativeTypeRef.current,
             timestamp: new Date(),

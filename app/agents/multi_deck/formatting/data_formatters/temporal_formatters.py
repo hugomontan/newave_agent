@@ -268,8 +268,13 @@ class ClastComparisonFormatter(ComparisonFormatter):
                     except Exception:
                         pass
         
-        # Se não encontrou, usar padrão baseado no nome do deck comum (NW202512 = 2025)
-        # Por padrão, se não conseguir determinar, usar 2025 (ano base comum)
+        # Se não encontrou, tentar usar o ano atual como fallback mais inteligente
+        import datetime
+        ano_atual = datetime.datetime.now().year
+        # Se estamos em 2026 ou depois, usar o ano atual como fallback mais razoável
+        if ano_atual >= 2026:
+            return ano_atual
+        # Caso contrário, usar 2025 como último recurso
         return 2025
     
     def _get_year_and_month_from_deck(self, result: Dict[str, Any]) -> Optional[Tuple[int, int]]:
@@ -342,9 +347,15 @@ class ClastComparisonFormatter(ComparisonFormatter):
         jan_info = self._get_year_and_month_from_deck(result_jan)
         
         if dec_info is None:
-            dec_info = (2025, 12)  # Fallback
+            # Fallback: tentar usar ano atual
+            import datetime
+            ano_atual = datetime.datetime.now().year
+            dec_info = (ano_atual, 12) if ano_atual >= 2025 else (2025, 12)  # Fallback
         if jan_info is None:
-            jan_info = (2026, 1)  # Fallback
+            # Fallback: tentar usar ano atual + 1 para janeiro
+            import datetime
+            ano_atual = datetime.datetime.now().year
+            jan_info = (ano_atual + 1, 1) if ano_atual >= 2025 else (2026, 1)  # Fallback
             
         ano_dec, mes_dec = dec_info
         ano_jan, mes_jan = jan_info

@@ -95,49 +95,21 @@ class RestricaoEletricaTool(NEWAVETool):
                 except ValueError:
                     continue
         
-        # ETAPA 2: Buscar por nome da restrição
-        df_nomes = re_obj.nomes_restricoes
-        if df_nomes is not None and not df_nomes.empty:
-            for _, row in df_nomes.iterrows():
-                cod_rest = int(row['cod_rest'])
-                nome = str(row['nome']).lower().strip()
-                
-                if not nome:
-                    continue
-                
-                # Match exato
-                if nome == query_lower.strip():
-                    print(f"[TOOL] ✅ Código {cod_rest} encontrado por nome (match exato): '{row['nome']}'")
-                    return cod_rest
-                
-                # Match parcial - nome contido na query
-                if nome in query_lower:
-                    print(f"[TOOL] ✅ Código {cod_rest} encontrado por nome (match parcial): '{row['nome']}'")
-                    return cod_rest
-                
-                # Match por palavras-chave
-                palavras_nome = [p for p in nome.split() if len(p) > 2]
-                palavras_query = [p for p in query_lower.split() if len(p) > 2]
-                
-                # Se todas as palavras principais do nome estão na query
-                if palavras_nome and all(any(palavra in q for q in palavras_query) for palavra in palavras_nome):
-                    print(f"[TOOL] ✅ Código {cod_rest} encontrado por nome (match por palavras): '{row['nome']}'")
-                    return cod_rest
-                
-                # Match por similaridade (buscar palavras-chave específicas)
-                palavras_chave_importantes = ['cachoeira', 'ferreira', 'gomes', 'escoamento', 'madeira', 
-                                               'sul-se', 'imperatriz', 'sudeste', 'fns', 'fnese', 'xingu']
-                
-                for palavra_chave in palavras_chave_importantes:
-                    if palavra_chave in nome and palavra_chave in query_lower:
-                        print(f"[TOOL] ✅ Código {cod_rest} encontrado por palavra-chave '{palavra_chave}': '{row['nome']}'")
-                        return cod_rest
+        # ETAPA 2: Buscar por nome da restrição usando o novo método
+        cod_rest = re_obj.buscar_por_nome(query_lower)
+        if cod_rest is not None:
+            nome_encontrado = re_obj.nomes_restricoes[
+                re_obj.nomes_restricoes['cod_rest'] == cod_rest
+            ]['nome'].iloc[0] if not re_obj.nomes_restricoes.empty else str(cod_rest)
+            print(f"[TOOL] ✅ Código {cod_rest} encontrado por nome: '{nome_encontrado}'")
+            return cod_rest
         
         return None
     
     def _extract_patamar_from_query(self, query: str) -> Optional[int]:
         """
         Extrai patamar da query.
+        MELHORADO para aceitar nomes de patamares também.
         
         Args:
             query: Query do usuário
@@ -145,6 +117,17 @@ class RestricaoEletricaTool(NEWAVETool):
         Returns:
             Patamar ou None
         """
+        query_lower = query.lower()
+        
+        # Buscar por nome do patamar
+        if 'pesado' in query_lower or 'p1' in query_lower:
+            return 1
+        if 'medio' in query_lower or 'médio' in query_lower or 'p2' in query_lower:
+            return 2
+        if 'leve' in query_lower or 'p3' in query_lower:
+            return 3
+        
+        # Buscar por número (lógica existente)
         patterns = [
             r'patamar\s*(\d+)',
             r'pat\s*(\d+)',
@@ -152,7 +135,7 @@ class RestricaoEletricaTool(NEWAVETool):
         ]
         
         for pattern in patterns:
-            match = re.search(pattern, query.lower())
+            match = re.search(pattern, query_lower)
             if match:
                 try:
                     return int(match.group(1))
@@ -285,6 +268,12 @@ class RestricaoEletricaTool(NEWAVETool):
             
             dados_lista = []
             
+            # Obter mapeamento de nomes
+            df_nomes = re_obj.nomes_restricoes
+            nomes_dict = {}
+            if df_nomes is not None and not df_nomes.empty:
+                nomes_dict = dict(zip(df_nomes['cod_rest'], df_nomes['nome']))
+            
             # Processar restrições
             if df_restricoes is not None:
                 resultado_restricoes = df_restricoes.copy()
@@ -292,9 +281,13 @@ class RestricaoEletricaTool(NEWAVETool):
                     resultado_restricoes = resultado_restricoes[resultado_restricoes['cod_rest'] == cod_rest]
                 
                 for _, row in resultado_restricoes.iterrows():
+                    dados_formatados = self._format_restricao_data(row)
+                    # Adicionar nome da restrição se disponível
+                    if 'cod_rest' in dados_formatados and dados_formatados['cod_rest'] in nomes_dict:
+                        dados_formatados['nome_restricao'] = nomes_dict[dados_formatados['cod_rest']]
                     dados_lista.append({
                         'tipo': 'restricao',
-                        **self._format_restricao_data(row)
+                        **dados_formatados
                     })
             
             # Processar horizontes
@@ -313,12 +306,16 @@ class RestricaoEletricaTool(NEWAVETool):
                         ]
                 
                 for _, row in resultado_horizontes.iterrows():
+                    dados_formatados = self._format_restricao_data(row)
+                    # Adicionar nome da restrição se disponível
+                    if 'cod_rest' in dados_formatados and dados_formatados['cod_rest'] in nomes_dict:
+                        dados_formatados['nome_restricao'] = nomes_dict[dados_formatados['cod_rest']]
                     dados_lista.append({
                         'tipo': 'horizonte',
-                        **self._format_restricao_data(row)
+                        **dados_formatados
                     })
             
-            # Processar limites
+            # Processar limites - REMOVER lim_inf e adicionar nome_patamar
             if df_limites is not None:
                 resultado_limites = df_limites.copy()
                 if cod_rest is not None:
@@ -336,9 +333,17 @@ class RestricaoEletricaTool(NEWAVETool):
                         ]
                 
                 for _, row in resultado_limites.iterrows():
+                    dados_formatados = self._format_restricao_data(row)
+                    # Remover lim_inf (não queremos mostrar limites inferiores)
+                    if 'lim_inf' in dados_formatados:
+                        del dados_formatados['lim_inf']
+                    # Adicionar nome da restrição se disponível
+                    if 'cod_rest' in dados_formatados and dados_formatados['cod_rest'] in nomes_dict:
+                        dados_formatados['nome_restricao'] = nomes_dict[dados_formatados['cod_rest']]
+                    # Nome do patamar já está incluído na propriedade limites
                     dados_lista.append({
                         'tipo': 'limite',
-                        **self._format_restricao_data(row)
+                        **dados_formatados
                     })
             
             print(f"[TOOL] ✅ {len(dados_lista)} registro(s) após filtros")

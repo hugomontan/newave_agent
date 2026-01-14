@@ -23,6 +23,13 @@ class RestricaoEletrica:
     3. RE-LIM-FORM-PER-PAT: Limites por período e patamar
     """
     
+    # Mapeamento de patamares
+    PATAMARES_NOMES = {
+        1: "Pesado",
+        2: "Médio", 
+        3: "Leve"
+    }
+    
     def __init__(self, file_path: str):
         """
         Inicializa a classe com o caminho do arquivo.
@@ -36,6 +43,7 @@ class RestricaoEletrica:
         self._limites: Optional[pd.DataFrame] = None
         self._comentarios: List[str] = []
         self._nomes_restricoes: Dict[int, str] = {}  # Mapeamento cod_rest -> nome
+        self._nomes_restricoes_inverso: Dict[str, int] = {}  # Mapeamento nome -> cod_rest (para busca)
         
     @classmethod
     def read(cls, file_path: str) -> 'RestricaoEletrica':
@@ -71,7 +79,6 @@ class RestricaoEletrica:
         
         # Variáveis para rastrear contexto (último comentário e próximo código de restrição)
         ultimo_comentario_nome = None
-        proximo_cod_rest = None
         
         # Tentar diferentes encodings
         encodings = ['utf-8', 'latin-1', 'cp1252', 'iso-8859-1']
@@ -113,11 +120,13 @@ class RestricaoEletrica:
                             # Associar nome se houver comentário anterior
                             if ultimo_comentario_nome and cod_rest not in self._nomes_restricoes:
                                 self._nomes_restricoes[cod_rest] = ultimo_comentario_nome
+                                self._nomes_restricoes_inverso[ultimo_comentario_nome.lower()] = cod_rest
                         # Não adicionar aos limites pois está comentada
                         continue
                     
                     # Comentários que não são cabeçalhos de seção
-                    if not any(keyword in line for keyword in ['RE;', 'RE ', 'RE-HORIZ-PER']):
+                    # Verificar se é um comentário de nome (antes de RE-LIM-FORM-PER-PAT)
+                    if not any(keyword in line for keyword in ['RE;', 'RE ', 'RE-HORIZ-PER', 'RE-LIM-FORM-PER-PAT']):
                         self._comentarios.append(line)
                         # Extrair nome da restrição do comentário
                         nome_extraido = self._extrair_nome_restricao(line)
@@ -133,6 +142,7 @@ class RestricaoEletrica:
                         # Associar nome se houver comentário anterior
                         if ultimo_comentario_nome and cod_rest not in self._nomes_restricoes:
                             self._nomes_restricoes[cod_rest] = ultimo_comentario_nome
+                            self._nomes_restricoes_inverso[ultimo_comentario_nome.lower()] = cod_rest
                             # Não limpar ultimo_comentario_nome aqui, pois pode haver múltiplos registros da mesma restrição
                         restricoes_data.append(restricao)
                 
@@ -152,6 +162,7 @@ class RestricaoEletrica:
                         # Associar nome se houver comentário anterior (mesmo que haja outros comentários no meio)
                         if ultimo_comentario_nome and cod_rest not in self._nomes_restricoes:
                             self._nomes_restricoes[cod_rest] = ultimo_comentario_nome
+                            self._nomes_restricoes_inverso[ultimo_comentario_nome.lower()] = cod_rest
                             # Não limpar ultimo_comentario_nome aqui, pois pode haver múltiplos registros da mesma restrição
                         # Só adicionar aos limites se não estiver comentada
                         if not line.startswith('&'):
@@ -232,6 +243,7 @@ class RestricaoEletrica:
     def _extrair_nome_restricao(self, comentario: str) -> Optional[str]:
         """
         Extrai o nome da restrição de um comentário.
+        MELHORADO para capturar melhor os nomes dos comentários.
         
         Args:
             comentario: Linha de comentário (começa com &)
@@ -248,8 +260,15 @@ class RestricaoEletrica:
         if 'tratamento realizado' in comentario_lower:
             return None
         
-        # Caso 1: "Restricao de geracao Cachoeira Caldeirão + Ferreira Gomes"
-        if 'restricao de geracao' in comentario_lower or 'restrição de geração' in comentario_lower or 'restricao de geracao' in comentario_lower:
+        # Caso 1: "Escoamento Madeira" (nome direto, sem prefixo)
+        # Verificar se parece um nome simples (contém apenas letras, espaços, hífens, +, números)
+        if not any(palavra in comentario_lower for palavra in ['limite', 'restricao', 'restrição', 'valores', '=']):
+            # Verificar se parece um nome (contém principalmente letras, espaços, hífens, +)
+            if re.match(r'^[A-Za-zÀ-ÿ\s\-\+0-9]+$', comentario) and len(comentario) > 3:
+                return comentario.strip()
+        
+        # Caso 2: "Restricao de geracao Cachoeira Caldeirão + Ferreira Gomes"
+        if 'restricao de geracao' in comentario_lower or 'restrição de geração' in comentario_lower:
             # Extrair parte após "de geracao" ou "de geração"
             match = re.search(r'(?:restricao|restrição)\s+de\s+(?:geracao|geração)\s+(.+)', comentario_lower, re.IGNORECASE)
             if match:
@@ -261,12 +280,6 @@ class RestricaoEletrica:
                 nome = partes[1].strip()
                 if nome and len(nome) > 3:
                     return nome.title()
-        
-        # Caso 2: "Escoamento Madeira" (nome direto, sem prefixo)
-        if not any(palavra in comentario_lower for palavra in ['limite', 'restricao', 'restrição', 'valores']):
-            # Verificar se parece um nome (contém apenas letras, espaços, hífens, +)
-            if re.match(r'^[A-Za-zÀ-ÿ\s\-\+]+$', comentario) and len(comentario) > 3:
-                return comentario.strip()
         
         # Caso 3: "Limite Sul-SE = Min..." -> extrair "Sul-SE"
         # Caso 4: "Limite Imperatriz - Sudeste = ..." -> extrair "Imperatriz - Sudeste"
@@ -366,10 +379,55 @@ class RestricaoEletrica:
         dados = [{'cod_rest': cod, 'nome': nome} for cod, nome in self._nomes_restricoes.items()]
         return pd.DataFrame(dados).sort_values('cod_rest')
     
+    @staticmethod
+    def get_nome_patamar(patamar: int) -> str:
+        """
+        Retorna o nome do patamar baseado no número.
+        
+        Args:
+            patamar: Número do patamar (1, 2, 3)
+            
+        Returns:
+            Nome do patamar: "Pesado", "Médio" ou "Leve"
+        """
+        return RestricaoEletrica.PATAMARES_NOMES.get(patamar, f"Patamar {patamar}")
+    
+    def buscar_por_nome(self, nome_query: str) -> Optional[int]:
+        """
+        Busca código da restrição por nome (busca flexível).
+        
+        Args:
+            nome_query: Nome ou parte do nome da restrição (ex: "madeira", "escoamento madeira")
+            
+        Returns:
+            Código da restrição ou None se não encontrado
+        """
+        nome_query_lower = nome_query.lower().strip()
+        
+        # Busca exata
+        if nome_query_lower in self._nomes_restricoes_inverso:
+            return self._nomes_restricoes_inverso[nome_query_lower]
+        
+        # Busca parcial (nome contém a query)
+        for nome, cod_rest in self._nomes_restricoes_inverso.items():
+            if nome_query_lower in nome:
+                return cod_rest
+        
+        # Busca por palavras-chave
+        palavras_query = [p for p in nome_query_lower.split() if len(p) > 2]
+        for nome, cod_rest in self._nomes_restricoes_inverso.items():
+            palavras_nome = [p for p in nome.split() if len(p) > 2]
+            # Se todas as palavras principais da query estão no nome
+            if palavras_query and all(any(pq in pn for pn in palavras_nome) for pq in palavras_query):
+                return cod_rest
+        
+        return None
+    
     @property
     def limites(self) -> Optional[pd.DataFrame]:
         """
         Retorna DataFrame com os limites por período e patamar.
+        INCLUI coluna adicional 'nome_patamar' com o nome do patamar.
         
         Padrão inewave: propriedade que retorna DataFrame ou None.
         
@@ -379,9 +437,19 @@ class RestricaoEletrica:
             - per_ini (str): Período inicial (formato: YYYY/MM)
             - per_fin (str): Período final (formato: YYYY/MM)
             - patamar (int): Patamar (1, 2, 3, ...)
+            - nome_patamar (str): Nome do patamar ("Pesado", "Médio", "Leve")
             - lim_inf (float): Limite inferior
             - lim_sup (float): Limite superior
             None se não houver dados
         """
-        return self._limites
+        if self._limites is None:
+            return None
+        
+        # Criar cópia para não modificar o original
+        df = self._limites.copy()
+        
+        # Adicionar coluna com nome do patamar
+        df['nome_patamar'] = df['patamar'].apply(self.get_nome_patamar)
+        
+        return df
 

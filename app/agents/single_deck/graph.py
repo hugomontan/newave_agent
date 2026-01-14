@@ -508,7 +508,10 @@ def run_query_stream(query: str, deck_path: str, session_id: Optional[str] = Non
                 
                 elif node_name == "interpreter":
                     response = node_output.get("final_response") if node_output else None
+                    visualization_data = node_output.get("visualization_data") if node_output else None
                     safe_print(f"[GRAPH] Interpreter retornou resposta: {len(response) if response else 0} caracteres")
+                    if visualization_data:
+                        safe_print(f"[GRAPH] Interpreter retornou visualization_data: {visualization_data.get('visualization_type', 'N/A')}")
                     
                     # #region agent log
                     _write_debug_log({
@@ -517,7 +520,13 @@ def run_query_stream(query: str, deck_path: str, session_id: Optional[str] = Non
                         "hypothesisId": "D",
                         "location": "graph.py:497",
                         "message": "Interpreter output in graph",
-                        "data": {"has_response": bool(response), "response_length": len(response) if response else 0, "response_preview": response[:200] if response else None, "node_output_keys": list(node_output.keys()) if node_output else []},
+                        "data": {
+                            "has_response": bool(response),
+                            "has_visualization_data": visualization_data is not None,
+                            "response_length": len(response) if response else 0,
+                            "response_preview": response[:200] if response else None,
+                            "node_output_keys": list(node_output.keys()) if node_output else []
+                        },
                         "timestamp": int(__import__('time').time() * 1000)
                     })
                     # #endregion
@@ -528,7 +537,15 @@ def run_query_stream(query: str, deck_path: str, session_id: Optional[str] = Non
                         chunk_size = 50
                         for i in range(0, len(response), chunk_size):
                             yield f"data: {json.dumps({'type': 'response_chunk', 'chunk': response[i:i + chunk_size]})}\n\n"
-                        yield f"data: {json.dumps({'type': 'response_complete', 'response': response}, allow_nan=False)}\n\n"
+                        
+                        # Incluir visualization_data no evento response_complete
+                        response_complete_data = {'type': 'response_complete', 'response': response}
+                        if visualization_data:
+                            # Limpar NaN/Inf antes de serializar
+                            cleaned_visualization_data = _clean_nan_for_json(visualization_data)
+                            response_complete_data['visualization_data'] = cleaned_visualization_data
+                        
+                        yield f"data: {json.dumps(response_complete_data, allow_nan=False)}\n\n"
                         
                         # #region agent log
                         _write_debug_log({
