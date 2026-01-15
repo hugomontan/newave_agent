@@ -11,6 +11,7 @@ export interface QueryResponse {
   retry_count: number;
   error: string | null;
   comparison_data?: {
+    // Campos legados para compatibilidade com 2 decks
     deck_1: {
       name: string;
       success: boolean;
@@ -25,6 +26,18 @@ export interface QueryResponse {
       summary?: Record<string, unknown>;
       error?: string;
     };
+    deck_1_name?: string;
+    deck_2_name?: string;
+    // Novos campos para N decks
+    deck_names?: string[];
+    deck_displays?: string[];
+    deck_count?: number;
+    decks_raw?: Array<{
+      deck_name: string;
+      display_name: string;
+      data: Record<string, unknown>;
+    }>;
+    // Dados formatados
     chart_data?: {
       labels: string[];
       datasets: Array<{
@@ -321,6 +334,90 @@ export async function reindexDocs(): Promise<{ documents_count: number; message:
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.detail || "Erro ao reindexar");
+  }
+
+  return response.json();
+}
+
+// =====================
+// APIs para N-Decks
+// =====================
+
+export interface DeckInfo {
+  name: string;
+  display_name: string;
+  year: number;
+  month: number;
+}
+
+export interface DecksListResponse {
+  decks: DeckInfo[];
+  total: number;
+}
+
+export interface ComparisonInitResponse {
+  session_id: string;
+  message: string;
+  selected_decks: DeckInfo[];
+  files_count: number;
+}
+
+/**
+ * Lista todos os decks disponíveis no repositório.
+ * Retorna ordenados cronologicamente (mais antigo primeiro).
+ */
+export async function listAvailableDecks(): Promise<DecksListResponse> {
+  const response = await fetch(`${API_URL}/decks/list`);
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || "Erro ao listar decks");
+  }
+
+  return response.json();
+}
+
+/**
+ * Inicializa o modo comparação com os decks selecionados.
+ * @param selectedDecks Lista de nomes dos decks a comparar (opcional)
+ */
+export async function initComparison(selectedDecks?: string[]): Promise<ComparisonInitResponse> {
+  const response = await fetch(`${API_URL}/init-comparison`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      selected_decks: selectedDecks,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || "Erro ao inicializar comparação");
+  }
+
+  return response.json();
+}
+
+/**
+ * Carrega um deck específico do repositório.
+ * @param deckName Nome do deck (ex: "NW202512")
+ */
+export async function loadDeckFromRepo(deckName: string): Promise<UploadResponse> {
+  const response = await fetch(`${API_URL}/load-deck`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      deck_name: deckName,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || "Erro ao carregar deck");
   }
 
   return response.json();

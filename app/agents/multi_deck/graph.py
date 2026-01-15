@@ -1,12 +1,13 @@
 """
 Graph para Multi-Deck Agent - especializado para comparações entre decks.
+Suporta N decks para comparação dinâmica.
 """
 
 import json
 import math
 import os
 import json as json_module
-from typing import Generator, Any, Optional
+from typing import Generator, Any, Optional, List, Dict
 from langgraph.graph import StateGraph, END
 from app.agents.multi_deck.state import MultiDeckState
 from app.agents.multi_deck.nodes.rag_nodes import (
@@ -18,7 +19,11 @@ from app.agents.multi_deck.nodes.llm_nodes import (
 )
 from app.utils.observability import get_langfuse_handler
 from app.config import safe_print
-from app.utils.deck_loader import get_december_deck_path, get_january_deck_path
+from app.utils.deck_loader import (
+    load_multiple_decks,
+    get_deck_display_names_dict,
+    list_available_decks,
+)
 
 # Função auxiliar para escrever no log de debug de forma segura
 def _write_debug_log(data: dict):
@@ -79,12 +84,12 @@ NODE_DESCRIPTIONS = {
     "comparison_coder": {
         "name": "Code Generator", 
         "icon": "[CODE]",
-        "description": "Gerando codigo Python para comparar ambos os decks..."
+        "description": "Gerando codigo Python para comparar os decks..."
     },
     "comparison_executor": {
         "name": "Code Executor",
         "icon": "[EXEC]",
-        "description": "Executando o codigo gerado em ambos os decks..."
+        "description": "Executando o codigo gerado nos decks selecionados..."
     },
     "comparison_interpreter": {
         "name": "Comparison Interpreter",
@@ -161,8 +166,8 @@ def create_multi_deck_agent() -> StateGraph:
        - Se tool executou: vai direto para Comparison Interpreter
        - Se tool não executou: continua para RAG Simplificado
     2. RAG Simplificado: Busca no abstract.md
-    3. Comparison Coder: Gera código que processa ambos os decks
-    4. Comparison Executor: Executa código em paralelo nos dois decks
+    3. Comparison Coder: Gera código que processa os decks selecionados
+    4. Comparison Executor: Executa código em paralelo nos N decks
     5. Retry Check: Verifica se precisa retry
     6. Comparison Interpreter: Interpreta e formata comparação
     """
@@ -249,20 +254,57 @@ def reset_multi_deck_agent():
     _agent = None
 
 
-def get_initial_state(query: str, deck_path: str, llm_mode: bool = False) -> dict:
-    """Retorna o estado inicial para uma query multi-deck."""
-    try:
-        deck_december = get_december_deck_path()
-        deck_january = get_january_deck_path()
-    except FileNotFoundError:
-        deck_december = ""
-        deck_january = ""
+def get_initial_state(
+    query: str, 
+    deck_path: str, 
+    selected_decks: Optional[List[str]] = None,
+    llm_mode: bool = False
+) -> dict:
+    """
+    Retorna o estado inicial para uma query multi-deck.
+    
+    Args:
+        query: A pergunta do usuário
+        deck_path: Caminho do deck principal (para compatibilidade)
+        selected_decks: Lista de nomes dos decks selecionados
+        llm_mode: Se True, usa modo LLM
+        
+    Returns:
+        Estado inicial do agent
+    """
+    # Se não foram especificados decks, usar os dois mais recentes disponíveis
+    if not selected_decks:
+        available = list_available_decks()
+        if len(available) >= 2:
+            # Pegar os dois mais recentes (últimos da lista ordenada)
+            selected_decks = [d["name"] for d in available[-2:]]
+        elif len(available) == 1:
+            selected_decks = [available[0]["name"]]
+        else:
+            selected_decks = []
+    
+    # Carregar os decks e obter caminhos
+    deck_paths: Dict[str, str] = {}
+    deck_display_names: Dict[str, str] = {}
+    
+    if selected_decks:
+        try:
+            paths = load_multiple_decks(selected_decks)
+            deck_paths = {name: str(path) for name, path in paths.items()}
+            deck_display_names = get_deck_display_names_dict(selected_decks)
+            
+            # Usar o primeiro deck como deck_path para compatibilidade
+            if not deck_path and selected_decks:
+                deck_path = deck_paths.get(selected_decks[0], "")
+        except Exception as e:
+            safe_print(f"[MULTI-DECK] Erro ao carregar decks: {e}")
     
     return {
         "query": query,
         "deck_path": deck_path,
-        "deck_december_path": str(deck_december) if deck_december else "",
-        "deck_january_path": str(deck_january) if deck_january else "",
+        "selected_decks": selected_decks,
+        "deck_paths": deck_paths,
+        "deck_display_names": deck_display_names,
         "relevant_docs": [],
         "generated_code": "",
         "execution_result": {},
@@ -291,20 +333,27 @@ def get_initial_state(query: str, deck_path: str, llm_mode: bool = False) -> dic
     }
 
 
-def run_query(query: str, deck_path: str, session_id: Optional[str] = None, llm_mode: bool = False) -> dict:
+def run_query(
+    query: str, 
+    deck_path: str, 
+    session_id: Optional[str] = None, 
+    selected_decks: Optional[List[str]] = None,
+    llm_mode: bool = False
+) -> dict:
     """Executa uma query no Multi-Deck Agent."""
     agent = get_multi_deck_agent()
-    initial_state = get_initial_state(query, deck_path, llm_mode)
+    initial_state = get_initial_state(query, deck_path, selected_decks, llm_mode)
     
     safe_print("[LANGFUSE DEBUG] ===== INÍCIO: run_query (multi-deck) =====")
     safe_print(f"[LANGFUSE DEBUG] Query: {query[:100]}")
     safe_print(f"[LANGFUSE DEBUG] Deck path: {deck_path}")
+    safe_print(f"[LANGFUSE DEBUG] Selected decks: {selected_decks}")
     safe_print(f"[LANGFUSE DEBUG] Session ID: {session_id}")
     
     langfuse_handler = get_langfuse_handler(
         session_id=session_id or deck_path,
         trace_name="multi-deck-query",
-        metadata={"query": query[:100]}
+        metadata={"query": query[:100], "selected_decks": selected_decks}
     )
     
     config = {"callbacks": [langfuse_handler]} if langfuse_handler else {}
@@ -332,20 +381,27 @@ def run_query(query: str, deck_path: str, session_id: Optional[str] = None, llm_
     return result
 
 
-def run_query_stream(query: str, deck_path: str, session_id: Optional[str] = None, llm_mode: bool = False) -> Generator[str, None, None]:
+def run_query_stream(
+    query: str, 
+    deck_path: str, 
+    session_id: Optional[str] = None, 
+    selected_decks: Optional[List[str]] = None,
+    llm_mode: bool = False
+) -> Generator[str, None, None]:
     """Executa uma query no Multi-Deck Agent com streaming de eventos."""
     agent = get_multi_deck_agent()
-    initial_state = get_initial_state(query, deck_path, llm_mode)
+    initial_state = get_initial_state(query, deck_path, selected_decks, llm_mode)
     
     safe_print("[LANGFUSE DEBUG] ===== INÍCIO: run_query_stream (multi-deck) =====")
     safe_print(f"[LANGFUSE DEBUG] Query: {query[:100]}")
     safe_print(f"[LANGFUSE DEBUG] Deck path: {deck_path}")
+    safe_print(f"[LANGFUSE DEBUG] Selected decks: {selected_decks}")
     safe_print(f"[LANGFUSE DEBUG] Session ID: {session_id}")
     
     langfuse_handler = get_langfuse_handler(
         session_id=session_id or deck_path,
         trace_name="multi-deck-query-stream",
-        metadata={"query": query[:100], "streaming": True}
+        metadata={"query": query[:100], "streaming": True, "selected_decks": selected_decks}
     )
     
     config = {"callbacks": [langfuse_handler]} if langfuse_handler else {}
@@ -355,7 +411,12 @@ def run_query_stream(query: str, deck_path: str, session_id: Optional[str] = Non
     else:
         safe_print(f"[LANGFUSE DEBUG] ⚠️ Executando query stream SEM rastreamento Langfuse")
     
-    yield f"data: {json.dumps({'type': 'start', 'message': 'Iniciando processamento...'})}\n\n"
+    # Incluir informações dos decks selecionados no evento de início
+    decks_info = [
+        {"name": name, "display_name": initial_state["deck_display_names"].get(name, name)}
+        for name in initial_state.get("selected_decks", [])
+    ]
+    yield f"data: {json.dumps({'type': 'start', 'message': 'Iniciando processamento...', 'selected_decks': decks_info})}\n\n"
     
     current_retry = 0
     is_fallback = False
@@ -411,7 +472,8 @@ def run_query_stream(query: str, deck_path: str, session_id: Optional[str] = Non
                         yield f"data: {json.dumps({'type': 'node_detail', 'node': node_name, 'detail': f'✅ Tool {tool_used} executada com sucesso!'})}\n\n"
                         if tool_result.get("success"):
                             summary = tool_result.get("summary", {})
-                            yield f"data: {json.dumps({'type': 'node_detail', 'node': node_name, 'detail': f' {summary.get("total_registros", 0)} registros processados'})}\n\n"
+                            total_registros = summary.get("total_registros", 0)
+                        yield f"data: {json.dumps({'type': 'node_detail', 'node': node_name, 'detail': f' {total_registros} registros processados'})}\n\n"
                     else:
                         yield f"data: {json.dumps({'type': 'node_detail', 'node': node_name, 'detail': '⚠️ Nenhuma tool disponível, continuando fluxo normal'})}\n\n"
                 
@@ -456,5 +518,3 @@ def run_query_stream(query: str, deck_path: str, session_id: Optional[str] = Non
         
     except Exception as e:
         yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
-
-

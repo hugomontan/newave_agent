@@ -14,26 +14,34 @@ interface ComparisonRouterProps {
 }
 
 export function ComparisonRouter({ comparison }: ComparisonRouterProps) {
-  const { visualization_type } = comparison;
+  const { visualization_type, tool_name, comparison_table, chart_data } = comparison;
 
   // Normalizar visualization_type (remover espaços, converter para string)
   const normalizedVizType = visualization_type?.toString().trim();
+  const normalizedToolName = tool_name?.toString().trim();
+  
+  // Verificar se há dados para renderizar mesmo sem visualization_type específico
+  const hasTableData = comparison_table && comparison_table.length > 0;
+  const hasChartData = chart_data && chart_data.labels && chart_data.labels.length > 0;
   
   switch (normalizedVizType) {
     case "table_with_line_chart":
       // Tools que compartilham table_with_line_chart
-      const tool_name = comparison.tool_name?.toString().trim();
-      if (tool_name === "CargaMensalTool" || tool_name === "CadicTool") {
+      if (normalizedToolName === "CargaMensalTool" || normalizedToolName === "CadicTool") {
         return <CargaMensalView comparison={comparison} />;
       }
-      if (tool_name === "ClastValoresTool") {
+      if (normalizedToolName === "ClastValoresTool") {
+        return <CVUView comparison={comparison} />;
+      }
+      // Fallback: tentar renderizar com CVUView se houver dados
+      if (hasTableData || hasChartData) {
         return <CVUView comparison={comparison} />;
       }
       // Fallback para outras tools com table_with_line_chart
       return (
         <div className="w-full space-y-6 mt-4">
           <p className="text-sm text-muted-foreground">
-            Visualização não implementada para tool: {tool_name || "desconhecida"}
+            Visualização não implementada para tool: {normalizedToolName || "desconhecida"}
           </p>
         </div>
       );
@@ -50,14 +58,48 @@ export function ComparisonRouter({ comparison }: ComparisonRouterProps) {
     case "vazao_minima_changes_table":
       return <VazaoMinimaView comparison={comparison} />;
 
+    case "llm_free":
+    case "unknown":
+    case "desconhecido":
+      // Tentar renderizar com base no tool_name e dados disponíveis
+      if (normalizedToolName === "ClastValoresTool" && (hasTableData || hasChartData)) {
+        return <CVUView comparison={comparison} />;
+      }
+      if ((normalizedToolName === "CargaMensalTool" || normalizedToolName === "CadicTool") && (hasTableData || hasChartData)) {
+        return <CargaMensalView comparison={comparison} />;
+      }
+      // Se não há dados, mostrar mensagem
+      if (!hasTableData && !hasChartData) {
+        return (
+          <div className="w-full space-y-6 mt-4">
+            <p className="text-sm text-muted-foreground">
+              Visualização não implementada para este tipo: {visualization_type || "desconhecido"}
+            </p>
+          </div>
+        );
+      }
+      // Se há dados mas não há visualização específica, tentar renderizar genérico
+      return <CVUView comparison={comparison} />;
+
     default:
-      // Fallback: retornar mensagem
-      return (
-        <div className="w-full space-y-6 mt-4">
-          <p className="text-sm text-muted-foreground">
-            Visualização não implementada para este tipo: {visualization_type || "desconhecido"}
-          </p>
-        </div>
-      );
+      // Fallback: tentar renderizar com base em tool_name e dados disponíveis
+      if (normalizedToolName === "ClastValoresTool" && (hasTableData || hasChartData)) {
+        return <CVUView comparison={comparison} />;
+      }
+      if ((normalizedToolName === "CargaMensalTool" || normalizedToolName === "CadicTool") && (hasTableData || hasChartData)) {
+        return <CargaMensalView comparison={comparison} />;
+      }
+      // Se não há dados, mostrar mensagem
+      if (!hasTableData && !hasChartData) {
+        return (
+          <div className="w-full space-y-6 mt-4">
+            <p className="text-sm text-muted-foreground">
+              Visualização não implementada para este tipo: {visualization_type || "desconhecido"}
+            </p>
+          </div>
+        );
+      }
+      // Se há dados mas não há visualização específica, tentar renderizar genérico
+      return <CVUView comparison={comparison} />;
   }
 }

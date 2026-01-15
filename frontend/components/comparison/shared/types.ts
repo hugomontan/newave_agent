@@ -1,6 +1,15 @@
 // Tipos compartilhados para componentes de comparação
+// Suporta N decks para comparação dinâmica
+
+// Tipo para informações de um deck individual
+export interface DeckRawData {
+  deck_name: string;
+  display_name: string;
+  data: Record<string, unknown>;
+}
 
 export interface ComparisonData {
+  // Campos legados para compatibilidade com 2 decks
   deck_1: {
     name: string;
     success: boolean;
@@ -15,6 +24,16 @@ export interface ComparisonData {
     summary?: Record<string, unknown>;
     error?: string;
   };
+  deck_1_name?: string;
+  deck_2_name?: string;
+  
+  // Novos campos para N decks
+  deck_names?: string[];
+  deck_displays?: string[];
+  deck_count?: number;
+  decks_raw?: DeckRawData[];
+  
+  // Dados formatados
   chart_data?: ChartData | null;
   charts_by_par?: Record<string, {
     par: string;
@@ -32,7 +51,25 @@ export interface ComparisonData {
   visualization_type?: string;
   comparison_by_type?: Record<string, any>;
   comparison_by_usina?: Record<string, any>;
+  comparison_by_ree?: Record<string, any>;
+  stats?: Record<string, any>;
   tool_name?: string;
+}
+
+// Helper para verificar se é análise histórica (mais de 2 decks)
+export function isHistoricalAnalysis(comparison: ComparisonData): boolean {
+  return (comparison.deck_count ?? 2) > 2;
+}
+
+// Helper para obter lista de nomes de decks
+export function getDeckNames(comparison: ComparisonData): string[] {
+  if (comparison.deck_displays && comparison.deck_displays.length > 0) {
+    return comparison.deck_displays;
+  }
+  return [
+    comparison.deck_1?.name || "Deck 1",
+    comparison.deck_2?.name || "Deck 2"
+  ];
 }
 
 export interface ChartData {
@@ -61,6 +98,8 @@ export interface TableRow {
   classe_info?: string; // Campo de validação: "Custos de Classe - Nome da usina"
   ano?: string | number;
   mes?: string | number;
+  
+  // Campos legados para 2 decks
   deck_1?: number | null;
   deck_2?: number | null;
   deck_1_value?: number | null;
@@ -69,6 +108,11 @@ export interface TableRow {
   difference?: number | null;
   diferenca_percent?: number | null;
   difference_percent?: number | null;
+  
+  // Campos dinâmicos para N decks (deck_3, deck_4, etc.)
+  [key: `deck_${number}`]: number | null | undefined;
+  
+  // Outros campos
   par_key?: string;
   par?: string;
   sentido?: string;
@@ -78,4 +122,10 @@ export interface TableRow {
   periodo_coluna?: string;
   period?: string;
   is_inclusao_ou_exclusao?: boolean;
+  
+  // Campos para análise histórica
+  trend?: "up" | "down" | "stable";
+  min_value?: number;
+  max_value?: number;
+  avg_value?: number;
 }

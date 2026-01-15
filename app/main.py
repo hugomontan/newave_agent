@@ -200,7 +200,14 @@ async def query_deck(request: QueryRequest):
     
     try:
         if analysis_mode == "comparison":
-            result = multi_deck_run_query(request.query, deck_path, session_id=session_id)
+            # Obter decks selecionados da sessão de comparação
+            selected_decks = comparison_sessions.get(session_id)
+            result = multi_deck_run_query(
+                request.query, 
+                deck_path, 
+                session_id=session_id,
+                selected_decks=selected_decks
+            )
         else:
             result = single_deck_run_query(request.query, deck_path, session_id=session_id)
         
@@ -253,7 +260,14 @@ async def query_deck_stream(request: QueryRequest):
     def event_generator():
         try:
             if analysis_mode == "comparison":
-                yield from multi_deck_run_query_stream(request.query, deck_path, session_id=session_id)
+                # Obter decks selecionados da sessão de comparação
+                selected_decks = comparison_sessions.get(session_id)
+                yield from multi_deck_run_query_stream(
+                    request.query, 
+                    deck_path, 
+                    session_id=session_id,
+                    selected_decks=selected_decks
+                )
             else:
                 yield from single_deck_run_query_stream(request.query, deck_path, session_id=session_id)
         except Exception as e:
@@ -337,6 +351,64 @@ class LoadDeckRequest(BaseModel):
     deck_name: str
 
 
+class InitComparisonRequest(BaseModel):
+    selected_decks: list[str] | None = None  # Lista de nomes dos decks a comparar
+
+
+class DeckInfo(BaseModel):
+    name: str
+    display_name: str
+    year: int
+    month: int
+
+
+class DecksListResponse(BaseModel):
+    decks: list[DeckInfo]
+    total: int
+
+
+class ComparisonInitResponse(BaseModel):
+    session_id: str
+    message: str
+    selected_decks: list[DeckInfo]
+    files_count: int
+
+
+# Armazenar decks selecionados por sessão
+comparison_sessions: dict[str, list[str]] = {}
+
+
+@app.get("/decks/list", response_model=DecksListResponse)
+async def list_decks():
+    """
+    Lista todos os decks disponíveis no repositório.
+    Retorna ordenados cronologicamente (mais antigo primeiro).
+    """
+    from app.utils.deck_loader import list_available_decks
+    
+    try:
+        available_decks = list_available_decks()
+        decks = [
+            DeckInfo(
+                name=d["name"],
+                display_name=d["display_name"],
+                year=d["year"],
+                month=d["month"]
+            )
+            for d in available_decks
+        ]
+        
+        return DecksListResponse(
+            decks=decks,
+            total=len(decks)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Erro ao listar decks: {str(e)}"
+        )
+
+
 @app.post("/load-deck", response_model=UploadResponse)
 async def load_deck_from_repo(request: LoadDeckRequest):
     """
@@ -372,34 +444,86 @@ async def load_deck_from_repo(request: LoadDeckRequest):
         )
 
 
-@app.post("/init-comparison", response_model=UploadResponse)
-async def init_comparison_mode():
+@app.post("/init-comparison", response_model=ComparisonInitResponse)
+async def init_comparison_mode(request: InitComparisonRequest = None):
     """
-    Inicializa o modo comparacao usando os decks do repositorio.
-    Versao otimizada: usa o deck diretamente sem copiar arquivos.
+    Inicializa o modo comparacao usando os decks selecionados.
+    Se nenhum deck for especificado, usa os dois mais recentes.
+    
+    Args:
+        request: Opcional - Lista de nomes dos decks a comparar
     """
-    from app.utils.deck_loader import get_december_deck_path
+    from app.utils.deck_loader import (
+        list_available_decks, 
+        load_multiple_decks, 
+        get_deck_display_name
+    )
     import uuid
     
     try:
-        # Usar deck de dezembro diretamente (sem copiar arquivos)
-        deck_path = get_december_deck_path()
+        available_decks = list_available_decks()
         
-        # Criar sessao referenciando o deck original
+        if not available_decks:
+            raise HTTPException(
+                status_code=404,
+                detail="Nenhum deck disponível no repositório"
+            )
+        
+        # Determinar quais decks usar
+        if request and request.selected_decks:
+            # Validar que todos os decks existem
+            available_names = {d["name"] for d in available_decks}
+            for deck_name in request.selected_decks:
+                if deck_name not in available_names:
+                    raise HTTPException(
+                        status_code=404,
+                        detail=f"Deck {deck_name} não encontrado"
+                    )
+            selected_deck_names = request.selected_decks
+        else:
+            # Usar os dois mais recentes (últimos da lista ordenada)
+            if len(available_decks) >= 2:
+                selected_deck_names = [d["name"] for d in available_decks[-2:]]
+            else:
+                selected_deck_names = [available_decks[0]["name"]]
+        
+        # Carregar os decks
+        deck_paths = load_multiple_decks(selected_deck_names)
+        
+        # Usar o primeiro deck como referência para a sessão
+        first_deck_path = deck_paths[selected_deck_names[0]]
+        
+        # Criar sessão
         session_id = str(uuid.uuid4())
-        sessions[session_id] = deck_path
+        sessions[session_id] = first_deck_path
+        comparison_sessions[session_id] = selected_deck_names
         
-        files_count = len(list(deck_path.glob("*")))
+        # Contar arquivos do primeiro deck
+        files_count = len(list(first_deck_path.glob("*")))
         
-        return UploadResponse(
+        # Preparar informações dos decks selecionados
+        selected_decks_info = [
+            DeckInfo(
+                name=name,
+                display_name=get_deck_display_name(name),
+                year=next(d["year"] for d in available_decks if d["name"] == name),
+                month=next(d["month"] for d in available_decks if d["name"] == name)
+            )
+            for name in selected_deck_names
+        ]
+        
+        return ComparisonInitResponse(
             session_id=session_id,
-            message="Modo comparacao inicializado",
+            message=f"Modo comparação inicializado com {len(selected_deck_names)} deck(s)",
+            selected_decks=selected_decks_info,
             files_count=files_count
         )
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Erro ao inicializar modo comparacao: {str(e)}"
+            detail=f"Erro ao inicializar modo comparação: {str(e)}"
         )
 
 

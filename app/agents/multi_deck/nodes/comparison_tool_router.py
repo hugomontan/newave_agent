@@ -67,7 +67,7 @@ TOOL_SHORT_DESCRIPTIONS = {
 def comparison_tool_router_node(state: MultiDeckState) -> dict:
     """
     Node que verifica se a query pode ser atendida por uma tool pré-programada.
-    Se sim, executa a tool diretamente em ambos os decks. Se não, retorna para o fluxo normal.
+    Se sim, executa a tool diretamente nos N decks. Se não, retorna para o fluxo normal.
     
     Returns:
         Dict com:
@@ -77,23 +77,24 @@ def comparison_tool_router_node(state: MultiDeckState) -> dict:
     """
     query = state.get("query", "")
     deck_path = state.get("deck_path", "")
-    deck_december_path = state.get("deck_december_path", "")
-    deck_january_path = state.get("deck_january_path", "")
+    selected_decks = state.get("selected_decks", [])
+    deck_paths = state.get("deck_paths", {})
+    deck_display_names = state.get("deck_display_names", {})
     
     safe_print("[TOOL ROUTER] ===== INÍCIO: comparison_tool_router_node (MULTI-DECK) =====")
     safe_print(f"[TOOL ROUTER] Query: {query[:100]}")
     safe_print(f"[TOOL ROUTER] Deck path: {deck_path}")
-    safe_print(f"[TOOL ROUTER] Deck Dezembro: {deck_december_path}")
-    safe_print(f"[TOOL ROUTER] Deck Janeiro: {deck_january_path}")
+    safe_print(f"[TOOL ROUTER] Selected decks: {selected_decks}")
+    safe_print(f"[TOOL ROUTER] Deck display names: {deck_display_names}")
     
-    if not deck_path:
-        safe_print("[TOOL ROUTER] ❌ Deck path não especificado")
+    if not deck_path and not selected_decks:
+        safe_print("[TOOL ROUTER] ❌ Deck path e selected_decks não especificados")
         return {"tool_route": False}
     
-    # Obter todas as tools disponíveis (modo comparison)
+    # Obter todas as tools disponíveis (modo comparison) com selected_decks
     safe_print("[TOOL ROUTER] Obtendo tools disponiveis (modo comparison)...")
     try:
-        tools = get_multi_deck_tools(deck_path)
+        tools = get_multi_deck_tools(deck_path, selected_decks=selected_decks)
         safe_print(f"[TOOL ROUTER] [OK] {len(tools)} tools disponiveis")
         tool_names = [t.get_name() for t in tools]
         safe_print(f"[TOOL ROUTER]   Tools: {', '.join(tool_names)}")
@@ -163,74 +164,72 @@ def comparison_tool_router_node(state: MultiDeckState) -> dict:
                 }
             }
     
-    # Função para executar tool em ambos os decks (modo comparison)
+    # Função para executar tool em N decks (modo comparison)
     def _execute_tool_comparison(tool_class, tool_name: str, query_to_use: str = None):
         """
-        Executa uma tool em ambos os decks e retorna resultado de comparação.
+        Executa uma tool em N decks e retorna resultado de comparação.
         
-        NÃO tenta calcular diferenças automaticamente - passa os dados brutos
-        para o LLM interpretar livremente (pode ser por período, usina, tipo, etc).
+        Se a tool for MultiDeckComparisonTool, usa ela diretamente.
+        Caso contrário, usa MultiDeckComparisonTool como wrapper para executar
+        a tool single-deck em todos os decks selecionados.
         """
         if query_to_use is None:
             query_to_use = query
         
-        safe_print(f"[TOOL ROUTER] [COMPARISON] Executando {tool_name} em ambos os decks...")
+        safe_print(f"[TOOL ROUTER] [COMPARISON] Executando {tool_name} em {len(selected_decks)} decks...")
         safe_print(f"[TOOL ROUTER]   Query usada: {query_to_use[:100]}")
+        safe_print(f"[TOOL ROUTER]   Decks: {selected_decks}")
+        safe_print(f"[TOOL ROUTER]   Deck paths: {list(deck_paths.keys())}")
         
         try:
-            safe_print(f"[TOOL ROUTER]   Deck Dezembro: {deck_december_path}")
-            safe_print(f"[TOOL ROUTER]   Deck Janeiro: {deck_january_path}")
+            # Se a tool é MultiDeckComparisonTool, usar diretamente
+            if tool_name == "MultiDeckComparisonTool":
+                safe_print(f"[TOOL ROUTER] [COMPARISON] Tool é MultiDeckComparisonTool - usando diretamente")
+                first_deck_path = deck_paths.get(selected_decks[0], deck_path) if selected_decks else deck_path
+                tool_instance = tool_class(first_deck_path, selected_decks=selected_decks)
+                result = tool_instance.execute(query_to_use)
+                
+                return {
+                    "tool_result": result,
+                    "tool_used": tool_name,
+                    "tool_route": True,
+                    "execution_result": {
+                        "success": result.get("success", False),
+                        "stdout": f"Comparação executada com {tool_name} em {len(selected_decks)} decks",
+                        "stderr": "",
+                        "return_code": 0 if result.get("success", False) else -1
+                    }
+                }
             
-            # Executar em paralelo
-            def execute_in_deck(deck_path: str) -> Dict[str, Any]:
-                try:
-                    tool_instance = tool_class(str(deck_path))
-                    return tool_instance.execute(query_to_use)
-                except Exception as e:
-                    return {"success": False, "error": str(e)}
+            # Para tools single-deck, usar MultiDeckComparisonTool como wrapper
+            # que executa a tool em todos os decks selecionados
+            safe_print(f"[TOOL ROUTER] [COMPARISON] Tool {tool_name} é single-deck - usando MultiDeckComparisonTool como wrapper")
+            from app.tools.multi_deck_comparison_tool import MultiDeckComparisonTool
             
-            with ThreadPoolExecutor(max_workers=2) as executor:
-                future_dec = executor.submit(execute_in_deck, deck_december_path)
-                future_jan = executor.submit(execute_in_deck, deck_january_path)
-                result_dec = future_dec.result()
-                result_jan = future_jan.result()
+            first_deck_path = deck_paths.get(selected_decks[0], deck_path) if selected_decks else deck_path
+            # Passar a tool_class diretamente para evitar semantic matching desnecessário
+            multi_tool = MultiDeckComparisonTool(
+                first_deck_path, 
+                selected_decks=selected_decks,
+                forced_tool_class=tool_class  # Tool já identificada, passar diretamente
+            )
             
-            safe_print(f"[TOOL ROUTER]   Dezembro: success={result_dec.get('success', False)}")
-            safe_print(f"[TOOL ROUTER]   Janeiro: success={result_jan.get('success', False)}")
+            # Executar com a tool já identificada
+            result = multi_tool.execute(query_to_use)
             
-            # Construir resultado de comparação com dados BRUTOS
-            # O LLM vai interpretar livremente - não forçamos cálculo de diferenças
-            comparison_result = {
-                "success": result_dec.get("success", False) or result_jan.get("success", False),
-                "is_comparison": True,
-                "tool_used": tool_name,
-                "query": query_to_use,
-                "deck_1": {
-                    "name": "Dezembro 2025",
-                    "success": result_dec.get("success", False),
-                    "full_result": result_dec  # Resultado COMPLETO para o LLM interpretar
-                },
-                "deck_2": {
-                    "name": "Janeiro 2026",
-                    "success": result_jan.get("success", False),
-                    "full_result": result_jan  # Resultado COMPLETO para o LLM interpretar
-                },
-                # Campos opcionais - serão None, LLM interpreta os dados brutos
-                "differences": None,
-                "chart_data": None
-            }
-            
-            safe_print(f"[TOOL ROUTER] [OK] Comparação concluída - dados brutos passados ao LLM")
+            # O resultado já vem no formato correto com todos os decks
+            safe_print(f"[TOOL ROUTER] [OK] Comparação concluída em {len(selected_decks)} decks via MultiDeckComparisonTool")
+            safe_print(f"[TOOL ROUTER]   Resultado tem {len(result.get('decks', []))} decks no formato 'decks'")
             
             return {
-                "tool_result": comparison_result,
-                "tool_used": tool_name,
+                "tool_result": result,
+                "tool_used": tool_name,  # Preservar nome da tool original
                 "tool_route": True,
                 "execution_result": {
-                    "success": comparison_result["success"],
-                    "stdout": f"Comparação executada com {tool_name}",
+                    "success": result.get("success", False),
+                    "stdout": f"Comparação executada com {tool_name} em {len(selected_decks)} decks",
                     "stderr": "",
-                    "return_code": 0 if comparison_result["success"] else -1
+                    "return_code": 0 if result.get("success", False) else -1
                 }
             }
             

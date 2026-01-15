@@ -85,8 +85,21 @@ export function CVUChart({ data }: CVUChartProps) {
         })()
       : ['auto', 'auto'];
 
-  // Cores para as linhas
-  const colors = ["#8884d8", "#82ca9d", "#ffc658", "#ff7300"];
+  // Cores para as linhas (expandido para suportar até 12 decks)
+  const colors = [
+    "#8884d8", // Roxo
+    "#82ca9d", // Verde
+    "#ffc658", // Amarelo
+    "#ff7300", // Laranja
+    "#00bcd4", // Ciano
+    "#e91e63", // Rosa
+    "#4caf50", // Verde escuro
+    "#2196f3", // Azul
+    "#9c27b0", // Roxo escuro
+    "#ff5722", // Vermelho alaranjado
+    "#607d8b", // Cinza azulado
+    "#795548", // Marrom
+  ];
 
   return (
     <motion.div

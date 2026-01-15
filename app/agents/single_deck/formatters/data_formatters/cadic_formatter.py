@@ -30,7 +30,8 @@ class CadicSingleDeckFormatter(SingleDeckFormatter):
         table_data = CargaDataProcessor.extract_table_data(tool_result)
         chart_data = CargaDataProcessor.extract_chart_data(tool_result)
         
-        final_response = format_cadic_simple(table_data)
+        # Passar tool_result completo e query para incluir informações de filtros e confirmação
+        final_response = format_cadic_simple(table_data, tool_result, query)
         
         return {
             "final_response": final_response,

@@ -1,11 +1,12 @@
 """
 Formatadores temporais para comparação multi-deck.
 Para tools que retornam séries históricas (dados por período).
+Suporta N decks para comparação dinâmica.
 """
 import math
 import re
 from typing import Dict, Any, List, Optional, Tuple
-from app.agents.multi_deck.formatting.base import ComparisonFormatter
+from app.agents.multi_deck.formatting.base import ComparisonFormatter, DeckData
 
 
 class ClastComparisonFormatter(ComparisonFormatter):
@@ -23,12 +24,54 @@ class ClastComparisonFormatter(ComparisonFormatter):
     def get_priority(self) -> int:
         return 100  # Alta prioridade - muito específico
     
-    def format_comparison(
+    def format_multi_deck_comparison(
+        self,
+        decks_data: List[DeckData],
+        tool_name: str,
+        query: str
+    ) -> Dict[str, Any]:
+        """
+        Formata comparação de custos de classes térmicas para N decks.
+        Suporta análise histórica com múltiplos decks.
+        """
+        if len(decks_data) < 1:
+            return {"comparison_table": [], "chart_data": None, "visualization_type": "table"}
+        
+        if len(decks_data) == 1:
+            return {
+                "comparison_table": [],
+                "chart_data": None,
+                "visualization_type": "table",
+                "deck_names": self.get_deck_names(decks_data),
+                "is_multi_deck": False,
+                "error": "Apenas um deck disponível para comparação"
+            }
+        
+        # Verificar se é query de CVU
+        is_cvu = self._is_cvu_query(query)
+        
+        # Se for CVU, usar formato simplificado que suporta N decks
+        if is_cvu:
+            return self._format_cvu_simplified_multi(decks_data, tool_name, query)
+        
+        # Para outras queries, usar formato interno (compatibilidade com 2 decks)
+        if len(decks_data) >= 2:
+            result_dec = decks_data[0].result
+            result_jan = decks_data[-1].result
+            result = self._format_comparison_internal(result_dec, result_jan, tool_name, query, decks_data)
+            result["deck_names"] = self.get_deck_names(decks_data)
+            result["is_multi_deck"] = len(decks_data) > 2
+            return result
+        
+        return {"comparison_table": [], "chart_data": None, "visualization_type": "table"}
+    
+    def _format_comparison_internal(
         self,
         result_dec: Dict[str, Any],
         result_jan: Dict[str, Any],
         tool_name: str,
-        query: str
+        query: str,
+        decks_data: Optional[List[DeckData]] = None
     ) -> Dict[str, Any]:
         """
         Formata comparação de custos de classes térmicas.
@@ -43,10 +86,16 @@ class ClastComparisonFormatter(ComparisonFormatter):
         
         if not dados_estruturais_dec and not dados_estruturais_jan:
             # Fallback para conjunturais se não há estruturais
+            if decks_data and len(decks_data) > 2:
+                return self._format_conjunturais_multi(decks_data, tool_name, query)
             return self._format_conjunturais(result_dec, result_jan, tool_name, query)
         
         # Se for CVU, usar formato simplificado
         if is_cvu:
+            # Se temos decks_data (N decks), usar método multi-deck
+            if decks_data and len(decks_data) > 2:
+                return self._format_cvu_simplified_multi(decks_data, tool_name, query)
+            # Caso contrário, usar método legado (2 decks)
             return self._format_cvu_simplified(
                 dados_estruturais_dec,
                 dados_estruturais_jan,
@@ -54,6 +103,11 @@ class ClastComparisonFormatter(ComparisonFormatter):
                 result_jan
             )
         
+        # Para queries não-CVU, verificar se temos N decks
+        if decks_data and len(decks_data) > 2:
+            return self._format_estruturais_multi(decks_data, tool_name, query)
+        
+        # Método legado para 2 decks
         # Indexar por (classe, ano)
         dec_indexed = self._index_estruturais(dados_estruturais_dec)
         jan_indexed = self._index_estruturais(dados_estruturais_jan)
@@ -201,6 +255,191 @@ class ClastComparisonFormatter(ComparisonFormatter):
             "visualization_type": "table_only"
         }
     
+    def _format_estruturais_multi(
+        self,
+        decks_data: List[DeckData],
+        tool_name: str,
+        query: str
+    ) -> Dict[str, Any]:
+        """Formata dados estruturais (custos por ano/classe) para N decks."""
+        # Extrair dados de todos os decks
+        all_keys = set()
+        decks_info = []
+        
+        for deck in decks_data:
+            result = deck.result
+            dados_estruturais = result.get("dados_estruturais", [])
+            
+            # Indexar por (classe, ano)
+            deck_indexed = self._index_estruturais(dados_estruturais)
+            all_keys.update(deck_indexed.keys())
+            
+            decks_info.append({
+                "deck": deck,
+                "display_name": deck.display_name,
+                "indexed": deck_indexed
+            })
+        
+        # Construir tabela comparativa com N colunas
+        comparison_table = []
+        chart_labels = []
+        chart_series = {}  # {classe_nome: {deck_idx: [...]}}
+        
+        for key in sorted(all_keys):
+            # Extrair classe e ano do key
+            parts = key.split("-")
+            if len(parts) >= 2:
+                classe = int(parts[0]) if parts[0].isdigit() else None
+                ano = int(parts[1]) if parts[1].isdigit() else None
+                
+                if classe is None or ano is None:
+                    continue
+                
+                # Obter nome da classe do primeiro deck que tiver
+                nome_classe = None
+                for deck_info in decks_info:
+                    record = deck_info["indexed"].get(key, {})
+                    if record.get("nome_usina"):
+                        nome_classe = record.get("nome_usina")
+                        break
+                if not nome_classe:
+                    nome_classe = f"Classe {classe}"
+                
+                # Criar linha na tabela
+                table_row = {
+                    "classe": nome_classe,
+                    "codigo_classe": classe,
+                    "ano": ano
+                }
+                
+                # Adicionar valores de cada deck
+                periodo_label = f"Ano {ano}"
+                if periodo_label not in chart_labels:
+                    chart_labels.append(periodo_label)
+                
+                if nome_classe not in chart_series:
+                    chart_series[nome_classe] = {deck_idx: [] for deck_idx in range(len(decks_info))}
+                
+                for deck_idx, deck_info in enumerate(decks_info):
+                    record = deck_info["indexed"].get(key, {})
+                    val = self._sanitize_number(record.get("valor"))
+                    table_row[f"deck_{deck_idx + 1}"] = round(val, 2) if val is not None else None
+                    
+                    # Adicionar ao gráfico
+                    chart_series[nome_classe][deck_idx].append({
+                        "period": periodo_label,
+                        "value": round(val, 2) if val is not None else None
+                    })
+                
+                comparison_table.append(table_row)
+        
+        # Construir chart_data (uma série por classe, com N datasets por classe)
+        chart_datasets = []
+        colors = ["#8884d8", "#82ca9d", "#ffc658", "#ff7300", "#00ff00", "#ff00ff", "#0088fe", "#00c49f", "#ffbb28", "#ff8042"]
+        
+        for idx, (nome_classe, series) in enumerate(chart_series.items()):
+            color = colors[idx % len(colors)]
+            
+            # Criar dataset para cada deck
+            for deck_idx, deck_info in enumerate(decks_info):
+                # Alinhar valores por período
+                values = [None] * len(chart_labels)
+                for item in series[deck_idx]:
+                    if item["period"] in chart_labels:
+                        idx_period = chart_labels.index(item["period"])
+                        values[idx_period] = item["value"]
+                
+                chart_datasets.append({
+                    "label": f"{nome_classe} - {deck_info['display_name']}",
+                    "data": values
+                })
+        
+        chart_data = {
+            "labels": chart_labels,
+            "datasets": chart_datasets
+        } if chart_labels else None
+        
+        return {
+            "comparison_table": comparison_table,
+            "chart_data": chart_data,
+            "visualization_type": "table_with_line_chart",
+            "chart_config": {
+                "type": "line",
+                "title": "Evolução dos Custos por Classe Térmica",
+                "x_axis": "Ano",
+                "y_axis": "Custo (R$/MWh)"
+            },
+            "deck_names": self.get_deck_names(decks_data),
+            "is_multi_deck": len(decks_data) > 2
+        }
+    
+    def _format_conjunturais_multi(
+        self,
+        decks_data: List[DeckData],
+        tool_name: str,
+        query: str
+    ) -> Dict[str, Any]:
+        """Formata dados conjunturais (modificações sazonais) para N decks."""
+        # Extrair dados de todos os decks
+        all_keys = set()
+        decks_info = []
+        
+        for deck in decks_data:
+            result = deck.result
+            dados_conjunturais = result.get("dados_conjunturais", [])
+            
+            # Indexar por (classe, data_inicio)
+            deck_indexed = {}
+            for record in dados_conjunturais:
+                key = (record.get("codigo_usina"), record.get("data_inicio"))
+                if key[0] is not None and key[1] is not None:
+                    deck_indexed[key] = record
+                    all_keys.add(key)
+            
+            decks_info.append({
+                "deck": deck,
+                "display_name": deck.display_name,
+                "indexed": deck_indexed
+            })
+        
+        # Construir tabela comparativa com N colunas
+        comparison_table = []
+        
+        for key in sorted(all_keys):
+            classe, data_inicio = key
+            
+            # Obter nome da classe do primeiro deck que tiver
+            nome_classe = None
+            for deck_info in decks_info:
+                record = deck_info["indexed"].get(key, {})
+                if record.get("nome_usina"):
+                    nome_classe = record.get("nome_usina")
+                    break
+            if not nome_classe:
+                nome_classe = f"Classe {classe}"
+            
+            # Criar linha na tabela
+            table_row = {
+                "classe": nome_classe,
+                "data_inicio": data_inicio
+            }
+            
+            # Adicionar valores de cada deck
+            for deck_idx, deck_info in enumerate(decks_info):
+                record = deck_info["indexed"].get(key, {})
+                val = self._sanitize_number(record.get("custo"))
+                table_row[f"deck_{deck_idx + 1}"] = round(val, 2) if val is not None else None
+            
+            comparison_table.append(table_row)
+        
+        return {
+            "comparison_table": comparison_table,
+            "chart_data": None,
+            "visualization_type": "table_only",
+            "deck_names": self.get_deck_names(decks_data),
+            "is_multi_deck": len(decks_data) > 2
+        }
+    
     def _is_cvu_query(self, query: str) -> bool:
         """Verifica se a query é sobre CVU (Custo Variável Unitário)."""
         query_lower = query.lower()
@@ -323,171 +562,177 @@ class ClastComparisonFormatter(ComparisonFormatter):
         # Então: ano_real = ano_deck + (indice_ano_estudo - 1)
         return ano_deck + (indice_ano_estudo - 1)
     
-    def _format_cvu_simplified(
+    def _format_cvu_simplified_multi(
         self,
-        dados_estruturais_dec: List[Dict],
-        dados_estruturais_jan: List[Dict],
-        result_dec: Dict[str, Any],
-        result_jan: Dict[str, Any]
+        decks_data: List[DeckData],
+        tool_name: str,
+        query: str
     ) -> Dict[str, Any]:
         """
-        Formata comparação de CVU de forma simplificada:
-        - Tabela: Ano (dinâmico baseado no deck), Deck 1, Deck 2
+        Formata comparação de CVU de forma simplificada para N decks:
+        - Tabela: Ano (dinâmico baseado no deck), Deck 1, Deck 2, ..., Deck N
         - Gráfico: uma linha por deck, eixo Y = CVU, eixo X = Anos
+        
+        Suporta análise histórica com múltiplos decks (ex: evolução de 12 meses).
         
         Nota: Para CVU, geralmente há uma única classe térmica. Se houver múltiplas,
         usa a primeira classe encontrada (priorizando a mais frequente nos dados).
         
         IMPORTANTE: Cada deck tem sua própria base de ano:
-        - Deck de dezembro (NW202512): indice_ano_estudo=1 corresponde a 2025
-        - Deck de janeiro (NW202601): indice_ano_estudo=1 corresponde a 2026
+        - Deck de fevereiro (NW202502): indice_ano_estudo=1 corresponde a 2025
+        - Deck de março (NW202503): indice_ano_estudo=1 corresponde a 2025
+        - etc.
         """
-        # Extrair ano e mês de cada deck
-        dec_info = self._get_year_and_month_from_deck(result_dec)
-        jan_info = self._get_year_and_month_from_deck(result_jan)
+        if len(decks_data) < 2:
+            return {
+                "comparison_table": [],
+                "chart_data": None,
+                "visualization_type": "table_with_line_chart",
+                "error": "São necessários pelo menos 2 decks para comparação"
+            }
         
-        if dec_info is None:
-            # Fallback: tentar usar ano atual
-            import datetime
-            ano_atual = datetime.datetime.now().year
-            dec_info = (ano_atual, 12) if ano_atual >= 2025 else (2025, 12)  # Fallback
-        if jan_info is None:
-            # Fallback: tentar usar ano atual + 1 para janeiro
-            import datetime
-            ano_atual = datetime.datetime.now().year
-            jan_info = (ano_atual + 1, 1) if ano_atual >= 2025 else (2026, 1)  # Fallback
+        # Extrair dados estruturais de todos os decks
+        decks_info = []
+        all_dados_estruturais = []
+        
+        for deck in decks_data:
+            result = deck.result
+            deck_info = self._get_year_and_month_from_deck(result)
             
-        ano_dec, mes_dec = dec_info
-        ano_jan, mes_jan = jan_info
+            if deck_info is None:
+                # Fallback: tentar extrair do nome do deck
+                import re
+                deck_name = deck.name
+                match = re.search(r'NW(\d{4})(\d{2})', deck_name)
+                if match:
+                    ano = int(match.group(1))
+                    mes = int(match.group(2))
+                    deck_info = (ano, mes)
+                else:
+                    # Último fallback
+                    import datetime
+                    ano_atual = datetime.datetime.now().year
+                    deck_info = (ano_atual, 1)
+            
+            dados_estruturais = result.get("dados_estruturais", [])
+            all_dados_estruturais.extend(dados_estruturais)
+            
+            decks_info.append({
+                "deck": deck,
+                "ano": deck_info[0],
+                "mes": deck_info[1],
+                "dados_estruturais": dados_estruturais,
+                "display_name": deck.display_name
+            })
         
-        # Identificar a classe principal (mais frequente nos dados)
+        # Identificar a classe principal (mais frequente nos dados de todos os decks)
         classes_count = {}
-        classe_nome_map = {}  # Mapear código -> nome para validação
-        for record in dados_estruturais_dec + dados_estruturais_jan:
+        classe_nome_map = {}
+        for record in all_dados_estruturais:
             classe = record.get("codigo_usina")
             nome_usina = record.get("nome_usina", "")
             if classe is not None:
                 classes_count[classe] = classes_count.get(classe, 0) + 1
-                # Armazenar nome da usina para esta classe (pegar o primeiro nome encontrado)
                 if classe not in classe_nome_map and nome_usina:
                     classe_nome_map[classe] = nome_usina
         
         classe_principal = None
         nome_classe_principal = None
         if classes_count:
-            # Usar a classe mais frequente
             classe_principal = max(classes_count.items(), key=lambda x: x[1])[0]
             nome_classe_principal = classe_nome_map.get(classe_principal, f"Classe {classe_principal}")
         
-        # Agrupar por indice_ano_estudo, filtrando pela classe principal
-        dec_by_indice = {}  # {indice_ano_estudo: valor}
-        jan_by_indice = {}  # {indice_ano_estudo: valor}
+        # Agrupar dados por deck e indice_ano_estudo
+        decks_by_indice = {}  # {deck_index: {indice_ano_estudo: valor}}
         
-        # Processar dados de dezembro
-        for record in dados_estruturais_dec:
-            classe = record.get("codigo_usina")
-            # Se há classe principal definida, filtrar por ela
-            if classe_principal is not None and classe != classe_principal:
-                continue
+        for deck_idx, deck_info in enumerate(decks_info):
+            deck_by_indice = {}
+            for record in deck_info["dados_estruturais"]:
+                classe = record.get("codigo_usina")
+                if classe_principal is not None and classe != classe_principal:
+                    continue
                 
-            indice = record.get("indice_ano_estudo")
-            valor = self._sanitize_number(record.get("valor"))
-            if indice is not None and valor is not None:
-                # Se já existe valor para este indice, manter o primeiro
-                if indice not in dec_by_indice:
-                    dec_by_indice[indice] = valor
-        
-        # Processar dados de janeiro
-        for record in dados_estruturais_jan:
-            classe = record.get("codigo_usina")
-            # Se há classe principal definida, filtrar por ela
-            if classe_principal is not None and classe != classe_principal:
-                continue
-                
-            indice = record.get("indice_ano_estudo")
-            valor = self._sanitize_number(record.get("valor"))
-            if indice is not None and valor is not None:
-                if indice not in jan_by_indice:
-                    jan_by_indice[indice] = valor
+                indice = record.get("indice_ano_estudo")
+                valor = self._sanitize_number(record.get("valor"))
+                if indice is not None and valor is not None:
+                    if indice not in deck_by_indice:
+                        deck_by_indice[indice] = valor
+            
+            decks_by_indice[deck_idx] = {
+                "by_indice": deck_by_indice,
+                "ano": deck_info["ano"],
+                "mes": deck_info["mes"],
+                "display_name": deck_info["display_name"]
+            }
         
         # Criar dicionário mapeando ano real -> valores de cada deck
-        # Como os dados são comparados lado a lado, precisamos mapear corretamente
-        # O indice_ano_estudo=1 do deck dezembro corresponde a 2025
-        # O indice_ano_estudo=1 do deck janeiro corresponde a 2026
-        comparison_by_year = {}  # {ano_real: {"dec": valor, "jan": valor}}
+        # Para cada deck, calcular o ano real baseado no indice_ano_estudo
+        comparison_by_year = {}  # {ano_real: {deck_0: valor, deck_1: valor, ...}}
         
-        # Processar dados de dezembro
-        for indice, valor in dec_by_indice.items():
-            ano_real = self._calculate_real_year(indice, ano_dec, mes_dec)
-            if ano_real not in comparison_by_year:
-                comparison_by_year[ano_real] = {"dec": None, "jan": None}
-            comparison_by_year[ano_real]["dec"] = valor
-        
-        # Processar dados de janeiro
-        for indice, valor in jan_by_indice.items():
-            ano_real = self._calculate_real_year(indice, ano_jan, mes_jan)
-            if ano_real not in comparison_by_year:
-                comparison_by_year[ano_real] = {"dec": None, "jan": None}
-            comparison_by_year[ano_real]["jan"] = valor
+        for deck_idx, deck_data in decks_by_indice.items():
+            ano_deck = deck_data["ano"]
+            mes_deck = deck_data["mes"]
+            by_indice = deck_data["by_indice"]
+            
+            for indice, valor in by_indice.items():
+                ano_real = self._calculate_real_year(indice, ano_deck, mes_deck)
+                if ano_real not in comparison_by_year:
+                    comparison_by_year[ano_real] = {}
+                comparison_by_year[ano_real][deck_idx] = valor
         
         # Ordenar anos
         sorted_years = sorted(comparison_by_year.keys())
         
-        # Construir tabela comparativa simplificada
-        comparison_table = []
-        chart_labels = []
-        dec_values = []
-        jan_values = []
-        
-        # Função auxiliar para arredondar e garantir que NaN vire None
+        # Função auxiliar para arredondar
         def safe_round(value):
             if value is None:
                 return None
             try:
                 rounded = round(value, 2)
-                # Verificar se o resultado é NaN ou Inf
                 if math.isnan(rounded) or math.isinf(rounded):
                     return None
                 return rounded
             except (ValueError, TypeError):
                 return None
         
+        # Construir tabela comparativa com N colunas (uma por deck)
+        comparison_table = []
+        chart_labels = []
+        chart_datasets = []
+        
+        # Inicializar datasets para o gráfico (um por deck)
+        for deck_idx, deck_data in decks_by_indice.items():
+            chart_datasets.append({
+                "label": deck_data["display_name"],
+                "data": []
+            })
+        
+        # Processar cada ano
         for ano_real in sorted_years:
-            val_dec = comparison_by_year[ano_real]["dec"]
-            val_jan = comparison_by_year[ano_real]["jan"]
+            values_by_deck = comparison_by_year[ano_real]
             
-            # Adicionar à tabela (sem colunas de diferença e variação %)
-            # Campo de validação: "Custos de Classe - Nome da usina"
+            # Construir linha da tabela
             classe_info = f"{classe_principal} - {nome_classe_principal}" if classe_principal is not None and nome_classe_principal else "N/A"
-            
             table_row = {
-                "classe_info": classe_info,  # Campo de validação no início
-                "data": ano_real,  # Coluna "Data" com o ano real (dinâmico)
-                "ano": ano_real,  # Também incluir campo "ano" para compatibilidade
-                "deck_1": safe_round(val_dec),
-                "deck_2": safe_round(val_jan),
+                "classe_info": classe_info,
+                "data": ano_real,
+                "ano": ano_real,
             }
             
-            comparison_table.append(table_row)
+            # Adicionar valores de cada deck (deck_1, deck_2, ..., deck_N)
+            for deck_idx in range(len(decks_info)):
+                value = safe_round(values_by_deck.get(deck_idx))
+                table_row[f"deck_{deck_idx + 1}"] = value
+                # Adicionar ao dataset do gráfico
+                chart_datasets[deck_idx]["data"].append(value)
             
-            # Dados para gráfico
+            comparison_table.append(table_row)
             chart_labels.append(f"Ano {ano_real}")
-            dec_values.append(safe_round(val_dec))
-            jan_values.append(safe_round(val_jan))
         
-        # Construir chart_data (uma linha por deck)
+        # Construir chart_data (N datasets, um por deck)
         chart_data = {
             "labels": chart_labels,
-            "datasets": [
-                {
-                    "label": f"Dezembro {ano_dec}",
-                    "data": dec_values
-                },
-                {
-                    "label": f"Janeiro {ano_jan}",
-                    "data": jan_values
-                }
-            ]
+            "datasets": chart_datasets
         } if chart_labels else None
         
         return {
@@ -499,8 +744,41 @@ class ClastComparisonFormatter(ComparisonFormatter):
                 "title": "CVU - Custo Variável Unitário",
                 "x_axis": "Ano",
                 "y_axis": "CVU (R$/MWh)"
-            }
+            },
+            "deck_names": self.get_deck_names(decks_data),
+            "is_multi_deck": len(decks_data) > 2
         }
+    
+    def _format_cvu_simplified(
+        self,
+        dados_estruturais_dec: List[Dict],
+        dados_estruturais_jan: List[Dict],
+        result_dec: Dict[str, Any],
+        result_jan: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        DEPRECATED: Use _format_cvu_simplified_multi instead.
+        Mantido para compatibilidade com código legado.
+        """
+        # Converter para formato novo usando DeckData
+        from app.agents.multi_deck.formatting.base import DeckData
+        
+        decks_data = [
+            DeckData(
+                name="deck_1",
+                display_name="Deck 1",
+                result=result_dec,
+                success=True
+            ),
+            DeckData(
+                name="deck_2",
+                display_name="Deck 2",
+                result=result_jan,
+                success=True
+            )
+        ]
+        
+        return self._format_cvu_simplified_multi(decks_data, "ClastValoresTool", "")
     
     def _sanitize_number(self, value) -> Optional[float]:
         """Sanitiza valor numérico."""
@@ -528,6 +806,36 @@ class CargaComparisonFormatter(ComparisonFormatter):
     
     def get_priority(self) -> int:
         return 90
+    
+    def format_multi_deck_comparison(
+        self,
+        decks_data: List[DeckData],
+        tool_name: str,
+        query: str
+    ) -> Dict[str, Any]:
+        """
+        Formata comparação de carga para N decks.
+        """
+        if len(decks_data) < 2:
+            return {
+                "comparison_table": [],
+                "chart_data": None,
+                "visualization_type": "table",
+                "deck_names": self.get_deck_names(decks_data),
+                "is_multi_deck": False,
+                "error": "São necessários pelo menos 2 decks para comparação"
+            }
+        
+        # Para CargaMensalTool e CadicTool, usar formato simplificado multi-deck
+        if tool_name in ["CargaMensalTool", "CadicTool"]:
+            return self._format_carga_simplified_multi(decks_data, tool_name, query)
+        
+        # Para outros casos, verificar se há dados_por_submercado
+        if any(deck.result.get("dados_por_submercado") for deck in decks_data):
+            return self._format_por_submercado_multi(decks_data, tool_name, query)
+        
+        # Caso padrão: formatar por período
+        return self._format_por_periodo_multi(decks_data, tool_name, query)
     
     def format_comparison(
         self,
@@ -725,6 +1033,367 @@ class CargaComparisonFormatter(ComparisonFormatter):
                 "x_axis": "Período",
                 "y_axis": "Valor"
             }
+        }
+    
+    def _format_carga_simplified_multi(
+        self,
+        decks_data: List[DeckData],
+        tool_name: str,
+        query: str
+    ) -> Dict[str, Any]:
+        """
+        Formata comparação de carga mensal de forma simplificada para N decks:
+        - Tabela: Data (ano-mês), Deck 1, Deck 2, ..., Deck N
+        - Gráfico: uma linha por deck, eixo Y = Carga, eixo X = Períodos
+        
+        Suporta análise histórica com múltiplos decks (ex: evolução de 12 meses).
+        """
+        if len(decks_data) < 2:
+            return {
+                "comparison_table": [],
+                "chart_data": None,
+                "visualization_type": "table_with_line_chart",
+                "error": "São necessários pelo menos 2 decks para comparação"
+            }
+        
+        # Extrair dados de todos os decks
+        decks_info = []
+        all_periods = set()
+        
+        for deck in decks_data:
+            result = deck.result
+            data = result.get("data", [])
+            
+            # Se há dados_por_submercado, usar apenas o primeiro submercado (ou o filtrado)
+            if result.get("dados_por_submercado"):
+                dados_por_sub = result.get("dados_por_submercado", {})
+                if len(dados_por_sub) == 1:
+                    sub_data = next(iter(dados_por_sub.values()))
+                    if isinstance(sub_data, dict) and "dados" in sub_data:
+                        data = sub_data["dados"]
+                elif dados_por_sub:
+                    first_sub = next(iter(dados_por_sub.values()))
+                    if isinstance(first_sub, dict) and "dados" in first_sub:
+                        data = first_sub["dados"]
+            
+            # Indexar por período (ano-mês)
+            deck_by_period = {}  # {periodo_key: valor}
+            
+            for record in data:
+                periodo_key = self._get_period_key(record)
+                if periodo_key:
+                    valor = self._sanitize_number(record.get("valor"))
+                    if valor is not None:
+                        if periodo_key not in deck_by_period:
+                            deck_by_period[periodo_key] = valor
+                            all_periods.add(periodo_key)
+            
+            decks_info.append({
+                "deck": deck,
+                "display_name": deck.display_name,
+                "by_period": deck_by_period
+            })
+        
+        # Ordenar períodos
+        sorted_periods = sorted(all_periods)
+        
+        # Função auxiliar para arredondar
+        def safe_round(value):
+            if value is None:
+                return None
+            try:
+                rounded = round(value, 2)
+                if math.isnan(rounded) or math.isinf(rounded):
+                    return None
+                if rounded == int(rounded):
+                    return int(rounded)
+                return rounded
+            except (ValueError, TypeError):
+                return None
+        
+        # Construir tabela comparativa com N colunas (uma por deck)
+        comparison_table = []
+        chart_labels = []
+        chart_datasets = []
+        
+        # Inicializar datasets para o gráfico (um por deck)
+        for deck_info in decks_info:
+            chart_datasets.append({
+                "label": deck_info["display_name"],
+                "data": []
+            })
+        
+        # Processar cada período
+        for periodo_key in sorted_periods:
+            # Formatar label do período (ex: "2025-12" -> "Dez/2025")
+            periodo_label = self._format_period_label(periodo_key)
+            
+            # Extrair ano e mês do periodo_key
+            ano = None
+            mes = None
+            if periodo_key and "-" in periodo_key:
+                try:
+                    parts = periodo_key.split("-")
+                    if len(parts) >= 2:
+                        ano = int(parts[0])
+                        mes = int(parts[1])
+                except (ValueError, TypeError):
+                    pass
+            
+            # Construir linha da tabela
+            table_row = {
+                "data": periodo_label,
+                "ano": ano,
+                "mes": mes,
+            }
+            
+            # Adicionar valores de cada deck (deck_1, deck_2, ..., deck_N)
+            for deck_idx, deck_info in enumerate(decks_info):
+                value = safe_round(deck_info["by_period"].get(periodo_key))
+                deck_key = f"deck_{deck_idx + 1}"
+                table_row[deck_key] = value
+                # Adicionar ao dataset do gráfico
+                chart_datasets[deck_idx]["data"].append(value)
+            
+            # Debug: verificar se valores foram adicionados
+            from app.config import safe_print
+            safe_print(f"[CargaComparisonFormatter] Linha tabela para {periodo_key}: {list(table_row.keys())}")
+            safe_print(f"[CargaComparisonFormatter] Valores: {[table_row.get(f'deck_{i+1}') for i in range(len(decks_info))]}")
+            
+            comparison_table.append(table_row)
+            chart_labels.append(periodo_label)
+        
+        # Construir chart_data (N datasets, um por deck)
+        chart_data = {
+            "labels": chart_labels,
+            "datasets": chart_datasets
+        } if chart_labels else None
+        
+        # Determinar título e eixo Y baseado na tool
+        if tool_name == "CadicTool":
+            title = "Carga Adicional"
+            y_axis = "Carga Adicional (MWméd)"
+        else:
+            title = "Carga Mensal"
+            y_axis = "Carga (MWméd)"
+        
+        # Debug: verificar estrutura final da tabela
+        from app.config import safe_print
+        if comparison_table:
+            first_row = comparison_table[0]
+            safe_print(f"[CargaComparisonFormatter] ✅ Tabela gerada - Total de linhas: {len(comparison_table)}")
+            safe_print(f"[CargaComparisonFormatter] ✅ Primeira linha - Chaves: {list(first_row.keys())}")
+            deck_keys = [k for k in first_row.keys() if k.startswith('deck_')]
+            safe_print(f"[CargaComparisonFormatter] ✅ Colunas de deck encontradas: {deck_keys}")
+            safe_print(f"[CargaComparisonFormatter] ✅ Número de decks esperado: {len(decks_data)}")
+            if len(deck_keys) != len(decks_data):
+                safe_print(f"[CargaComparisonFormatter] ⚠️ AVISO: Número de colunas de deck ({len(deck_keys)}) não corresponde ao número de decks ({len(decks_data)})")
+        
+        return {
+            "comparison_table": comparison_table,
+            "chart_data": chart_data,
+            "visualization_type": "table_with_line_chart",
+            "chart_config": {
+                "type": "line",
+                "title": title,
+                "x_axis": "Período",
+                "y_axis": y_axis
+            },
+            "deck_names": self.get_deck_names(decks_data),
+            "is_multi_deck": len(decks_data) > 2
+        }
+    
+    def _format_por_submercado_multi(
+        self,
+        decks_data: List[DeckData],
+        tool_name: str,
+        query: str
+    ) -> Dict[str, Any]:
+        """Formata quando dados estão organizados por submercado para N decks."""
+        # Extrair dados de todos os decks
+        all_subs = set()
+        decks_info = []
+        
+        for deck in decks_data:
+            result = deck.result
+            dados_por_sub = result.get("dados_por_submercado", {})
+            
+            # Se não há dados_por_submercado, extrair do campo data
+            if not dados_por_sub:
+                data = result.get("data", [])
+                dados_por_sub = self._group_by_submercado(data)
+            
+            all_subs.update(dados_por_sub.keys())
+            
+            # Indexar dados por submercado e período
+            deck_indexed = {}  # {sub: {periodo_key: record}}
+            
+            for sub, sub_data in dados_por_sub.items():
+                sub_records = sub_data.get("dados", []) if isinstance(sub_data, dict) else []
+                if sub not in deck_indexed:
+                    deck_indexed[sub] = {}
+                for record in sub_records:
+                    periodo_key = self._get_period_key(record)
+                    if periodo_key:
+                        deck_indexed[sub][periodo_key] = record
+            
+            decks_info.append({
+                "deck": deck,
+                "display_name": deck.display_name,
+                "dados_por_sub": dados_por_sub,
+                "indexed": deck_indexed
+            })
+        
+        # Obter todos os períodos únicos
+        all_periods = set()
+        for deck_info in decks_info:
+            for sub in all_subs:
+                all_periods.update(deck_info["indexed"].get(sub, {}).keys())
+        
+        chart_labels = sorted(all_periods)
+        
+        # Criar uma série por submercado para cada deck
+        chart_datasets = []
+        colors = ["#8884d8", "#82ca9d", "#ffc658", "#ff7300", "#00ff00", "#ff00ff", "#0088fe", "#00c49f", "#ffbb28", "#ff8042"]
+        sub_idx = 0
+        
+        for sub in sorted(all_subs):
+            nome_sub = None
+            for deck_info in decks_info:
+                sub_data = deck_info["dados_por_sub"].get(sub, {})
+                if isinstance(sub_data, dict) and sub_data.get("nome"):
+                    nome_sub = sub_data.get("nome")
+                    break
+            if not nome_sub:
+                nome_sub = f"Subsistema {sub}"
+            
+            # Criar dataset para cada deck
+            for deck_idx, deck_info in enumerate(decks_info):
+                values = []
+                for periodo in chart_labels:
+                    record = deck_info["indexed"].get(sub, {}).get(periodo, {})
+                    val = self._sanitize_number(record.get("valor"))
+                    values.append(round(val, 2) if val is not None else None)
+                
+                chart_datasets.append({
+                    "label": f"{nome_sub} - {deck_info['display_name']}",
+                    "data": values
+                })
+            
+            sub_idx += 1
+        
+        chart_data = {
+            "labels": chart_labels,
+            "datasets": chart_datasets
+        } if chart_labels else None
+        
+        # Tabela resumida (média por submercado) com N colunas
+        summary_table = []
+        for sub in sorted(all_subs):
+            nome_sub = None
+            for deck_info in decks_info:
+                sub_data = deck_info["dados_por_sub"].get(sub, {})
+                if isinstance(sub_data, dict) and sub_data.get("nome"):
+                    nome_sub = sub_data.get("nome")
+                    break
+            if not nome_sub:
+                nome_sub = f"Subsistema {sub}"
+            
+            table_row = {"submercado": nome_sub}
+            
+            # Calcular média para cada deck
+            for deck_idx, deck_info in enumerate(decks_info):
+                sub_data = deck_info["dados_por_sub"].get(sub, {})
+                sub_records = sub_data.get("dados", []) if isinstance(sub_data, dict) else []
+                valores = [self._sanitize_number(r.get("valor")) for r in sub_records]
+                valores = [v for v in valores if v is not None]
+                media = sum(valores) / len(valores) if valores else None
+                deck_key = f"deck_{deck_idx + 1}"
+                table_row[deck_key] = round(media, 2) if media is not None else None
+            
+            # Debug: verificar se valores foram adicionados
+            from app.config import safe_print
+            safe_print(f"[CargaComparisonFormatter] Linha tabela por submercado {nome_sub}: {list(table_row.keys())}")
+            safe_print(f"[CargaComparisonFormatter] Valores: {[table_row.get(f'deck_{i+1}') for i in range(len(decks_info))]}")
+            
+            summary_table.append(table_row)
+        
+        return {
+            "comparison_table": summary_table,
+            "chart_data": chart_data,
+            "visualization_type": "multi_line_chart",
+            "chart_config": {
+                "type": "line",
+                "title": "Carga Mensal por Submercado" if tool_name == "CargaMensalTool" else "Carga Adicional por Submercado",
+                "x_axis": "Período",
+                "y_axis": "Carga (MWméd)"
+            },
+            "deck_names": self.get_deck_names(decks_data),
+            "is_multi_deck": len(decks_data) > 2
+        }
+    
+    def _format_por_periodo_multi(
+        self,
+        decks_data: List[DeckData],
+        tool_name: str,
+        query: str
+    ) -> Dict[str, Any]:
+        """Formata quando dados não estão organizados por submercado para N decks."""
+        # Extrair dados de todos os decks
+        all_periods = set()
+        decks_info = []
+        
+        for deck in decks_data:
+            result = deck.result
+            data = result.get("data", [])
+            
+            # Indexar por período
+            deck_indexed = {}
+            for record in data:
+                periodo_key = self._get_period_key(record)
+                if periodo_key:
+                    deck_indexed[periodo_key] = record
+                    all_periods.add(periodo_key)
+            
+            decks_info.append({
+                "deck": deck,
+                "display_name": deck.display_name,
+                "indexed": deck_indexed
+            })
+        
+        chart_labels = sorted(all_periods)
+        
+        # Criar datasets (um por deck)
+        chart_datasets = []
+        for deck_info in decks_info:
+            values = []
+            for periodo in chart_labels:
+                record = deck_info["indexed"].get(periodo, {})
+                val = self._sanitize_number(record.get("valor"))
+                values.append(round(val, 2) if val is not None else None)
+            
+            chart_datasets.append({
+                "label": deck_info["display_name"],
+                "data": values
+            })
+        
+        chart_data = {
+            "labels": chart_labels,
+            "datasets": chart_datasets
+        } if chart_labels else None
+        
+        return {
+            "comparison_table": [],
+            "chart_data": chart_data,
+            "visualization_type": "multi_line_chart",
+            "chart_config": {
+                "type": "line",
+                "title": "Comparação Temporal",
+                "x_axis": "Período",
+                "y_axis": "Valor"
+            },
+            "deck_names": self.get_deck_names(decks_data),
+            "is_multi_deck": len(decks_data) > 2
         }
     
     def _format_carga_simplified(
@@ -1030,6 +1699,100 @@ class VazoesComparisonFormatter(ComparisonFormatter):
     def get_priority(self) -> int:
         return 80
     
+    def format_multi_deck_comparison(
+        self,
+        decks_data: List[DeckData],
+        tool_name: str,
+        query: str
+    ) -> Dict[str, Any]:
+        """Formata comparação de vazões para N decks."""
+        if len(decks_data) < 2:
+            return {
+                "comparison_table": [],
+                "chart_data": None,
+                "visualization_type": "line_chart",
+                "error": "São necessários pelo menos 2 decks para comparação"
+            }
+        
+        # Extrair dados de todos os decks
+        all_periods = set()
+        decks_info = []
+        
+        for deck in decks_data:
+            result = deck.result
+            data = result.get("data", [])
+            
+            # Indexar por período
+            deck_indexed = {}
+            for record in data:
+                periodo_key = self._get_period_key(record)
+                if periodo_key:
+                    deck_indexed[periodo_key] = record
+                    all_periods.add(periodo_key)
+            
+            decks_info.append({
+                "deck": deck,
+                "display_name": deck.display_name,
+                "indexed": deck_indexed
+            })
+        
+        chart_labels = sorted(all_periods)
+        
+        # Criar datasets (um por deck)
+        chart_datasets = []
+        for deck_info in decks_info:
+            values = []
+            for periodo in chart_labels:
+                record = deck_info["indexed"].get(periodo, {})
+                val = self._extract_value(record)
+                values.append(round(val, 2) if val is not None else None)
+            
+            chart_datasets.append({
+                "label": deck_info["display_name"],
+                "data": values
+            })
+        
+        chart_data = {
+            "labels": chart_labels,
+            "datasets": chart_datasets
+        } if chart_labels else None
+        
+        # Tabela comparativa resumida com N colunas
+        comparison_table = []
+        for periodo in chart_labels[:20]:  # Limitar a 20 períodos na tabela
+            table_row = {"periodo": periodo}
+            
+            # Adicionar valores de cada deck
+            for deck_idx, deck_info in enumerate(decks_info):
+                record = deck_info["indexed"].get(periodo, {})
+                val = self._extract_value(record)
+                table_row[f"deck_{deck_idx + 1}"] = round(val, 2) if val is not None else None
+            
+            # Calcular diferença entre primeiro e último deck (se ambos tiverem valores)
+            if len(decks_info) >= 2:
+                val_first = self._extract_value(decks_info[0]["indexed"].get(periodo, {}))
+                val_last = self._extract_value(decks_info[-1]["indexed"].get(periodo, {}))
+                if val_first is not None and val_last is not None:
+                    diff = val_last - val_first
+                    table_row["difference"] = round(diff, 2)
+                    table_row["difference_percent"] = round((diff / val_first * 100) if val_first != 0 else 0, 4)
+            
+            comparison_table.append(table_row)
+        
+        return {
+            "comparison_table": comparison_table,
+            "chart_data": chart_data,
+            "visualization_type": "line_chart",
+            "chart_config": {
+                "type": "line",
+                "title": "Vazões Históricas" if tool_name == "VazoesTool" else "Desvios de Água",
+                "x_axis": "Período",
+                "y_axis": "Vazão (m³/s)" if tool_name == "VazoesTool" else "Desvio (m³/s)"
+            },
+            "deck_names": self.get_deck_names(decks_data),
+            "is_multi_deck": len(decks_data) > 2
+        }
+    
     def format_comparison(
         self,
         result_dec: Dict[str, Any],
@@ -1153,6 +1916,47 @@ class UsinasNaoSimuladasFormatter(ComparisonFormatter):
     
     def get_priority(self) -> int:
         return 75
+    
+    def format_multi_deck_comparison(
+        self,
+        decks_data: List[DeckData],
+        tool_name: str,
+        query: str
+    ) -> Dict[str, Any]:
+        """Formata comparação de usinas não simuladas para N decks."""
+        if len(decks_data) < 2:
+            return {"comparison_table": [], "chart_data": None, "visualization_type": "contextual_line_chart"}
+        
+        # Analisar query para identificar filtros
+        query_lower = query.lower()
+        filtros = {
+            "fonte": None,
+            "submercado": None
+        }
+        
+        # Identificar fonte (PCH, PCT, EOL, UFV, etc)
+        fontes = ["pch", "pct", "eol", "ufv", "mmgd"]
+        for fonte in fontes:
+            if fonte in query_lower:
+                filtros["fonte"] = fonte.upper()
+                break
+        
+        # Identificar submercado (sudeste, sul, norte, nordeste)
+        submercados_map = {
+            "sudeste": 1, "sul": 2, "norte": 3, "nordeste": 4
+        }
+        for nome, codigo in submercados_map.items():
+            if nome in query_lower:
+                filtros["submercado"] = codigo
+                break
+        
+        # Agrupar por categoria (fonte ou submercado) se não há filtro específico
+        if not filtros["fonte"] and not filtros["submercado"]:
+            # Agrupar por fonte
+            return self._format_by_fonte_multi(decks_data, query)
+        else:
+            # Uma série única
+            return self._format_single_series_multi(decks_data, filtros, query)
     
     def format_comparison(
         self,
@@ -1340,6 +2144,164 @@ class UsinasNaoSimuladasFormatter(ComparisonFormatter):
             }
         }
     
+    def _format_by_fonte_multi(self, decks_data: List[DeckData], query: str):
+        """Formata agrupando por fonte para N decks."""
+        # Extrair dados de todos os decks
+        all_fontes = set()
+        decks_info = []
+        
+        for deck in decks_data:
+            result = deck.result
+            data = result.get("data", [])
+            
+            # Agrupar por fonte
+            deck_by_fonte = {}
+            for record in data:
+                fonte = record.get("fonte", "Outros")
+                if fonte not in deck_by_fonte:
+                    deck_by_fonte[fonte] = []
+                deck_by_fonte[fonte].append(record)
+                all_fontes.add(fonte)
+            
+            # Indexar por período para cada fonte
+            deck_indexed = {}  # {fonte: {periodo: record}}
+            for fonte, records in deck_by_fonte.items():
+                deck_indexed[fonte] = {}
+                for record in records:
+                    periodo = self._get_period_key(record)
+                    if periodo:
+                        deck_indexed[fonte][periodo] = record
+            
+            decks_info.append({
+                "deck": deck,
+                "display_name": deck.display_name,
+                "by_fonte": deck_by_fonte,
+                "indexed": deck_indexed
+            })
+        
+        # Obter todos os períodos únicos
+        all_periods = set()
+        for deck_info in decks_info:
+            for fonte in all_fontes:
+                all_periods.update(deck_info["indexed"].get(fonte, {}).keys())
+        
+        chart_labels = sorted(all_periods)
+        
+        # Criar série por fonte para cada deck
+        chart_datasets = []
+        colors = ["#8884d8", "#82ca9d", "#ffc658", "#ff7300", "#00ff00", "#ff00ff", "#0088fe", "#00c49f", "#ffbb28", "#ff8042"]
+        
+        for idx, fonte in enumerate(sorted(all_fontes)):
+            color = colors[idx % len(colors)]
+            
+            # Criar dataset para cada deck
+            for deck_info in decks_info:
+                fonte_indexed = deck_info["indexed"].get(fonte, {})
+                values = []
+                for periodo in chart_labels:
+                    record = fonte_indexed.get(periodo, {})
+                    val = self._sanitize_number(record.get("valor"))
+                    values.append(round(val, 2) if val is not None else None)
+                
+                chart_datasets.append({
+                    "label": f"{fonte} - {deck_info['display_name']}",
+                    "data": values
+                })
+        
+        chart_data = {
+            "labels": chart_labels,
+            "datasets": chart_datasets
+        } if chart_labels else None
+        
+        return {
+            "comparison_table": [],
+            "chart_data": chart_data,
+            "visualization_type": "contextual_line_chart",
+            "chart_config": {
+                "type": "line",
+                "title": "Geração de Usinas Não Simuladas",
+                "x_axis": "Período",
+                "y_axis": "Geração (MWméd)"
+            },
+            "deck_names": self.get_deck_names(decks_data),
+            "is_multi_deck": len(decks_data) > 2
+        }
+    
+    def _format_single_series_multi(self, decks_data: List[DeckData], filtros: Dict, query: str):
+        """Formata uma única série (quando há filtro específico) para N decks."""
+        # Extrair dados de todos os decks
+        all_periods = set()
+        decks_info = []
+        
+        for deck in decks_data:
+            result = deck.result
+            data = result.get("data", [])
+            
+            # Filtrar dados conforme filtros
+            filtered_data = data
+            if filtros["fonte"]:
+                filtered_data = [r for r in filtered_data if r.get("fonte", "").upper() == filtros["fonte"]]
+            if filtros["submercado"]:
+                filtered_data = [r for r in filtered_data if r.get("codigo_submercado") == filtros["submercado"]]
+            
+            # Indexar por período
+            deck_indexed = {}
+            for record in filtered_data:
+                periodo = self._get_period_key(record)
+                if periodo:
+                    deck_indexed[periodo] = record
+                    all_periods.add(periodo)
+            
+            decks_info.append({
+                "deck": deck,
+                "display_name": deck.display_name,
+                "indexed": deck_indexed
+            })
+        
+        chart_labels = sorted(all_periods)
+        
+        # Criar datasets (um por deck)
+        chart_datasets = []
+        for deck_info in decks_info:
+            values = []
+            for periodo in chart_labels:
+                record = deck_info["indexed"].get(periodo, {})
+                val = self._sanitize_number(record.get("valor"))
+                values.append(round(val, 2) if val is not None else None)
+            
+            chart_datasets.append({
+                "label": deck_info["display_name"],
+                "data": values
+            })
+        
+        chart_data = {
+            "labels": chart_labels,
+            "datasets": chart_datasets
+        } if chart_labels else None
+        
+        # Criar título baseado nos filtros
+        titulo_parts = []
+        if filtros["fonte"]:
+            titulo_parts.append(filtros["fonte"].upper())
+        if filtros["submercado"]:
+            sub_nomes = {1: "Sudeste", 2: "Sul", 3: "Norte", 4: "Nordeste"}
+            titulo_parts.append(sub_nomes.get(filtros["submercado"], f"Subsistema {filtros['submercado']}"))
+        titulo = " - ".join(titulo_parts) if titulo_parts else "Geração de Usinas Não Simuladas"
+        
+        return {
+            "comparison_table": [],
+            "chart_data": chart_data,
+            "visualization_type": "contextual_line_chart",
+            "chart_config": {
+                "type": "line",
+                "title": titulo,
+                "x_axis": "Período",
+                "y_axis": "Geração (MWméd)"
+            },
+            "deck_names": self.get_deck_names(decks_data),
+            "is_multi_deck": len(decks_data) > 2
+        }
+    
     def _get_period_key(self, record: Dict) -> Optional[str]:
         """Obtém chave de período."""
         ano = record.get("ano")
@@ -1378,6 +2340,184 @@ class LimitesIntercambioComparisonFormatter(ComparisonFormatter):
     
     def get_priority(self) -> int:
         return 85  # Prioridade alta - específico para limites de intercâmbio
+    
+    def format_multi_deck_comparison(
+        self,
+        decks_data: List[DeckData],
+        tool_name: str,
+        query: str
+    ) -> Dict[str, Any]:
+        """Formata comparação de limites de intercâmbio para N decks."""
+        if len(decks_data) < 2:
+            return {
+                "comparison_table": [],
+                "chart_data": None,
+                "charts_by_par": {},
+                "visualization_type": "limites_intercambio",
+                "error": "São necessários pelo menos 2 decks para comparação"
+            }
+        
+        # Extrair dados de todos os decks
+        all_pares = set()
+        decks_info = []
+        
+        for deck in decks_data:
+            result = deck.result
+            data = result.get("data", [])
+            
+            # Indexar dados por (par, sentido, período)
+            deck_indexed = self._index_by_par_sentido_periodo(data)
+            all_pares.update(deck_indexed.keys())
+            
+            decks_info.append({
+                "deck": deck,
+                "display_name": deck.display_name,
+                "result": result,
+                "indexed": deck_indexed
+            })
+        
+        # Detectar se a query especifica um par específico
+        par_filtrado = None
+        if decks_info:
+            par_filtrado = self._extract_par_from_query(query, decks_info[0]["result"], decks_info[-1]["result"] if len(decks_info) > 1 else decks_info[0]["result"])
+        
+        # Filtrar pares se necessário
+        if par_filtrado is not None:
+            pares_filtrados = set()
+            for par_key in all_pares:
+                parts = par_key.split("-")
+                if len(parts) >= 2:
+                    sub_de_key = parts[0]
+                    sub_para_key = parts[1]
+                    sentido_key = parts[2] if len(parts) >= 3 else None
+                    
+                    if len(par_filtrado) == 2:
+                        if str(par_filtrado[0]) == sub_de_key and str(par_filtrado[1]) == sub_para_key:
+                            pares_filtrados.add(par_key)
+                    elif len(par_filtrado) == 3:
+                        if (str(par_filtrado[0]) == sub_de_key and 
+                            str(par_filtrado[1]) == sub_para_key and
+                            sentido_key is not None and str(par_filtrado[2]) == sentido_key):
+                            pares_filtrados.add(par_key)
+            
+            if pares_filtrados:
+                all_pares = pares_filtrados
+        
+        # Construir tabela comparativa e charts_by_par
+        comparison_table = []
+        charts_by_par = {}
+        
+        for par_key in sorted(all_pares):
+            # Extrair informações do par_key
+            parts = par_key.split("-")
+            if len(parts) >= 3:
+                sub_de = parts[0]
+                sub_para = parts[1]
+                sentido = int(parts[2])
+                
+                # Obter nomes dos submercados
+                nome_de = self._get_submercado_nome(sub_de, decks_info[0]["result"], decks_info[-1]["result"] if len(decks_info) > 1 else decks_info[0]["result"])
+                nome_para = self._get_submercado_nome(sub_para, decks_info[0]["result"], decks_info[-1]["result"] if len(decks_info) > 1 else decks_info[0]["result"])
+                sentido_label = "Mínimo Obrigatório" if sentido == 1 else "Máximo"
+                par_label = f"{nome_de} → {nome_para}"
+                
+                # Obter todos os períodos únicos para este par (de todos os decks)
+                all_periodos = set()
+                for deck_info in decks_info:
+                    par_records = deck_info["indexed"].get(par_key, {})
+                    all_periodos.update(par_records.keys())
+                
+                all_periodos = sorted(all_periodos)
+                
+                # Construir dados do gráfico para este par (N datasets, um por deck)
+                par_datasets = []
+                for deck_info in decks_info:
+                    par_records = deck_info["indexed"].get(par_key, {})
+                    par_values = []
+                    for periodo in all_periodos:
+                        record = par_records.get(periodo, {})
+                        val = self._sanitize_number(record.get("valor"))
+                        par_values.append(self._safe_round(val))
+                    par_datasets.append({
+                        "label": deck_info["display_name"],
+                        "data": par_values
+                    })
+                
+                # Labels formatados para o gráfico
+                par_labels = [self._format_period_label(periodo) for periodo in all_periodos]
+                
+                # Criar chart_data para este par
+                par_chart_data = {
+                    "labels": par_labels,
+                    "datasets": par_datasets
+                } if all_periodos else None
+                
+                charts_by_par[par_key] = {
+                    "par": par_label,
+                    "sentido": sentido_label,
+                    "chart_data": par_chart_data,
+                    "chart_config": {
+                        "type": "line",
+                        "title": f"{par_label} - {sentido_label}",
+                        "x_axis": "Período",
+                        "y_axis": "Limite (MW)"
+                    }
+                }
+                
+                # Construir tabela (todos os períodos, com N colunas)
+                for periodo in all_periodos:
+                    periodo_formatted = self._format_period_label(periodo)
+                    
+                    table_row = {
+                        "data": periodo_formatted,
+                        "par_key": par_key,
+                        "par": par_label,
+                        "sentido": sentido_label,
+                    }
+                    
+                    # Adicionar valores de cada deck
+                    for deck_idx, deck_info in enumerate(decks_info):
+                        par_records = deck_info["indexed"].get(par_key, {})
+                        record = par_records.get(periodo, {})
+                        val = self._sanitize_number(record.get("valor"))
+                        deck_key = f"deck_{deck_idx + 1}"
+                        table_row[deck_key] = self._safe_round(val)
+                    
+                    # Debug: verificar se valores foram adicionados
+                    from app.config import safe_print
+                    if len(comparison_table) < 3:  # Log apenas nas primeiras 3 linhas
+                        safe_print(f"[LimitesIntercambioFormatter] Linha tabela para {par_key} - {periodo}: {list(table_row.keys())}")
+                        safe_print(f"[LimitesIntercambioFormatter] Valores: {[table_row.get(f'deck_{i+1}') for i in range(len(decks_info))]}")
+                    
+                    comparison_table.append(table_row)
+        
+        # Resumo
+        pares_afetados = len(set(row["par_key"] for row in comparison_table)) if comparison_table else 0
+        
+        # Debug: verificar estrutura final da tabela
+        from app.config import safe_print
+        if comparison_table:
+            first_row = comparison_table[0]
+            safe_print(f"[LimitesIntercambioFormatter] ✅ Tabela gerada - Total de linhas: {len(comparison_table)}")
+            safe_print(f"[LimitesIntercambioFormatter] ✅ Primeira linha - Chaves: {list(first_row.keys())}")
+            deck_keys = [k for k in first_row.keys() if k.startswith('deck_')]
+            safe_print(f"[LimitesIntercambioFormatter] ✅ Colunas de deck encontradas: {deck_keys}")
+            safe_print(f"[LimitesIntercambioFormatter] ✅ Número de decks esperado: {len(decks_data)}")
+            if len(deck_keys) != len(decks_data):
+                safe_print(f"[LimitesIntercambioFormatter] ⚠️ AVISO: Número de colunas de deck ({len(deck_keys)}) não corresponde ao número de decks ({len(decks_data)})")
+        
+        return {
+            "comparison_table": comparison_table,
+            "chart_data": None,
+            "charts_by_par": charts_by_par,
+            "visualization_type": "limites_intercambio",
+            "summary": {
+                "total_registros": len(comparison_table),
+                "pares_afetados": pares_afetados
+            },
+            "deck_names": self.get_deck_names(decks_data),
+            "is_multi_deck": len(decks_data) > 2
+        }
     
     def format_comparison(
         self,

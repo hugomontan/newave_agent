@@ -1,9 +1,10 @@
 """
 Formatadores com liberdade total para LLM interpretar.
 Para tools que não precisam de estruturação rígida.
+Suporta N decks para comparação dinâmica.
 """
-from typing import Dict, Any
-from app.agents.multi_deck.formatting.base import ComparisonFormatter
+from typing import Dict, Any, List
+from app.agents.multi_deck.formatting.base import ComparisonFormatter, DeckData
 
 
 class LLMFreeFormatter(ComparisonFormatter):
@@ -19,10 +20,9 @@ class LLMFreeFormatter(ComparisonFormatter):
     def get_priority(self) -> int:
         return 1  # Prioridade muito baixa - usado apenas como fallback
     
-    def format_comparison(
+    def format_multi_deck_comparison(
         self,
-        result_dec: Dict[str, Any],
-        result_jan: Dict[str, Any],
+        decks_data: List[DeckData],
         tool_name: str,
         query: str
     ) -> Dict[str, Any]:
@@ -30,15 +30,26 @@ class LLMFreeFormatter(ComparisonFormatter):
         Formata comparação com liberdade total para LLM.
         Retorna dados brutos sem estruturação pré-definida.
         """
+        raw_data_per_deck = {
+            deck.name: {
+                "display_name": deck.display_name,
+                "result": deck.result,
+                "success": deck.success
+            }
+            for deck in decks_data
+        }
+        
         return {
             "comparison_table": None,
             "chart_data": None,
             "visualization_type": "llm_free",
-            "raw_data_dec": result_dec,
-            "raw_data_jan": result_jan,
+            "raw_data_per_deck": raw_data_per_deck,
+            "deck_names": self.get_deck_names(decks_data),
+            "is_multi_deck": len(decks_data) > 2,
             "llm_context": {
                 "tool_name": tool_name,
-                "query": query
+                "query": query,
+                "deck_count": len(decks_data)
             }
         }
 

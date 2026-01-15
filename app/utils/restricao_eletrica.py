@@ -30,6 +30,29 @@ class RestricaoEletrica:
         3: "Leve"
     }
     
+    # Mapeamento direto por código de restrição (cod_rest -> nome)
+    MAPEAMENTO_POR_CODIGO = {
+        1: "Escoamento Madeira",
+        10: "Cachoeira Caldeirão + Ferreira Gomes",
+        20: "RSUL",
+        21: "FNS",
+        22: "FNS + FNESE",
+        23: "FNS + FNESE + XINGU",
+    }
+    
+    # Mapeamento de nomes antigos para novos (para compatibilidade com nomes extraídos)
+    MAPEAMENTO_NOMES = {
+        "Escoamento Madeira": "Escoamento Madeira",  # Mantém
+        "Sul-SE": "RSUL",
+        "sul-se": "RSUL",  # Variação lowercase
+        "Imperatriz - Sudeste": "FNS",
+        "imperatriz - sudeste": "FNS",  # Variação lowercase
+        "FNS + FNESE": "FNS + FNESE",  # Mantém o mesmo
+        "FNS + FNESE + XINGU->SE/CO +": "FNS + FNESE + XINGU",
+        "FNS + FNESE + XINGU->SE/CO": "FNS + FNESE + XINGU",  # Caso sem o "+" final
+        "Cachoeira Caldeirão + Ferreira Gomes": "Cachoeira Caldeirão + Ferreira Gomes",  # Mantém
+    }
+    
     def __init__(self, file_path: str):
         """
         Inicializa a classe com o caminho do arquivo.
@@ -117,10 +140,12 @@ class RestricaoEletrica:
                         limite = self._parse_limite_line(linha_processar)
                         if limite:
                             cod_rest = limite['cod_rest']
-                            # Associar nome se houver comentário anterior
-                            if ultimo_comentario_nome and cod_rest not in self._nomes_restricoes:
-                                self._nomes_restricoes[cod_rest] = ultimo_comentario_nome
-                                self._nomes_restricoes_inverso[ultimo_comentario_nome.lower()] = cod_rest
+                            # Aplicar mapeamento por código primeiro, senão usar nome extraído
+                            if cod_rest not in self._nomes_restricoes:
+                                nome_final = self._obter_nome_restricao(cod_rest, ultimo_comentario_nome)
+                                if nome_final:
+                                    self._nomes_restricoes[cod_rest] = nome_final
+                                    self._nomes_restricoes_inverso[nome_final.lower()] = cod_rest
                         # Não adicionar aos limites pois está comentada
                         continue
                     
@@ -139,10 +164,12 @@ class RestricaoEletrica:
                     restricao = self._parse_restricao_line(line)
                     if restricao:
                         cod_rest = restricao['cod_rest']
-                        # Associar nome se houver comentário anterior
-                        if ultimo_comentario_nome and cod_rest not in self._nomes_restricoes:
-                            self._nomes_restricoes[cod_rest] = ultimo_comentario_nome
-                            self._nomes_restricoes_inverso[ultimo_comentario_nome.lower()] = cod_rest
+                        # Aplicar mapeamento por código primeiro, senão usar nome extraído
+                        if cod_rest not in self._nomes_restricoes:
+                            nome_final = self._obter_nome_restricao(cod_rest, ultimo_comentario_nome)
+                            if nome_final:
+                                self._nomes_restricoes[cod_rest] = nome_final
+                                self._nomes_restricoes_inverso[nome_final.lower()] = cod_rest
                             # Não limpar ultimo_comentario_nome aqui, pois pode haver múltiplos registros da mesma restrição
                         restricoes_data.append(restricao)
                 
@@ -159,10 +186,12 @@ class RestricaoEletrica:
                     limite = self._parse_limite_line(linha_processar)
                     if limite:
                         cod_rest = limite['cod_rest']
-                        # Associar nome se houver comentário anterior (mesmo que haja outros comentários no meio)
-                        if ultimo_comentario_nome and cod_rest not in self._nomes_restricoes:
-                            self._nomes_restricoes[cod_rest] = ultimo_comentario_nome
-                            self._nomes_restricoes_inverso[ultimo_comentario_nome.lower()] = cod_rest
+                        # Aplicar mapeamento por código primeiro, senão usar nome extraído
+                        if cod_rest not in self._nomes_restricoes:
+                            nome_final = self._obter_nome_restricao(cod_rest, ultimo_comentario_nome)
+                            if nome_final:
+                                self._nomes_restricoes[cod_rest] = nome_final
+                                self._nomes_restricoes_inverso[nome_final.lower()] = cod_rest
                             # Não limpar ultimo_comentario_nome aqui, pois pode haver múltiplos registros da mesma restrição
                         # Só adicionar aos limites se não estiver comentada
                         if not line.startswith('&'):
@@ -240,16 +269,70 @@ class RestricaoEletrica:
         except (ValueError, IndexError):
             return None
     
+    def _obter_nome_restricao(self, cod_rest: int, nome_extraido: Optional[str] = None) -> Optional[str]:
+        """
+        Obtém o nome da restrição aplicando mapeamento por código primeiro.
+        
+        Args:
+            cod_rest: Código da restrição
+            nome_extraido: Nome extraído do comentário (opcional)
+            
+        Returns:
+            Nome da restrição (mapeado por código ou extraído) ou None
+        """
+        # Prioridade 1: Mapeamento direto por código
+        if cod_rest in self.MAPEAMENTO_POR_CODIGO:
+            return self.MAPEAMENTO_POR_CODIGO[cod_rest]
+        
+        # Prioridade 2: Nome extraído (já mapeado)
+        if nome_extraido:
+            return nome_extraido
+        
+        return None
+    
+    def _aplicar_mapeamento_nome(self, nome: str) -> str:
+        """
+        Aplica o mapeamento de nomes antigos para novos.
+        
+        Args:
+            nome: Nome extraído do comentário
+            
+        Returns:
+            Nome mapeado ou o nome original se não houver mapeamento
+        """
+        # Normalizar nome (remover espaços extras e normalizar "+" no final)
+        nome_normalizado = nome.strip()
+        # Remover "+" no final se houver (com espaços)
+        nome_normalizado = re.sub(r'\s*\+\s*$', '', nome_normalizado).strip()
+        
+        # Aplicar mapeamento se existir (exato)
+        if nome_normalizado in self.MAPEAMENTO_NOMES:
+            return self.MAPEAMENTO_NOMES[nome_normalizado]
+        
+        # Verificar variações case-insensitive
+        nome_lower = nome_normalizado.lower()
+        for nome_antigo, nome_novo in self.MAPEAMENTO_NOMES.items():
+            if nome_lower == nome_antigo.lower():
+                return nome_novo
+        
+        # Verificar se contém algum dos nomes antigos (busca parcial)
+        for nome_antigo, nome_novo in self.MAPEAMENTO_NOMES.items():
+            if nome_antigo.lower() in nome_lower or nome_lower in nome_antigo.lower():
+                return nome_novo
+        
+        return nome_normalizado
+    
     def _extrair_nome_restricao(self, comentario: str) -> Optional[str]:
         """
         Extrai o nome da restrição de um comentário.
         MELHORADO para capturar melhor os nomes dos comentários.
+        Aplica mapeamento de nomes após extração.
         
         Args:
             comentario: Linha de comentário (começa com &)
             
         Returns:
-            Nome da restrição ou None
+            Nome da restrição (mapeado) ou None
         """
         # Remover o & inicial
         comentario_original = comentario.lstrip('&').strip()
@@ -260,31 +343,33 @@ class RestricaoEletrica:
         if 'tratamento realizado' in comentario_lower:
             return None
         
+        nome_extraido = None
+        
         # Caso 1: "Escoamento Madeira" (nome direto, sem prefixo)
         # Verificar se parece um nome simples (contém apenas letras, espaços, hífens, +, números)
         if not any(palavra in comentario_lower for palavra in ['limite', 'restricao', 'restrição', 'valores', '=']):
             # Verificar se parece um nome (contém principalmente letras, espaços, hífens, +)
             if re.match(r'^[A-Za-zÀ-ÿ\s\-\+0-9]+$', comentario) and len(comentario) > 3:
-                return comentario.strip()
+                nome_extraido = comentario.strip()
         
         # Caso 2: "Restricao de geracao Cachoeira Caldeirão + Ferreira Gomes"
-        if 'restricao de geracao' in comentario_lower or 'restrição de geração' in comentario_lower:
+        if nome_extraido is None and ('restricao de geracao' in comentario_lower or 'restrição de geração' in comentario_lower):
             # Extrair parte após "de geracao" ou "de geração"
             match = re.search(r'(?:restricao|restrição)\s+de\s+(?:geracao|geração)\s+(.+)', comentario_lower, re.IGNORECASE)
             if match:
-                nome = match.group(1).strip()
-                return nome.title()
-            # Alternativa: buscar diretamente após "de geracao"
-            partes = re.split(r'de\s+geracao|de\s+geração', comentario_lower, flags=re.IGNORECASE)
-            if len(partes) > 1:
-                nome = partes[1].strip()
-                if nome and len(nome) > 3:
-                    return nome.title()
+                nome_extraido = match.group(1).strip()
+            else:
+                # Alternativa: buscar diretamente após "de geracao"
+                partes = re.split(r'de\s+geracao|de\s+geração', comentario_lower, flags=re.IGNORECASE)
+                if len(partes) > 1:
+                    nome = partes[1].strip()
+                    if nome and len(nome) > 3:
+                        nome_extraido = nome.title()
         
         # Caso 3: "Limite Sul-SE = Min..." -> extrair "Sul-SE"
         # Caso 4: "Limite Imperatriz - Sudeste = ..." -> extrair "Imperatriz - Sudeste"
         # Caso 5: "Limite FNS + FNESE = ..." -> extrair "FNS + FNESE"
-        if 'limite' in comentario_lower:
+        if nome_extraido is None and 'limite' in comentario_lower:
             # Tentar extrair nome após "Limite"
             match = re.search(r'limite\s+([^=]+)', comentario_lower, re.IGNORECASE)
             if match:
@@ -294,7 +379,11 @@ class RestricaoEletrica:
                 # Remover sufixos como "- valores de RSE:" ou "- valores do FNS:"
                 nome = re.sub(r'\s*-\s*valores\s+(?:de|do)\s+[^:]+:?\s*$', '', nome, flags=re.IGNORECASE).strip()
                 if nome and len(nome) > 2:
-                    return nome.title()
+                    nome_extraido = nome.title()
+        
+        # Aplicar mapeamento se nome foi extraído
+        if nome_extraido:
+            return self._aplicar_mapeamento_nome(nome_extraido)
         
         return None
     

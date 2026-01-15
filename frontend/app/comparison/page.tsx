@@ -16,14 +16,16 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ChatMessage } from "@/components/ChatMessage";
 import { AgentProgress, AgentStep } from "@/components/AgentProgress";
+import { DeckSelector, SelectedDecksDisplay, DeckInfo } from "@/components/DeckSelector";
 import {
   sendQueryStream,
   deleteSession,
   reindexDocs,
+  initComparison,
   StreamEvent,
 } from "@/lib/api";
 import { motion } from "framer-motion";
-import { Send, MoreVertical, RefreshCw, Trash2, ArrowLeft, GitCompare } from "lucide-react";
+import { Send, MoreVertical, RefreshCw, Trash2, ArrowLeft, GitCompare, Settings } from "lucide-react";
 
 interface Message {
   id: string;
@@ -125,6 +127,8 @@ export default function ComparisonPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [isReindexing, setIsReindexing] = useState(false);
+  const [selectedDecks, setSelectedDecks] = useState<DeckInfo[]>([]);
+  const [isDeckSelectorOpen, setIsDeckSelectorOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Streaming state
@@ -163,32 +167,251 @@ export default function ComparisonPage() {
     scrollToBottom();
   }, [messages, agentSteps, streamingCode, streamingResponse]);
 
-  // Carregar sessão de comparação ao montar
+  // Script para limpar overlays órfãos que podem estar bloqueando
   useEffect(() => {
-    const initializeComparison = async () => {
-      try {
-        // Chamar API para inicializar modo comparação
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/init-comparison`, {
-          method: "POST",
-        });
+    const cleanupOverlays = () => {
+      if (!isDeckSelectorOpen && !isLoading) {
+        // Aguardar um pouco para garantir que animações do dialog terminaram
+        setTimeout(() => {
+          const overlays = document.querySelectorAll('[data-radix-dialog-overlay]');
+          overlays.forEach((overlay) => {
+            const style = window.getComputedStyle(overlay);
+            // Se o overlay está visível mas o dialog está fechado, pode ser órfão
+            if (style.display !== 'none' && !isDeckSelectorOpen) {
+              const dialog = overlay.closest('[data-radix-dialog-content]');
+              if (!dialog || dialog.getAttribute('data-state') === 'closed') {
+                console.warn("[ComparisonPage] Removendo overlay órfão");
+                (overlay as HTMLElement).style.display = 'none';
+                overlay.remove();
+              }
+            }
+          });
+          
+          // Verificar se há elementos bloqueando interação
+          const body = document.body;
+          const bodyStyle = window.getComputedStyle(body);
+          if (bodyStyle.pointerEvents === 'none' || bodyStyle.overflow === 'hidden') {
+            console.warn("[ComparisonPage] ⚠️ Body está bloqueado! Corrigindo...");
+            body.style.pointerEvents = 'auto';
+            body.style.overflow = 'auto';
+          }
+        }, 500);
+      }
+    };
 
-        if (!response.ok) {
-          throw new Error("Erro ao inicializar modo comparação");
+    cleanupOverlays();
+    // Executar periodicamente para limpar overlays órfãos
+    const interval = setInterval(cleanupOverlays, 2000);
+    
+    // Expor função global para debug
+    (window as any).debugComparisonPage = {
+      cleanupOverlays,
+      focusInput: () => {
+        const inputElement = document.querySelector('input[placeholder*="pergunta"]') as HTMLInputElement;
+        if (inputElement) {
+          inputElement.focus();
+          inputElement.click();
+          console.log("Input focado:", inputElement === document.activeElement);
         }
+      },
+      checkBlocking: () => {
+        const inputElement = document.querySelector('input[placeholder*="pergunta"]') as HTMLInputElement;
+        if (inputElement) {
+          const rect = inputElement.getBoundingClientRect();
+          const centerX = rect.left + rect.width / 2;
+          const centerY = rect.top + rect.height / 2;
+          const elementAtPoint = document.elementFromPoint(centerX, centerY);
+          console.log("Elemento no centro do input:", elementAtPoint);
+          return elementAtPoint;
+        }
+      },
+      removeAllOverlays: () => {
+        const overlays = document.querySelectorAll('[data-radix-dialog-overlay]');
+        overlays.forEach(overlay => overlay.remove());
+        console.log(`Removidos ${overlays.length} overlays`);
+      }
+    };
+    
+    return () => {
+      clearInterval(interval);
+      delete (window as any).debugComparisonPage;
+    };
+  }, [isDeckSelectorOpen, isLoading]);
 
-        const data = await response.json();
+  // Mecanismo de segurança: resetar isLoading se ficar travado por muito tempo
+  useEffect(() => {
+    if (isLoading) {
+      const timeout = setTimeout(() => {
+        console.warn("[ComparisonPage] ⚠️ isLoading ficou true por mais de 60 segundos - resetando forçadamente");
+        setIsLoading(false);
+        setIsStreaming(false);
+        // Limpar overlays que podem estar bloqueando
+        const overlays = document.querySelectorAll('[data-radix-dialog-overlay]');
+        overlays.forEach((overlay) => {
+          const style = window.getComputedStyle(overlay);
+          if (style.display !== 'none' && !isDeckSelectorOpen) {
+            (overlay as HTMLElement).style.display = 'none';
+            overlay.remove();
+          }
+        });
+      }, 60000); // 60 segundos
+      
+      return () => clearTimeout(timeout);
+    }
+  }, [isLoading, isDeckSelectorOpen]);
+
+  // Debug: monitorar mudanças no sessionId e isLoading
+  useEffect(() => {
+    console.log("[ComparisonPage] Estado atualizado - sessionId:", sessionId, "isLoading:", isLoading, "selectedDecks:", selectedDecks.length, "isDeckSelectorOpen:", isDeckSelectorOpen);
+    
+    // Verificar e limpar overlays órfãos que podem estar bloqueando
+    if (!isDeckSelectorOpen && sessionId) {
+      // Pequeno delay para garantir que o dialog foi completamente removido do DOM
+      setTimeout(() => {
+        const overlays = document.querySelectorAll('[data-radix-dialog-overlay]');
+        console.log("[ComparisonPage] Overlays encontrados:", overlays.length);
+        
+        overlays.forEach((overlay, index) => {
+          const style = window.getComputedStyle(overlay);
+          const isVisible = style.display !== 'none' && style.visibility !== 'hidden';
+          console.log(`[ComparisonPage] Overlay ${index}: display=${style.display}, pointer-events=${style.pointerEvents}, z-index=${style.zIndex}, visible=${isVisible}`);
+          
+          // Se o overlay está visível mas o dialog está fechado, pode ser um overlay órfão
+          if (isVisible && !isDeckSelectorOpen) {
+            console.warn(`[ComparisonPage] ⚠️ Overlay ${index} pode ser órfão! Tentando remover...`);
+            // Não remover automaticamente, apenas logar - pode ser necessário para animações
+          }
+        });
+        
+        // Verificar elementos bloqueando o input
+        const inputElement = document.querySelector('input[placeholder*="pergunta"]') as HTMLInputElement;
+        if (inputElement) {
+          const rect = inputElement.getBoundingClientRect();
+          const centerX = rect.left + rect.width / 2;
+          const centerY = rect.top + rect.height / 2;
+          const elementAtPoint = document.elementFromPoint(centerX, centerY);
+          console.log("[ComparisonPage] Elemento no centro do input:", elementAtPoint?.tagName, elementAtPoint?.className);
+          
+          if (elementAtPoint !== inputElement && !inputElement.contains(elementAtPoint)) {
+            console.warn("[ComparisonPage] ⚠️ Há um elemento bloqueando o input!", elementAtPoint);
+            const blockingStyle = window.getComputedStyle(elementAtPoint as Element);
+            console.log("[ComparisonPage] Estilo do elemento bloqueante:", {
+              position: blockingStyle.position,
+              zIndex: blockingStyle.zIndex,
+              pointerEvents: blockingStyle.pointerEvents,
+              display: blockingStyle.display
+            });
+          }
+        }
+      }, 300);
+    }
+  }, [sessionId, isLoading, selectedDecks, isDeckSelectorOpen]);
+
+  // Função para inicializar comparação com os decks selecionados
+  const initializeComparisonWithDecks = async (decks: DeckInfo[]) => {
+    console.log("[ComparisonPage] ========== INICIANDO initializeComparisonWithDecks ==========");
+    console.log("[ComparisonPage] Decks recebidos:", decks);
+    console.log("[ComparisonPage] Número de decks:", decks.length);
+    
+    if (!decks || decks.length === 0) {
+      console.error("[ComparisonPage] ⚠️ Nenhum deck fornecido!");
+      return;
+    }
+    
+    try {
+      console.log("[ComparisonPage] Definindo isLoading = true");
+      setIsLoading(true);
+      
+      const deckNames = decks.map(d => d.name);
+      console.log("[ComparisonPage] Deck names extraídos:", deckNames);
+      
+      console.log("[ComparisonPage] Chamando initComparison API...");
+      const startTime = Date.now();
+      const data = await initComparison(deckNames);
+      const duration = Date.now() - startTime;
+      console.log("[ComparisonPage] initComparison retornou em", duration, "ms:", data);
+      
+      if (!data || !data.session_id) {
+        throw new Error("Resposta da API não contém session_id");
+      }
+      
+      console.log("[ComparisonPage] Definindo sessionId:", data.session_id);
+      setSessionId(data.session_id);
+      setSelectedDecks(decks);
+      
+      // Forçar atualização do estado
+      console.log("[ComparisonPage] Estado atualizado - sessionId:", data.session_id, "selectedDecks:", decks.length);
+      
+      // Pequeno delay para garantir que o estado foi atualizado
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      const deckList = decks.map(d => `**${d.display_name}**`).join(", ");
+      const analysisType = decks.length > 2 
+        ? `análise histórica de ${decks.length} meses`
+        : "comparação direta";
+
+      setMessages([
+        {
+          id: Date.now().toString(),
+          role: "assistant",
+          content: `Modo Comparação ativado! Todas as consultas realizarão ${analysisType} entre os decks:\n\n${deckList}\n\nFaça sua primeira consulta para ver os resultados lado a lado com gráficos comparativos.`,
+          timestamp: new Date(),
+        },
+      ]);
+      
+      console.log("[ComparisonPage] ✅ Inicialização concluída com sucesso");
+    } catch (err) {
+      console.error("[ComparisonPage] ❌ Error initializing comparison:", err);
+      console.error("[ComparisonPage] Stack trace:", err instanceof Error ? err.stack : "N/A");
+      
+      setMessages([
+        {
+          id: Date.now().toString(),
+          role: "assistant",
+          content: `❌ **Erro ao inicializar modo comparação:**\n\n${
+            err instanceof Error ? err.message : "Erro desconhecido"
+          }`,
+          timestamp: new Date(),
+        },
+      ]);
+      
+      // Em caso de erro, garantir que o estado não fique bloqueado
+      setSessionId(null);
+      setSelectedDecks([]);
+    } finally {
+      console.log("[ComparisonPage] Definindo isLoading = false");
+      setIsLoading(false);
+      console.log("[ComparisonPage] ========== FINALIZANDO initializeComparisonWithDecks ==========");
+    }
+  };
+
+  // Abrir seletor de decks ao montar (sem decks pré-selecionados)
+  useEffect(() => {
+    console.log("[ComparisonPage] useEffect de inicialização executado");
+    // Inicializar com os 2 decks mais recentes por padrão
+    const initializeDefault = async () => {
+      try {
+        console.log("[ComparisonPage] Inicializando com decks padrão...");
+        setIsLoading(true);
+        const data = await initComparison();
+        console.log("[ComparisonPage] initComparison retornou:", data);
+        
         setSessionId(data.session_id);
+        setSelectedDecks(data.selected_decks);
+        console.log("[ComparisonPage] Estado inicial definido - sessionId:", data.session_id);
 
+        const deckList = data.selected_decks.map(d => `**${d.display_name}**`).join(", ");
+        
         setMessages([
           {
             id: Date.now().toString(),
             role: "assistant",
-            content: `Modo Comparação ativado! Todas as consultas compararão automaticamente os dados entre **Dezembro 2025** e **Janeiro 2026**.\n\nFaça sua primeira consulta para ver os resultados lado a lado com gráficos comparativos.`,
+            content: `Modo Comparação ativado! Comparando os decks:\n\n${deckList}\n\nVocê pode alterar os decks clicando em "Alterar Decks" no menu. Faça sua primeira consulta para ver os resultados lado a lado com gráficos comparativos.`,
             timestamp: new Date(),
           },
         ]);
       } catch (err) {
-        console.error("Error initializing comparison:", err);
+        console.error("[ComparisonPage] Error initializing comparison:", err);
         setMessages([
           {
             id: Date.now().toString(),
@@ -199,10 +422,13 @@ export default function ComparisonPage() {
             timestamp: new Date(),
           },
         ]);
+      } finally {
+        setIsLoading(false);
+        console.log("[ComparisonPage] Inicialização concluída - isLoading: false");
       }
     };
 
-    initializeComparison();
+    initializeDefault();
   }, []);
 
   const processStreamEvent = useCallback((event: StreamEvent) => {
@@ -493,12 +719,21 @@ export default function ComparisonPage() {
 
       case "complete":
         setIsStreaming(false);
+        // Garantir que isLoading seja resetado quando o streaming terminar
+        // Isso previne que a interface fique travada se houver algum problema
+        setTimeout(() => {
+          setIsLoading(false);
+        }, 100);
         break;
 
       case "error":
         setIsStreaming(false);
         setExecutionError(event.message || "Erro desconhecido");
         executionErrorRef.current = event.message || "Erro desconhecido";
+        // Garantir que isLoading seja resetado em caso de erro
+        setTimeout(() => {
+          setIsLoading(false);
+        }, 100);
         break;
     }
   }, []);
@@ -790,6 +1025,28 @@ export default function ComparisonPage() {
       disambiguationMessageIdRef.current = null;
     } finally {
       setIsLoading(false);
+      setIsStreaming(false);
+      // Limpar overlays órfãos que podem estar bloqueando
+      setTimeout(() => {
+        const overlays = document.querySelectorAll('[data-radix-dialog-overlay]');
+        overlays.forEach((overlay) => {
+          const style = window.getComputedStyle(overlay);
+          // Se o overlay está visível mas não há dialog aberto, remover
+          if (style.display !== 'none' && !isDeckSelectorOpen) {
+            const dialog = overlay.closest('[data-radix-dialog-content]');
+            if (!dialog || dialog.getAttribute('data-state') === 'closed') {
+              console.warn("[ComparisonPage] Removendo overlay órfão após disambiguation");
+              (overlay as HTMLElement).style.display = 'none';
+              overlay.remove();
+            }
+          }
+        });
+        // Forçar foco no input após limpar overlays
+        const inputElement = document.querySelector('input[placeholder*="pergunta"]') as HTMLInputElement;
+        if (inputElement && !inputElement.disabled) {
+          inputElement.focus();
+        }
+      }, 200);
     }
   };
 
@@ -829,11 +1086,23 @@ export default function ComparisonPage() {
                 
                 <div className="px-2 py-1.5">
                   <p className="text-xs text-muted-foreground font-medium mb-1">Modo Ativo</p>
-                  <p className="text-xs text-foreground">Comparação Multi-Deck</p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Comparando: Dezembro 2025 vs Janeiro 2026
+                  <p className="text-xs text-foreground">
+                    Comparação de {selectedDecks.length} Deck{selectedDecks.length !== 1 ? 's' : ''}
                   </p>
+                  {selectedDecks.length > 0 && (
+                    <div className="mt-2">
+                      <SelectedDecksDisplay decks={selectedDecks} compact />
+                    </div>
+                  )}
                 </div>
+                
+                <DropdownMenuItem
+                  onSelect={() => setIsDeckSelectorOpen(true)}
+                  className="cursor-pointer text-foreground focus:bg-muted"
+                >
+                  <Settings className="w-4 h-4 mr-2" />
+                  Alterar Decks
+                </DropdownMenuItem>
                 
                 {sessionId && (
                   <>
@@ -873,9 +1142,9 @@ export default function ComparisonPage() {
       </header>
 
       {/* Main content */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <ScrollArea className="flex-1">
-          <div className="max-w-7xl mx-auto py-12 px-4">
+      <div className="flex-1 flex flex-col overflow-hidden" style={{ position: 'relative', zIndex: 1 }}>
+        <ScrollArea className="flex-1" style={{ position: 'relative', zIndex: 1 }}>
+          <div className="max-w-7xl mx-auto py-12 px-4" style={{ position: 'relative', zIndex: 1 }}>
             {messages.length === 0 && !isLoading ? (
               <div className="flex flex-col items-center justify-center text-center">
                 <GitCompare className="w-16 h-16 text-primary mb-4" />
@@ -932,36 +1201,250 @@ export default function ComparisonPage() {
         </ScrollArea>
 
         {/* Input area */}
-        <div className="border-t border-border bg-background">
-          <div className="max-w-7xl mx-auto px-4 py-4">
-            <div className="relative flex items-end gap-3">
-              <div className="flex-1 relative">
-                <div className="relative flex items-center bg-input border border-border rounded-2xl shadow-sm hover:border-primary/50 transition-colors">
+        <div 
+          className="border-t border-border bg-background"
+          style={{ zIndex: 10, position: 'relative' }}
+        >
+          <div className="max-w-7xl mx-auto px-4 py-4" style={{ position: 'relative', zIndex: 10 }}>
+            {/* Debug info */}
+            {process.env.NODE_ENV === 'development' && (
+              <div className="mb-2 text-xs text-muted-foreground">
+                Debug: sessionId={sessionId ? "✓" : "✗"}, isLoading={isLoading ? "✓" : "✗"}, 
+                isDeckSelectorOpen={isDeckSelectorOpen ? "✓" : "✗"}, 
+                selectedDecks={selectedDecks.length}
+              </div>
+            )}
+            <div 
+              className="relative flex items-end gap-3" 
+              style={{ zIndex: 1000, position: 'relative' }}
+              onMouseDown={(e) => {
+                // Se clicou na área do input mas não no input em si, forçar foco
+                const target = e.target as HTMLElement;
+                const inputElement = target.closest('div')?.querySelector('input') as HTMLInputElement;
+                if (inputElement && !inputElement.disabled && target.tagName !== 'INPUT') {
+                  console.log("[ComparisonPage] Área do input clicada - forçando foco");
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setTimeout(() => {
+                    inputElement.focus();
+                    inputElement.click();
+                  }, 0);
+                }
+              }}
+            >
+              <div className="flex-1 relative" style={{ zIndex: 1000 }}>
+                <div 
+                  className="relative flex items-center bg-input border border-border rounded-2xl shadow-sm hover:border-primary/50 transition-colors"
+                  style={{ 
+                    zIndex: 1000, 
+                    pointerEvents: 'auto',
+                    position: 'relative'
+                  }}
+                  onClick={(e) => {
+                    console.log("[ComparisonPage] Container do input clicado");
+                    e.stopPropagation();
+                    // Se clicou no container mas não no input, focar no input
+                    const inputElement = e.currentTarget.querySelector('input') as HTMLInputElement;
+                    if (inputElement && !inputElement.disabled) {
+                      console.log("[ComparisonPage] Focando no input programaticamente");
+                      setTimeout(() => {
+                        inputElement.focus();
+                        inputElement.click();
+                      }, 0);
+                    }
+                  }}
+                  onMouseDown={(e) => {
+                    console.log("[ComparisonPage] Container onMouseDown");
+                    const inputElement = e.currentTarget.querySelector('input') as HTMLInputElement;
+                    if (inputElement && !inputElement.disabled && e.target !== inputElement) {
+                      console.log("[ComparisonPage] MouseDown no container - redirecionando para input");
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setTimeout(() => {
+                        inputElement.focus();
+                        inputElement.click();
+                      }, 0);
+                    }
+                  }}
+                >
                   <Input
+                    id="comparison-input"
                     placeholder={sessionId ? "Faça uma pergunta para comparar os decks..." : "Inicializando modo comparação..."}
                     value={input}
-                    onChange={(e) => setInput(e.target.value)}
+                    onChange={(e) => {
+                      console.log("[ComparisonPage] Input onChange:", e.target.value);
+                      setInput(e.target.value);
+                    }}
                     onKeyDown={handleKeyPress}
-                    disabled={!sessionId || isLoading}
+                    disabled={!sessionId || isLoading || isDeckSelectorOpen}
                     className="border-0 focus-visible:ring-0 focus-visible:ring-offset-0 bg-transparent text-foreground placeholder:text-muted-foreground text-base pr-12 py-3"
+                    style={{ 
+                      zIndex: 1001, 
+                      pointerEvents: (!sessionId || isLoading || isDeckSelectorOpen) ? 'none' : 'auto',
+                      cursor: (!sessionId || isLoading || isDeckSelectorOpen) ? 'not-allowed' : 'text',
+                      position: 'relative'
+                    }}
+                    onFocus={(e) => {
+                      console.log("[ComparisonPage] ✅ Input recebeu foco!");
+                      console.log("[ComparisonPage] sessionId:", sessionId);
+                      console.log("[ComparisonPage] isLoading:", isLoading);
+                      console.log("[ComparisonPage] disabled:", !sessionId || isLoading || isDeckSelectorOpen);
+                      console.log("[ComparisonPage] isDeckSelectorOpen:", isDeckSelectorOpen);
+                      e.stopPropagation();
+                    }}
+                    onBlur={() => {
+                      console.log("[ComparisonPage] Input perdeu foco");
+                    }}
+                    onMouseDown={(e) => {
+                      console.log("[ComparisonPage] ✅ Input onMouseDown - evento capturado!");
+                      if (!sessionId || isLoading || isDeckSelectorOpen) {
+                        console.warn("[ComparisonPage] ⚠️ MouseDown bloqueado - input está disabled");
+                        e.preventDefault();
+                        e.stopPropagation();
+                        return;
+                      }
+                      e.stopPropagation();
+                    }}
+                    onClick={(e) => {
+                      console.log("[ComparisonPage] ✅ Input clicado!");
+                      console.log("[ComparisonPage] sessionId:", sessionId);
+                      console.log("[ComparisonPage] isLoading:", isLoading);
+                      console.log("[ComparisonPage] isDeckSelectorOpen:", isDeckSelectorOpen);
+                      if (!sessionId) {
+                        console.warn("[ComparisonPage] ⚠️ Input clicado mas sessionId é null!");
+                        e.preventDefault();
+                        e.stopPropagation();
+                        return;
+                      }
+                      e.stopPropagation();
+                    }}
+                    onPointerDown={(e) => {
+                      console.log("[ComparisonPage] Input onPointerDown");
+                      e.stopPropagation();
+                    }}
+                    tabIndex={(!sessionId || isLoading || isDeckSelectorOpen) ? -1 : 0}
                   />
                 </div>
               </div>
               <Button
-                onClick={handleSendMessage}
-                disabled={!sessionId || !input.trim() || isLoading}
+                onClick={() => {
+                  console.log("[ComparisonPage] Botão Send clicado");
+                  console.log("[ComparisonPage] sessionId:", sessionId);
+                  console.log("[ComparisonPage] input:", input);
+                  console.log("[ComparisonPage] isLoading:", isLoading);
+                  handleSendMessage();
+                }}
+                disabled={!sessionId || !input.trim() || isLoading || isDeckSelectorOpen}
                 className="bg-primary hover:bg-primary/90 text-primary-foreground h-9 w-9 p-0 rounded-lg flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                 size="icon"
+                title={!sessionId ? "Aguardando inicialização..." : isLoading ? "Processando..." : !input.trim() ? "Digite uma pergunta" : "Enviar"}
               >
                 <Send className="w-4 h-4" />
               </Button>
             </div>
             <p className="text-xs text-center text-muted-foreground mt-2">
-              Todas as respostas incluirão comparação entre Dezembro 2025 e Janeiro 2026
+              {selectedDecks.length > 2 
+                ? `Análise histórica de ${selectedDecks.length} decks (${selectedDecks[0]?.display_name} a ${selectedDecks[selectedDecks.length - 1]?.display_name})`
+                : selectedDecks.length === 2
+                  ? `Comparação entre ${selectedDecks[0]?.display_name} e ${selectedDecks[1]?.display_name}`
+                  : "Selecione os decks para comparação"}
             </p>
+            {/* Debug: mostrar status do input */}
+            {process.env.NODE_ENV === 'development' && (
+              <div className="text-xs text-center mt-1 space-y-1">
+                {!sessionId && (
+                  <span className="text-yellow-500 block">⚠️ Aguardando sessionId...</span>
+                )}
+                {sessionId && isLoading && (
+                  <span className="text-blue-500 block">⏳ Processando...</span>
+                )}
+                {isDeckSelectorOpen && (
+                  <span className="text-purple-500 block">📋 Selecionando decks...</span>
+                )}
+                {sessionId && !isLoading && !isDeckSelectorOpen && (
+                  <span className="text-green-500 block">✓ Pronto para consultar</span>
+                )}
+                <div className="text-xs text-muted-foreground">
+                  Input disabled: {(!sessionId || isLoading || isDeckSelectorOpen) ? "SIM" : "NÃO"}
+                </div>
+                <div className="flex gap-2 justify-center items-center mt-2">
+                  <button
+                    onClick={() => {
+                      console.log("[ComparisonPage] Botão de debug clicado - forçando foco no input");
+                      const inputElement = document.querySelector('input[placeholder*="pergunta"]') as HTMLInputElement;
+                      if (inputElement) {
+                        inputElement.focus();
+                        inputElement.click();
+                        console.log("[ComparisonPage] Input focado:", inputElement === document.activeElement);
+                      } else {
+                        console.error("[ComparisonPage] Input não encontrado!");
+                      }
+                    }}
+                    className="text-xs px-2 py-1 bg-blue-500 text-white rounded hover:bg-blue-600"
+                  >
+                    [DEBUG] Forçar foco
+                  </button>
+                  <button
+                    onClick={() => {
+                      console.log("[ComparisonPage] Removendo todos os overlays");
+                      const overlays = document.querySelectorAll('[data-radix-dialog-overlay]');
+                      overlays.forEach(overlay => {
+                        (overlay as HTMLElement).style.display = 'none';
+                        overlay.remove();
+                      });
+                      console.log(`[ComparisonPage] Removidos ${overlays.length} overlays`);
+                    }}
+                    className="text-xs px-2 py-1 bg-red-500 text-white rounded hover:bg-red-600"
+                  >
+                    [DEBUG] Limpar Overlays
+                  </button>
+                  <button
+                    onClick={() => {
+                      const inputElement = document.querySelector('input[placeholder*="pergunta"]') as HTMLInputElement;
+                      if (inputElement) {
+                        const rect = inputElement.getBoundingClientRect();
+                        const centerX = rect.left + rect.width / 2;
+                        const centerY = rect.top + rect.height / 2;
+                        const elementAtPoint = document.elementFromPoint(centerX, centerY);
+                        console.log("[ComparisonPage] Elemento bloqueando:", elementAtPoint);
+                        alert(`Elemento no centro do input: ${elementAtPoint?.tagName} - ${elementAtPoint?.className}`);
+                      }
+                    }}
+                    className="text-xs px-2 py-1 bg-yellow-500 text-white rounded hover:bg-yellow-600"
+                  >
+                    [DEBUG] Ver Bloqueio
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
+
+      {/* Deck Selector Dialog */}
+      <DeckSelector
+        mode="multi"
+        open={isDeckSelectorOpen}
+        onOpenChange={(open) => {
+          console.log("[ComparisonPage] DeckSelector onOpenChange:", open);
+          setIsDeckSelectorOpen(open);
+          // Se o dialog está fechando, garantir que isLoading não está bloqueando
+          if (!open) {
+            console.log("[ComparisonPage] Dialog fechado - verificando estado");
+            // Pequeno delay para garantir que o overlay foi removido
+            setTimeout(() => {
+              console.log("[ComparisonPage] Após fechar dialog - sessionId:", sessionId, "isLoading:", isLoading);
+            }, 200);
+          }
+        }}
+        onSelect={(decks) => {
+          console.log("[ComparisonPage] DeckSelector onSelect chamado com:", decks);
+          initializeComparisonWithDecks(decks);
+        }}
+        initialSelected={selectedDecks.map(d => d.name)}
+        title="Selecionar Decks para Comparação"
+        description="Selecione os decks que deseja comparar. Para análise histórica, selecione múltiplos decks consecutivos."
+      />
     </main>
   );
 }

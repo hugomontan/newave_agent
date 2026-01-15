@@ -1,6 +1,6 @@
 """
 Tool para análise de mudanças de GTMIN entre decks no modo multideck.
-Foca especificamente em identificar e comparar variações de GTMIN entre dezembro e janeiro.
+Suporta comparação de N decks para análise histórica de GTMIN.
 """
 from app.tools.base import NEWAVETool
 from inewave.newave import Expt
@@ -8,19 +8,60 @@ import os
 import pandas as pd
 import re
 from typing import Dict, Any, List, Optional
-from app.utils.deck_loader import get_december_deck_path, get_january_deck_path
+from app.utils.deck_loader import (
+    list_available_decks,
+    load_multiple_decks,
+    get_deck_display_name,
+)
 
 
 class MudancasGeracoesTermicasTool(NEWAVETool):
     """
     Tool especializada para análise de mudanças de GTMIN entre decks.
+    Suporta comparação de N decks.
     
     Funcionalidades:
-    - Lista todas as mudanças de GTMIN entre os dois decks
+    - Lista todas as mudanças de GTMIN entre os decks selecionados
     - Identifica mudanças (variações de valor, novos registros, remoções)
     - Ordena mudanças por magnitude
     - Retorna apenas as mudanças (não todos os registros)
     """
+    
+    def __init__(self, deck_path: str, selected_decks: Optional[List[str]] = None):
+        """
+        Inicializa a tool.
+        
+        Args:
+            deck_path: Caminho do deck principal (para compatibilidade)
+            selected_decks: Lista de nomes dos decks a comparar
+        """
+        super().__init__(deck_path)
+        self.selected_decks = selected_decks or []
+        self.deck_paths: Dict[str, str] = {}
+        self.deck_display_names: Dict[str, str] = {}
+        
+        # Se não foram especificados decks, usar os dois mais recentes
+        if not self.selected_decks:
+            try:
+                available = list_available_decks()
+                if len(available) >= 2:
+                    self.selected_decks = [d["name"] for d in available[-2:]]
+                elif len(available) == 1:
+                    self.selected_decks = [available[0]["name"]]
+            except Exception:
+                pass
+        
+        # Carregar caminhos dos decks
+        if self.selected_decks:
+            try:
+                paths = load_multiple_decks(self.selected_decks)
+                self.deck_paths = {name: str(path) for name, path in paths.items()}
+                self.deck_display_names = {
+                    name: get_deck_display_name(name) 
+                    for name in self.selected_decks
+                }
+            except Exception as e:
+                print(f"[TOOL] ⚠️ Erro ao carregar decks: {e}")
     
     def get_name(self) -> str:
         return "MudancasGeracoesTermicasTool"
@@ -67,11 +108,11 @@ class MudancasGeracoesTermicasTool(NEWAVETool):
     
     def execute(self, query: str, **kwargs) -> Dict[str, Any]:
         """
-        Executa a análise de mudanças de GTMIN entre os dois decks.
+        Executa a análise de mudanças de GTMIN entre os decks selecionados.
         
         Fluxo:
-        1. Carrega caminhos dos decks de dezembro e janeiro
-        2. Lê EXPT.DAT de ambos os decks
+        1. Usa decks selecionados (ou carrega automaticamente)
+        2. Lê EXPT.DAT de todos os decks
         3. Filtra apenas registros de GTMIN
         4. Compara e identifica mudanças
         5. Ordena mudanças por magnitude
@@ -79,25 +120,27 @@ class MudancasGeracoesTermicasTool(NEWAVETool):
         """
         print(f"[TOOL] {self.get_name()}: Iniciando análise de mudanças de GTMIN...")
         print(f"[TOOL] Query: {query[:100]}")
+        print(f"[TOOL] Decks selecionados: {self.selected_decks}")
         
         try:
-            # ETAPA 1: Carregar caminhos dos decks
-            print("[TOOL] ETAPA 1: Carregando caminhos dos decks...")
-            try:
-                deck_december_path = get_december_deck_path()
-                deck_january_path = get_january_deck_path()
-                deck_december_name = "Dezembro 2025"
-                deck_january_name = "Janeiro 2026"
-            except FileNotFoundError as e:
-                print(f"[TOOL] ❌ Erro ao carregar decks: {e}")
+            # ETAPA 1: Verificar decks disponíveis
+            print("[TOOL] ETAPA 1: Verificando decks...")
+            
+            if not self.deck_paths or len(self.deck_paths) < 2:
                 return {
                     "success": False,
-                    "error": f"Decks não encontrados: {str(e)}",
+                    "error": "São necessários pelo menos 2 decks para comparação",
                     "tool": self.get_name()
                 }
             
-            print(f"[TOOL] ✅ Deck Dezembro: {deck_december_path}")
-            print(f"[TOOL] ✅ Deck Janeiro: {deck_january_path}")
+            # Para compatibilidade, usar primeiro e último deck
+            deck_december_path = self.deck_paths.get(self.selected_decks[0])
+            deck_january_path = self.deck_paths.get(self.selected_decks[-1])
+            deck_december_name = self.deck_display_names.get(self.selected_decks[0], "Deck Anterior")
+            deck_january_name = self.deck_display_names.get(self.selected_decks[-1], "Deck Atual")
+            
+            print(f"[TOOL] ✅ Deck Anterior: {deck_december_path} ({deck_december_name})")
+            print(f"[TOOL] ✅ Deck Atual: {deck_january_path} ({deck_january_name})")
             
             # ETAPA 2: Ler EXPT.DAT de ambos os decks
             print("[TOOL] ETAPA 2: Lendo arquivos EXPT.DAT...")

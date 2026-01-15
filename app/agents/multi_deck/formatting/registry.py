@@ -1,9 +1,10 @@
 """
 Registry de formatadores de comparação.
 Mapeia tools para formatadores apropriados e fornece função consolidada para formatação.
+Suporta N decks para comparação dinâmica.
 """
-from typing import Dict, Any
-from .base import ComparisonFormatter
+from typing import Dict, Any, List, Optional
+from .base import ComparisonFormatter, DeckData, convert_legacy_result_to_decks_data
 from .data_formatters.temporal_formatters import (
     ClastComparisonFormatter,
     CargaComparisonFormatter,
@@ -81,16 +82,19 @@ def get_formatter_for_tool(
 def format_comparison_response(
     tool_result: Dict[str, Any], 
     tool_used: str, 
-    query: str
+    query: str,
+    deck_display_names: Optional[Dict[str, str]] = None
 ) -> Dict[str, Any]:
     """
     Formata a resposta para o frontend quando é uma comparação multi-deck.
     Usa formatadores especializados por tool para gerar visualizações otimizadas.
+    Suporta N decks para comparação dinâmica.
     
     Args:
-        tool_result: Resultado da tool de comparação (já contém deck_1, deck_2)
+        tool_result: Resultado da tool de comparação (pode ter deck_1/deck_2 ou decks lista)
         tool_used: Nome da tool usada
         query: Query original do usuário
+        deck_display_names: Mapeamento de nomes dos decks (opcional)
         
     Returns:
         Dict com final_response formatado e comparison_data
@@ -118,77 +122,208 @@ def format_comparison_response(
     from .text_formatters.llm_structured import format_with_llm_structured
     from .text_formatters.llm_free import format_with_llm_free
     
+    # Converter para formato de List[DeckData]
+    decks_data = convert_legacy_result_to_decks_data(tool_result, deck_display_names)
+    
+    # IMPORTANTE: Extrair tool_used correto do resultado (prioridade sobre parâmetro)
+    # O tool_result pode ter tool_used correto mesmo que o parâmetro esteja errado
+    safe_print(f"[INTERPRETER] [COMPARISON] 🔍 Verificando tool_used - Parâmetro recebido: {tool_used}")
+    safe_print(f"[INTERPRETER] [COMPARISON] 🔍 Campos no tool_result: {list(tool_result.keys()) if isinstance(tool_result, dict) else 'N/A'}")
+    
+    tool_used_from_result = tool_result.get("tool_used")
+    if tool_used_from_result:
+        safe_print(f"[INTERPRETER] [COMPARISON] ✅ Tool usada extraída do resultado: {tool_used_from_result} (substituindo parâmetro: {tool_used})")
+        tool_used = tool_used_from_result
+    else:
+        # Tentar extrair do primeiro deck
+        if decks_data and len(decks_data) > 0:
+            first_deck_result = decks_data[0].result
+            if isinstance(first_deck_result, dict):
+                tool_from_deck = first_deck_result.get("tool")
+                if tool_from_deck:
+                    safe_print(f"[INTERPRETER] [COMPARISON] ✅ Tool usada extraída do primeiro deck: {tool_from_deck} (substituindo parâmetro: {tool_used})")
+                    tool_used = tool_from_deck
+                else:
+                    safe_print(f"[INTERPRETER] [COMPARISON] ⚠️ Campo 'tool' não encontrado no primeiro deck. Campos disponíveis: {list(first_deck_result.keys())}")
+        else:
+            safe_print(f"[INTERPRETER] [COMPARISON] ⚠️ Nenhum deck disponível para extrair tool_used")
+    
+    safe_print(f"[INTERPRETER] [COMPARISON] ✅ Tool usada final para formatação: {tool_used}")
+    
+    safe_print(f"[INTERPRETER] [COMPARISON] Decks convertidos: {len(decks_data)}")
+    for idx, deck in enumerate(decks_data):
+        safe_print(f"[INTERPRETER] [COMPARISON]   Deck {idx+1}: {deck.display_name} - success={deck.success}, error={deck.error}")
+        if deck.result:
+            safe_print(f"[INTERPRETER] [COMPARISON]     Campos no result: {list(deck.result.keys()) if isinstance(deck.result, dict) else 'N/A'}")
+            if isinstance(deck.result, dict):
+                data_count = len(deck.result.get("data", []))
+                dados_por_sub = deck.result.get("dados_por_submercado", {})
+                safe_print(f"[INTERPRETER] [COMPARISON]     data: {data_count} registros")
+                safe_print(f"[INTERPRETER] [COMPARISON]     dados_por_submercado: {len(dados_por_sub) if isinstance(dados_por_sub, dict) else 0} submercados")
+    
     # Verificar se há dados de comparação
-    if not tool_result.get("deck_1") and not tool_result.get("deck_2"):
-        return {
-            "final_response": "## Erro na Comparação\n\nNão foi possível obter dados de comparação.",
-            "comparison_data": None
-        }
+    if not decks_data:
+        if not tool_result.get("deck_1") and not tool_result.get("deck_2") and not tool_result.get("decks"):
+            return {
+                "final_response": "## Erro na Comparação\n\nNão foi possível obter dados de comparação.",
+                "comparison_data": None
+            }
     
-    deck_1_name = tool_result.get("deck_1", {}).get("name", "Deck 1")
-    deck_2_name = tool_result.get("deck_2", {}).get("name", "Deck 2")
-    
-    # Verificar se ambos os decks tiveram sucesso
-    deck_1_success = tool_result.get("deck_1", {}).get("success", False)
-    deck_2_success = tool_result.get("deck_2", {}).get("success", False)
-    
-    if not deck_1_success or not deck_2_success:
-        # Se houve erro, retornar mensagem de erro sem chamar LLM
+    # Verificar erros em TODOS os decks (não apenas primeiro e último)
+    failed_decks = [d for d in decks_data if not d.success]
+    if failed_decks:
+        # Se algum deck falhou, retornar mensagem de erro listando TODOS os decks com erro
         response_parts = []
         response_parts.append(f"## Erro na Comparação\n\n")
-        if not deck_1_success:
-            error_1 = tool_result.get("deck_1", {}).get("error", "Erro desconhecido")
-            response_parts.append(f"- **{deck_1_name}**: {error_1}\n")
-        if not deck_2_success:
-            error_2 = tool_result.get("deck_2", {}).get("error", "Erro desconhecido")
-            response_parts.append(f"- **{deck_2_name}**: {error_2}\n")
+        for failed_deck in failed_decks:
+            error_msg = failed_deck.error or "Erro desconhecido"
+            response_parts.append(f"- **{failed_deck.display_name}**: {error_msg}\n")
         
-        final_response = "".join(response_parts)
-        return {
-            "final_response": final_response,
-            "comparison_data": {
-                "deck_1": tool_result.get("deck_1", {}),
-                "deck_2": tool_result.get("deck_2", {}),
-                "tool_name": tool_used,
-                "query": query
+        # Se TODOS os decks falharam, retornar erro completo
+        if len(failed_decks) == len(decks_data):
+            final_response = "".join(response_parts)
+            return {
+                "final_response": final_response,
+                "comparison_data": {
+                    "deck_1": tool_result.get("deck_1", {}),
+                    "deck_2": tool_result.get("deck_2", {}),
+                    "decks": tool_result.get("decks", []),
+                    "tool_name": tool_used,
+                    "query": query
+                }
             }
-        }
+        # Se apenas alguns decks falharam, FILTRAR os que falharam e continuar apenas com os bem-sucedidos
+        safe_print(f"[INTERPRETER] [COMPARISON] ⚠️ {len(failed_decks)} de {len(decks_data)} decks falharam. Continuando apenas com os {len(decks_data) - len(failed_decks)} decks bem-sucedidos.")
+        # Filtrar apenas os decks que tiveram sucesso
+        decks_data = [d for d in decks_data if d.success]
+    
+    # Extrair nomes para compatibilidade (primeiro e último)
+    if decks_data and len(decks_data) >= 2:
+        deck_1_name = decks_data[0].display_name
+        deck_2_name = decks_data[-1].display_name
+    else:
+        deck_1_name = tool_result.get("deck_1", {}).get("name", "Deck 1")
+        deck_2_name = tool_result.get("deck_2", {}).get("name", "Deck 2")
     
     # Obter formatador apropriado
-    deck_1_result = tool_result.get("deck_1", {}).get("full_result", {})
+    # IMPORTANTE: Precisamos usar o resultado ORIGINAL da tool, não o resultado processado
+    # O resultado original tem campos como dados_estruturais, dados_conjunturais, etc.
+    if decks_data and len(decks_data) > 0:
+        # decks_data[0].result já é o full_result preservado do MultiDeckComparisonTool
+        deck_1_result = decks_data[0].result
+        safe_print(f"[INTERPRETER] [COMPARISON] Usando resultado do primeiro deck para selecionar formatador")
+        safe_print(f"[INTERPRETER] [COMPARISON] Tipo do resultado: {type(deck_1_result)}")
+        safe_print(f"[INTERPRETER] [COMPARISON] Campos disponíveis no resultado: {list(deck_1_result.keys()) if isinstance(deck_1_result, dict) else 'N/A'}")
+        if isinstance(deck_1_result, dict):
+            # Verificar se tem dados_estruturais ou dados_conjunturais dentro
+            if "dados_estruturais" in deck_1_result:
+                dados_estrut = deck_1_result.get('dados_estruturais', [])
+                safe_print(f"[INTERPRETER] [COMPARISON] ✅ dados_estruturais encontrado: {len(dados_estrut) if isinstance(dados_estrut, list) else 'N/A'} registros")
+            if "dados_conjunturais" in deck_1_result:
+                dados_conj = deck_1_result.get('dados_conjunturais', [])
+                safe_print(f"[INTERPRETER] [COMPARISON] ✅ dados_conjunturais encontrado: {len(dados_conj) if isinstance(dados_conj, list) else 'N/A'} registros")
+            # Verificar se tem full_result aninhado (problema antigo)
+            if "full_result" in deck_1_result and isinstance(deck_1_result.get("full_result"), dict):
+                safe_print(f"[INTERPRETER] [COMPARISON] ⚠️ AVISO: full_result aninhado detectado! Isso indica que a correção não foi aplicada corretamente.")
+                nested_full = deck_1_result.get("full_result")
+                if "dados_estruturais" in nested_full:
+                    safe_print(f"[INTERPRETER] [COMPARISON]   dados_estruturais está dentro de full_result (deveria estar no nível superior)")
+                if "dados_conjunturais" in nested_full:
+                    safe_print(f"[INTERPRETER] [COMPARISON]   dados_conjunturais está dentro de full_result (deveria estar no nível superior)")
+    else:
+        deck_1_result = tool_result.get("deck_1", {}).get("full_result", tool_result.get("deck_1", {}))
+        safe_print(f"[INTERPRETER] [COMPARISON] Usando deck_1 legado para selecionar formatador")
+        safe_print(f"[INTERPRETER] [COMPARISON] Campos disponíveis no resultado: {list(deck_1_result.keys()) if isinstance(deck_1_result, dict) else 'N/A'}")
+    
+    # Debug: verificar quais formatadores podem processar
+    safe_print(f"[INTERPRETER] [COMPARISON] Verificando formatadores para tool: {tool_used}")
+    for fmt in FORMATTERS:
+        can_format = fmt.can_format(tool_used, deck_1_result)
+        safe_print(f"[INTERPRETER] [COMPARISON]   {fmt.__class__.__name__}: can_format={can_format}")
+    
     formatter = get_formatter_for_tool(tool_used, deck_1_result)
     
     safe_print(f"[INTERPRETER] [COMPARISON] Usando formatador: {formatter.__class__.__name__}")
+    safe_print(f"[INTERPRETER] [COMPARISON] Decks para comparar: {len(decks_data)}")
     
-    # Formatar comparação usando o formatador
+    # Validar se temos decks suficientes para comparação
+    if len(decks_data) < 2:
+        failed_deck_names = [d.display_name for d in decks_data if not d.success]
+        if failed_deck_names:
+            error_msg = f"## Erro na Comparação\n\nApenas {len(decks_data)} deck(s) disponível(is) para comparação. Os seguintes decks falharam:\n\n"
+            for name in failed_deck_names:
+                error_msg += f"- **{name}**: Falha ao processar\n"
+            return {
+                "final_response": error_msg,
+                "comparison_data": {
+                    "deck_1": tool_result.get("deck_1", {}),
+                    "deck_2": tool_result.get("deck_2", {}),
+                    "decks": tool_result.get("decks", []),
+                    "tool_name": tool_used,
+                    "query": query,
+                    "error": "Menos de 2 decks disponíveis para comparação"
+                }
+            }
+        else:
+            return {
+                "final_response": f"## Erro na Comparação\n\nApenas {len(decks_data)} deck(s) disponível(is) para comparação. É necessário pelo menos 2 decks.",
+                "comparison_data": {
+                    "deck_1": tool_result.get("deck_1", {}),
+                    "deck_2": tool_result.get("deck_2", {}),
+                    "decks": tool_result.get("decks", []),
+                    "tool_name": tool_used,
+                    "query": query,
+                    "error": "Menos de 2 decks disponíveis para comparação"
+                }
+            }
+    
+    # Formatar comparação usando o novo método format_multi_deck_comparison
     deck_1_full = tool_result.get("deck_1", {}).get("full_result", {})
     deck_2_full = tool_result.get("deck_2", {}).get("full_result", {})
     
-    # Passar nomes dos decks se o formatter aceitar (usando inspect para verificar assinatura)
-    import inspect
-    sig = inspect.signature(formatter.format_comparison)
-    format_kwargs = {
-        "result_dec": deck_1_full,
-        "result_jan": deck_2_full,
-        "tool_name": tool_used,
-        "query": query
-    }
-    
-    # Se o formatter aceita deck_1_name e deck_2_name, passar
-    if "deck_1_name" in sig.parameters:
-        format_kwargs["deck_1_name"] = deck_1_name
-    if "deck_2_name" in sig.parameters:
-        format_kwargs["deck_2_name"] = deck_2_name
-    
-    formatted = formatter.format_comparison(**format_kwargs)
+    # Usar format_multi_deck_comparison se temos decks_data
+    if decks_data:
+        formatted = formatter.format_multi_deck_comparison(decks_data, tool_used, query)
+    else:
+        # Fallback para método legado
+        import inspect
+        sig = inspect.signature(formatter.format_comparison)
+        format_kwargs = {
+            "result_dec": deck_1_full,
+            "result_jan": deck_2_full,
+            "tool_name": tool_used,
+            "query": query
+        }
+        if "deck_1_name" in sig.parameters:
+            format_kwargs["deck_1_name"] = deck_1_name
+        if "deck_2_name" in sig.parameters:
+            format_kwargs["deck_2_name"] = deck_2_name
+        formatted = formatter.format_comparison(**format_kwargs)
     
     visualization_type = formatted.get("visualization_type", "llm_free")
     safe_print(f"[INTERPRETER] [COMPARISON] Visualization type: {visualization_type}")
     
-    # Construir comparison_data com estrutura formatada
+    # Construir comparison_data com estrutura formatada (suporte N decks)
+    deck_names = [d.name for d in decks_data] if decks_data else []
+    deck_displays = [d.display_name for d in decks_data] if decks_data else [deck_1_name, deck_2_name]
+    
     comparison_data = {
+        # Campos legados para compatibilidade
         "deck_1": tool_result.get("deck_1", {}),
         "deck_2": tool_result.get("deck_2", {}),
+        "deck_1_name": deck_1_name,
+        "deck_2_name": deck_2_name,
+        # Novos campos para N decks
+        "deck_names": deck_names,
+        "deck_displays": deck_displays,
+        "deck_count": len(deck_displays),
+        # Lista completa de dados brutos para N decks
+        "decks_raw": [{
+            "deck_name": d.name,  # DeckData usa 'name', não 'deck_name'
+            "display_name": d.display_name,
+            "data": d.result.get("data", []) if d.result else []
+        } for d in decks_data] if decks_data else None,
+        # Dados formatados
         "comparison_table": formatted.get("comparison_table"),
         "chart_data": formatted.get("chart_data"),
         "visualization_type": visualization_type,
@@ -236,7 +371,9 @@ def format_comparison_response(
             formatted.get("comparison_table", []),
             deck_1_name,
             deck_2_name,
-            tool_label
+            tool_label,
+            deck_names=deck_displays,  # Passar lista de decks para suporte N-deck
+            tool_result=tool_result  # Passar tool_result para extrair informações reais
         )
     elif tool_used == "LimitesIntercambioTool":
         safe_print(f"[INTERPRETER] [COMPARISON] LimitesIntercambioTool - formato simplificado (apenas tabela e gráfico)")

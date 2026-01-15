@@ -1,9 +1,10 @@
 """
 Formatadores de diff para comparação multi-deck.
 Para tools que listam modificações (adicionado/removido/alterado).
+Suporta N decks para comparação dinâmica.
 """
 from typing import Dict, Any, List, Optional, Tuple
-from app.agents.multi_deck.formatting.base import ComparisonFormatter
+from app.agents.multi_deck.formatting.base import ComparisonFormatter, DeckData
 
 
 class DiffComparisonFormatter(ComparisonFormatter):
@@ -22,7 +23,144 @@ class DiffComparisonFormatter(ComparisonFormatter):
     def get_priority(self) -> int:
         return 85
     
-    def format_comparison(
+    def format_multi_deck_comparison(
+        self,
+        decks_data: List[DeckData],
+        tool_name: str,
+        query: str
+    ) -> Dict[str, Any]:
+        """Formata comparação de modificações para N decks, comparando decks consecutivos."""
+        if len(decks_data) < 2:
+            return {
+                "comparison_table": [],
+                "visualization_type": "diff_list",
+                "error": "São necessários pelo menos 2 decks para comparação"
+            }
+        
+        # Se há apenas 2 decks, usar método legado
+        if len(decks_data) == 2:
+            result = self._format_comparison_internal(
+                decks_data[0].result,
+                decks_data[-1].result,
+                tool_name,
+                query
+            )
+            result["deck_names"] = self.get_deck_names(decks_data)
+            result["is_multi_deck"] = False
+            return result
+        
+        # Para N decks, comparar cada par consecutivo e agregar resultados
+        all_comparisons = []
+        transitions = []  # Lista de transições: [(deck_0 -> deck_1), (deck_1 -> deck_2), ...]
+        
+        for i in range(len(decks_data) - 1):
+            deck_from = decks_data[i]
+            deck_to = decks_data[i + 1]
+            
+            transition_result = self._format_comparison_internal(
+                deck_from.result,
+                deck_to.result,
+                tool_name,
+                query
+            )
+            
+            transition_info = {
+                "from_deck": deck_from.display_name,
+                "to_deck": deck_to.display_name,
+                "from_index": i,
+                "to_index": i + 1,
+                "result": transition_result
+            }
+            transitions.append(transition_info)
+            all_comparisons.append(transition_result)
+        
+        # Agregar todas as mudanças de todas as transições
+        aggregated = self._aggregate_transitions(transitions, tool_name, query)
+        aggregated["deck_names"] = self.get_deck_names(decks_data)
+        aggregated["is_multi_deck"] = True
+        aggregated["transitions"] = [
+            {
+                "from": t["from_deck"],
+                "to": t["to_deck"],
+                "from_index": t["from_index"],
+                "to_index": t["to_index"]
+            }
+            for t in transitions
+        ]
+        
+        return aggregated
+    
+    def _aggregate_transitions(
+        self,
+        transitions: List[Dict],
+        tool_name: str,
+        query: str
+    ) -> Dict[str, Any]:
+        """
+        Agrega resultados de múltiplas transições entre decks consecutivos.
+        """
+        if tool_name == "ExptOperacaoTool":
+            return self._aggregate_expt_transitions(transitions, query)
+        else:  # ModifOperacaoTool
+            return self._aggregate_modif_transitions(transitions, query)
+    
+    def _aggregate_expt_transitions(
+        self,
+        transitions: List[Dict],
+        query: str
+    ) -> Dict[str, Any]:
+        """
+        Agrega transições de EXPT, mostrando todas as mudanças ao longo do tempo.
+        """
+        # Coletar todas as mudanças de todas as transições
+        all_added = []
+        all_removed = []
+        all_modified = []
+        all_comparison_tables = []
+        
+        for transition in transitions:
+            result = transition["result"]
+            comparison_table = result.get("comparison_table", [])
+            
+            # Adicionar informações da transição a cada registro
+            for row in comparison_table:
+                row["transition"] = f"{transition['from_deck']} → {transition['to_deck']}"
+                row["from_deck"] = transition["from_deck"]
+                row["to_deck"] = transition["to_deck"]
+            
+            all_comparison_tables.extend(comparison_table)
+            
+            # Agregar added/removed/modified se existirem
+            if "added" in result:
+                all_added.extend(result["added"])
+            if "removed" in result:
+                all_removed.extend(result["removed"])
+            if "modified" in result:
+                all_modified.extend(result["modified"])
+        
+        return {
+            "comparison_table": all_comparison_tables,
+            "added": all_added,
+            "removed": all_removed,
+            "modified": all_modified,
+            "visualization_type": "diff_list",
+            "summary": {
+                "total_transitions": len(transitions),
+                "total_changes": len(all_comparison_tables)
+            }
+        }
+    
+    def _aggregate_modif_transitions(
+        self,
+        transitions: List[Dict],
+        query: str
+    ) -> Dict[str, Any]:
+        """
+        Agrega transições de MODIF, similar a EXPT.
+        """
+        return self._aggregate_expt_transitions(transitions, query)
+    
+    def _format_comparison_internal(
         self,
         result_dec: Dict[str, Any],
         result_jan: Dict[str, Any],

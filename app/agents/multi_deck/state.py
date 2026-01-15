@@ -1,17 +1,22 @@
 """
 Estado compartilhado entre os nodes do Multi-Deck Agent.
+Suporta N decks para comparação.
 """
 
-from typing import TypedDict, List, Optional, Any
+from typing import TypedDict, List, Optional, Any, Dict
 
 
 class MultiDeckState(TypedDict):
     """Estado compartilhado entre os nodes do LangGraph para Multi-Deck."""
     
     query: str
-    deck_path: str
-    deck_december_path: str  # Caminho do deck de dezembro
-    deck_january_path: str   # Caminho do deck de janeiro
+    deck_path: str  # Path do primeiro deck (para compatibilidade)
+    
+    # Campos para N decks dinâmicos
+    selected_decks: List[str]  # Lista de nomes dos decks selecionados (ex: ["NW202501", "NW202512"])
+    deck_paths: Dict[str, str]  # Mapeamento nome -> caminho (ex: {"NW202501": "/path/to/deck"})
+    deck_display_names: Dict[str, str]  # Mapeamento nome -> nome amigável (ex: {"NW202501": "Janeiro 2025"})
+    
     relevant_docs: List[str]
     generated_code: str
     execution_result: dict

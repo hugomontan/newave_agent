@@ -1,14 +1,32 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { motion } from "framer-motion";
-import { FileText, GitCompare, ArrowRight, Brain } from "lucide-react";
+import { FileText, GitCompare, ArrowRight, Brain, Calendar } from "lucide-react";
+import { listAvailableDecks, DeckInfo } from "@/lib/api";
 
 export default function Home() {
   const router = useRouter();
+  const [availableDecks, setAvailableDecks] = useState<DeckInfo[]>([]);
+  const [isLoadingDecks, setIsLoadingDecks] = useState(true);
+
+  useEffect(() => {
+    const fetchDecks = async () => {
+      try {
+        const response = await listAvailableDecks();
+        setAvailableDecks(response.decks);
+      } catch (err) {
+        console.error("Error fetching decks:", err);
+      } finally {
+        setIsLoadingDecks(false);
+      }
+    };
+    fetchDecks();
+  }, []);
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -63,11 +81,31 @@ export default function Home() {
                 <CardContent>
                   <div className="space-y-4">
                     <div className="space-y-2">
-                      <p className="text-sm font-medium text-foreground">Decks Disponíveis:</p>
-                      <ul className="text-sm text-muted-foreground space-y-1">
-                        <li>• Dezembro 2025 (NW202512)</li>
-                        <li>• Janeiro 2026 (NW202601)</li>
-                      </ul>
+                      <p className="text-sm font-medium text-foreground flex items-center gap-2">
+                        <Calendar className="w-4 h-4" />
+                        Decks Disponíveis:
+                        {!isLoadingDecks && (
+                          <Badge variant="secondary" className="ml-1">
+                            {availableDecks.length}
+                          </Badge>
+                        )}
+                      </p>
+                      {isLoadingDecks ? (
+                        <div className="flex gap-1">
+                          <div className="w-2 h-2 bg-primary/60 rounded-full animate-bounce"></div>
+                          <div className="w-2 h-2 bg-primary/60 rounded-full animate-bounce" style={{ animationDelay: "0.2s" }}></div>
+                          <div className="w-2 h-2 bg-primary/60 rounded-full animate-bounce" style={{ animationDelay: "0.4s" }}></div>
+                        </div>
+                      ) : (
+                        <ul className="text-sm text-muted-foreground space-y-1 max-h-24 overflow-y-auto">
+                          {availableDecks.slice(-4).map((deck) => (
+                            <li key={deck.name}>• {deck.display_name}</li>
+                          ))}
+                          {availableDecks.length > 4 && (
+                            <li className="text-xs italic">+ {availableDecks.length - 4} mais...</li>
+                          )}
+                        </ul>
+                      )}
                     </div>
                     <Button
                       onClick={() => router.push("/analysis")}
@@ -97,17 +135,18 @@ export default function Home() {
                     <CardTitle className="text-2xl">Análise Comparativa</CardTitle>
                   </div>
                   <CardDescription className="text-base">
-                    Compare automaticamente os dados entre Dezembro 2025 e Janeiro 2026. Todas as consultas retornam resultados lado a lado com gráficos comparativos.
+                    Compare dados entre múltiplos decks NEWAVE. Selecione N decks para análise histórica ou compare apenas dois para comparação direta.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
                     <div className="space-y-2">
-                      <p className="text-sm font-medium text-foreground">Comparação Automática:</p>
+                      <p className="text-sm font-medium text-foreground">Comparação N Decks:</p>
                       <ul className="text-sm text-muted-foreground space-y-1">
-                        <li>• Todas as queries comparam ambos os decks</li>
-                        <li>• Resultados lado a lado</li>
-                        <li>• Gráficos comparativos automáticos</li>
+                        <li>• Selecione múltiplos decks para comparar</li>
+                        <li>• Análise histórica com todos os decks</li>
+                        <li>• Gráficos de evolução temporal</li>
+                        <li>• Resultados lado a lado automáticos</li>
                       </ul>
                     </div>
                     <Button

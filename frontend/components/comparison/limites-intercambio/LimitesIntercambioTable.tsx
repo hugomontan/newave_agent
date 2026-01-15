@@ -12,10 +12,45 @@ interface LimitesIntercambioTableProps {
   data: TableRow[];
   deck1Name: string;
   deck2Name: string;
+  deckNames?: string[]; // Suporte para N decks
 }
 
-export function LimitesIntercambioTable({ data, deck1Name, deck2Name }: LimitesIntercambioTableProps) {
+export function LimitesIntercambioTable({ data, deck1Name, deck2Name, deckNames }: LimitesIntercambioTableProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+  
+  // Determinar quais decks usar (suporte N decks)
+  const allDeckNames = deckNames && deckNames.length > 0 ? deckNames : [deck1Name, deck2Name];
+  
+  // Verificar quantos decks estão presentes nos dados
+  const detectDeckCount = () => {
+    if (!data || data.length === 0) return allDeckNames.length;
+    const firstRow = data[0];
+    if (!firstRow) return allDeckNames.length;
+    
+    // Contar colunas deck_N nos dados
+    let maxDeckIndex = 0;
+    for (const key in firstRow) {
+      if (key.startsWith('deck_')) {
+        const match = key.match(/^deck_(\d+)$/);
+        if (match) {
+          const deckIndex = parseInt(match[1]);
+          if (deckIndex > maxDeckIndex) {
+            maxDeckIndex = deckIndex;
+          }
+        }
+      }
+    }
+    
+    // Se encontrou colunas deck_N, usar o máximo encontrado
+    if (maxDeckIndex > 0) {
+      return Math.max(maxDeckIndex, allDeckNames.length);
+    }
+    
+    return allDeckNames.length;
+  };
+  
+  const deckCount = detectDeckCount();
+  const deckNamesToUse = allDeckNames.slice(0, deckCount);
   
   if (!data || data.length === 0) {
     return null;
@@ -25,11 +60,19 @@ export function LimitesIntercambioTable({ data, deck1Name, deck2Name }: LimitesI
   const displayedData = isExpanded ? data : data.slice(0, INITIAL_ROWS);
 
   const handleDownloadCSV = () => {
-    const csvData = data.map((row) => ({
-      Período: row.data ? String(row.data) : "",
-      [deck1Name]: row.deck_1 ?? row.deck_1_value ?? null,
-      [deck2Name]: row.deck_2 ?? row.deck_2_value ?? null,
-    }));
+    const csvData = data.map((row) => {
+      const csvRow: Record<string, any> = {
+        Período: row.data ? String(row.data) : "",
+      };
+      
+      // Adicionar colunas para todos os decks
+      deckNamesToUse.forEach((name, index) => {
+        const deckKey = `deck_${index + 1}` as keyof TableRow;
+        csvRow[name] = (row[deckKey] as number | null) ?? null;
+      });
+      
+      return csvRow;
+    });
     exportToCSV(csvData, "limites_intercambio");
   };
 
@@ -62,19 +105,22 @@ export function LimitesIntercambioTable({ data, deck1Name, deck2Name }: LimitesI
                 <th className="px-3 sm:px-4 py-3 text-left text-xs font-semibold text-card-foreground uppercase tracking-wider whitespace-nowrap">
                   Período
                 </th>
-                <th className="px-3 sm:px-4 py-3 text-right text-xs font-semibold text-blue-400 uppercase tracking-wider whitespace-nowrap">
-                  {deck1Name}
-                </th>
-                <th className="px-3 sm:px-4 py-3 text-right text-xs font-semibold text-purple-400 uppercase tracking-wider whitespace-nowrap">
-                  {deck2Name}
-                </th>
+                {deckNamesToUse.map((name, index) => {
+                  const colors = ["text-blue-400", "text-purple-400", "text-green-400", "text-yellow-400", "text-pink-400", "text-cyan-400", "text-orange-400", "text-indigo-400", "text-red-400", "text-teal-400", "text-lime-400", "text-amber-400"];
+                  return (
+                    <th 
+                      key={name}
+                      className={`px-3 sm:px-4 py-3 text-right text-xs font-semibold ${colors[index % colors.length]} uppercase tracking-wider whitespace-nowrap`}
+                    >
+                      {name}
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
             <tbody>
               {displayedData.map((row, index) => {
                 const periodo = row.data ? String(row.data) : "";
-                const deck1Value = row.deck_1 ?? row.deck_1_value ?? null;
-                const deck2Value = row.deck_2 ?? row.deck_2_value ?? null;
 
                 return (
                   <tr
@@ -84,12 +130,19 @@ export function LimitesIntercambioTable({ data, deck1Name, deck2Name }: LimitesI
                     <td className="px-3 sm:px-4 py-2.5 text-sm text-card-foreground font-medium whitespace-nowrap">
                       {periodo}
                     </td>
-                    <td className="px-3 sm:px-4 py-2.5 text-sm text-blue-400 text-right whitespace-nowrap font-mono">
-                      {deck1Value !== null ? formatNumber(Number(deck1Value)) : "-"}
-                    </td>
-                    <td className="px-3 sm:px-4 py-2.5 text-sm text-purple-400 text-right whitespace-nowrap font-mono">
-                      {deck2Value !== null ? formatNumber(Number(deck2Value)) : "-"}
-                    </td>
+                    {deckNamesToUse.map((name, deckIndex) => {
+                      const deckKey = `deck_${deckIndex + 1}` as keyof TableRow;
+                      const value = (row[deckKey] as number | null) ?? null;
+                      const colors = ["text-blue-400", "text-purple-400", "text-green-400", "text-yellow-400", "text-pink-400", "text-cyan-400", "text-orange-400", "text-indigo-400", "text-red-400", "text-teal-400", "text-lime-400", "text-amber-400"];
+                      return (
+                        <td 
+                          key={name}
+                          className={`px-3 sm:px-4 py-2.5 text-sm ${colors[deckIndex % colors.length]} text-right whitespace-nowrap font-mono`}
+                        >
+                          {value !== null ? formatNumber(Number(value)) : "-"}
+                        </td>
+                      );
+                    })}
                   </tr>
                 );
               })}

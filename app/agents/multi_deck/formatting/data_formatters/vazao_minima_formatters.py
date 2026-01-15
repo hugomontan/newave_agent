@@ -1,9 +1,10 @@
 """
 Formatador para MudancasVazaoMinimaTool.
 Visualização: Tabela de mudanças ordenadas por magnitude.
+Suporta N decks para comparação dinâmica.
 """
-from typing import Dict, Any
-from app.agents.multi_deck.formatting.base import ComparisonFormatter
+from typing import Dict, Any, List
+from app.agents.multi_deck.formatting.base import ComparisonFormatter, DeckData
 from app.agents.multi_deck.formatting.data_formatters.gtmin_formatters import (
     format_date_br,
     format_periodo_coluna
@@ -24,6 +25,59 @@ class MudancasVazaoMinimaFormatter(ComparisonFormatter):
     
     def get_priority(self) -> int:
         return 95  # Alta prioridade - muito específico
+    
+    def format_multi_deck_comparison(
+        self,
+        decks_data: List[DeckData],
+        tool_name: str,
+        query: str
+    ) -> Dict[str, Any]:
+        """Formata comparação de mudanças de vazão mínima para N decks."""
+        if len(decks_data) < 2:
+            return {"comparison_table": [], "visualization_type": "vazao_minima_table"}
+        
+        # Se há apenas 2 decks, usar método legado
+        if len(decks_data) == 2:
+            result = self._format_comparison_internal(
+                decks_data[0].result,
+                decks_data[-1].result,
+                tool_name,
+                query
+            )
+            result["deck_names"] = self.get_deck_names(decks_data)
+            result["is_multi_deck"] = False
+            return result
+        
+        # Para N decks, comparar cada par consecutivo e agregar
+        all_comparisons = []
+        transitions = []  # Lista de transições: [(deck_0 -> deck_1), (deck_1 -> deck_2), ...]
+        
+        for i in range(len(decks_data) - 1):
+            deck_from = decks_data[i]
+            deck_to = decks_data[i + 1]
+            
+            transition_result = self._format_comparison_internal(
+                deck_from.result,
+                deck_to.result,
+                tool_name,
+                query
+            )
+            
+            transition_info = {
+                "from_deck": deck_from.display_name,
+                "to_deck": deck_to.display_name,
+                "from_index": i,
+                "to_index": i + 1,
+                "result": transition_result
+            }
+            transitions.append(transition_info)
+            all_comparisons.append(transition_result)
+        
+        # Agregar todas as mudanças de todas as transições
+        aggregated = self._aggregate_transitions(transitions, tool_name, query)
+        aggregated["deck_names"] = self.get_deck_names(decks_data)
+        aggregated["is_multi_deck"] = len(decks_data) > 2
+        return aggregated
     
     def _format_periodo_mm_yyyy(self, periodo_inicio: str) -> str:
         """
@@ -49,7 +103,7 @@ class MudancasVazaoMinimaFormatter(ComparisonFormatter):
         except:
             return ""
     
-    def format_comparison(
+    def _format_comparison_internal(
         self,
         result_dec: Dict[str, Any],
         result_jan: Dict[str, Any],
@@ -258,5 +312,91 @@ class MudancasVazaoMinimaFormatter(ComparisonFormatter):
             "visualization_type": "vazao_minima_changes_table",
             "llm_context": {
                 "note": "Dados não formatados corretamente."
+            }
+        }
+    
+    def _aggregate_transitions(
+        self,
+        transitions: List[Dict],
+        tool_name: str,
+        query: str
+    ) -> Dict[str, Any]:
+        """
+        Agrega resultados de múltiplas transições entre decks consecutivos.
+        Coleta todas as mudanças de vazão mínima de todas as transições.
+        """
+        all_comparison_tables = []
+        all_comparison_by_type = {}
+        all_stats = {
+            "total_mudancas": 0,
+            "mudancas_por_tipo": {
+                "aumento": 0,
+                "queda": 0,
+                "remocao": 0,
+                "novo": 0,
+                "sem_mudanca": 0
+            },
+            "mudancas_por_tipo_vazao": {
+                "VAZMIN": 0,
+                "VAZMINT": 0
+            }
+        }
+        
+        for transition in transitions:
+            result = transition["result"]
+            comparison_table = result.get("comparison_table", [])
+            comparison_by_type = result.get("comparison_by_type", {})
+            stats = result.get("stats", {})
+            
+            # Adicionar informações da transição a cada registro
+            for row in comparison_table:
+                row["transition"] = f"{transition['from_deck']} → {transition['to_deck']}"
+                row["from_deck"] = transition["from_deck"]
+                row["to_deck"] = transition["to_deck"]
+            
+            all_comparison_tables.extend(comparison_table)
+            
+            # Agregar comparison_by_type
+            for tipo, tipo_data in comparison_by_type.items():
+                if tipo not in all_comparison_by_type:
+                    all_comparison_by_type[tipo] = {
+                        "tipo": tipo,
+                        "label": tipo_data.get("label", tipo),
+                        "rows": []
+                    }
+                all_comparison_by_type[tipo]["rows"].extend(tipo_data.get("rows", []))
+            
+            # Agregar estatísticas
+            if stats:
+                all_stats["total_mudancas"] += stats.get("total_mudancas", len(comparison_table))
+                mudancas_por_tipo = stats.get("mudancas_por_tipo", {})
+                for tipo, count in mudancas_por_tipo.items():
+                    if tipo in all_stats["mudancas_por_tipo"]:
+                        all_stats["mudancas_por_tipo"][tipo] += count
+                
+                mudancas_por_tipo_vazao = stats.get("mudancas_por_tipo_vazao", {})
+                for tipo_vazao, count in mudancas_por_tipo_vazao.items():
+                    if tipo_vazao in all_stats["mudancas_por_tipo_vazao"]:
+                        all_stats["mudancas_por_tipo_vazao"][tipo_vazao] += count
+        
+        # Reordenar tabela geral por tipo e magnitude
+        ordem_tipo = {"aumento": 0, "queda": 1, "remocao": 2, "novo": 3, "sem_mudanca": 4}
+        all_comparison_tables.sort(key=lambda x: (
+            ordem_tipo.get(x.get("tipo_mudanca", "N/A"), 99),
+            -abs(x.get("magnitude", 0)) if x.get("magnitude") else 0  # Maior magnitude primeiro dentro do mesmo tipo
+        ))
+        
+        return {
+            "comparison_table": all_comparison_tables,
+            "comparison_by_type": all_comparison_by_type,
+            "chart_data": None,
+            "visualization_type": "vazao_minima_changes_table",
+            "stats": all_stats,
+            "llm_context": {
+                "total_mudancas": len(all_comparison_tables),
+                "total_transitions": len(transitions),
+                "description": f"Análise histórica de {len(all_comparison_tables)} mudanças de vazão mínima ao longo de {len(transitions)} transições entre decks, ordenadas por magnitude.",
+                "tipos_vazao": all_stats["mudancas_por_tipo_vazao"],
+                "note": "Os resultados incluem mudanças de ambos os tipos: VAZMIN (vazão mínima sem período) e VAZMINT (vazão mínima com período). Os dados estão claramente separados por seções no frontend."
             }
         }

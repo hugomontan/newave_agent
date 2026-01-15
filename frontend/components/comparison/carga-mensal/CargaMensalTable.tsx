@@ -9,6 +9,7 @@ interface CargaMensalTableProps {
   data: TableRow[];
   deck1Name: string;
   deck2Name: string;
+  deckNames?: string[]; // Suporte para N decks
 }
 
 // Função para converter "Dez/2025" para "2025-12"
@@ -49,7 +50,40 @@ const formatCargaValue = (value: number | null | undefined): string => {
   });
 };
 
-export function CargaMensalTable({ data, deck1Name, deck2Name }: CargaMensalTableProps) {
+export function CargaMensalTable({ data, deck1Name, deck2Name, deckNames }: CargaMensalTableProps) {
+  // Determinar quais decks usar (suporte N decks)
+  const allDeckNames = deckNames && deckNames.length > 0 ? deckNames : [deck1Name, deck2Name];
+  
+  // Verificar quantos decks estão presentes nos dados
+  const detectDeckCount = () => {
+    if (!data || data.length === 0) return allDeckNames.length;
+    const firstRow = data[0];
+    if (!firstRow) return allDeckNames.length;
+    
+    // Contar colunas deck_N nos dados
+    let maxDeckIndex = 0;
+    for (const key in firstRow) {
+      if (key.startsWith('deck_')) {
+        const match = key.match(/^deck_(\d+)$/);
+        if (match) {
+          const deckIndex = parseInt(match[1]);
+          if (deckIndex > maxDeckIndex) {
+            maxDeckIndex = deckIndex;
+          }
+        }
+      }
+    }
+    
+    // Se encontrou colunas deck_N, usar o máximo encontrado
+    if (maxDeckIndex > 0) {
+      return Math.max(maxDeckIndex, allDeckNames.length);
+    }
+    
+    return allDeckNames.length;
+  };
+  
+  const deckCount = detectDeckCount();
+  const deckNamesToUse = allDeckNames.slice(0, deckCount);
   const [isExpanded, setIsExpanded] = useState(false);
   const INITIAL_ROWS = 10;
   const hasMoreRows = data.length > INITIAL_ROWS;
@@ -81,11 +115,17 @@ export function CargaMensalTable({ data, deck1Name, deck2Name }: CargaMensalTabl
         dataFormatada = convertPeriodoToYYYYMM(String(row.data));
       }
       
-      return {
+      const csvRow: Record<string, any> = {
         Data: dataFormatada || "-",
-        [deck1Name]: row.deck_1 ?? row.deck_1_value ?? null,
-        [deck2Name]: row.deck_2 ?? row.deck_2_value ?? null,
       };
+      
+      // Adicionar colunas para todos os decks
+      deckNamesToUse.forEach((name, index) => {
+        const deckKey = `deck_${index + 1}` as keyof TableRow;
+        csvRow[name] = (row[deckKey] as number | null) ?? null;
+      });
+      
+      return csvRow;
     });
     exportToCSV(csvData, "carga_mensal");
   };
@@ -119,12 +159,17 @@ export function CargaMensalTable({ data, deck1Name, deck2Name }: CargaMensalTabl
                 <th className="px-3 sm:px-4 py-3 text-left text-xs font-semibold text-card-foreground uppercase tracking-wider whitespace-nowrap">
                   Data
                 </th>
-                <th className="px-3 sm:px-4 py-3 text-right text-xs font-semibold text-blue-400 uppercase tracking-wider whitespace-nowrap">
-                  {deck1Name}
-                </th>
-                <th className="px-3 sm:px-4 py-3 text-right text-xs font-semibold text-purple-400 uppercase tracking-wider whitespace-nowrap">
-                  {deck2Name}
-                </th>
+                {deckNamesToUse.map((name, index) => {
+                  const colors = ["text-blue-400", "text-purple-400", "text-green-400", "text-yellow-400", "text-pink-400", "text-cyan-400", "text-orange-400", "text-indigo-400", "text-red-400", "text-teal-400", "text-lime-400", "text-amber-400"];
+                  return (
+                    <th 
+                      key={name}
+                      className={`px-3 sm:px-4 py-3 text-right text-xs font-semibold ${colors[index % colors.length]} uppercase tracking-wider whitespace-nowrap`}
+                    >
+                      {name}
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
           <tbody>
@@ -143,9 +188,6 @@ export function CargaMensalTable({ data, deck1Name, deck2Name }: CargaMensalTabl
                 dataFormatada = convertPeriodoToYYYYMM(String(row.data));
               }
               
-              const deck1Value = row.deck_1 ?? row.deck_1_value ?? null;
-              const deck2Value = row.deck_2 ?? row.deck_2_value ?? null;
-
               return (
                 <tr
                   key={`${dataFormatada}-${index}`}
@@ -154,12 +196,19 @@ export function CargaMensalTable({ data, deck1Name, deck2Name }: CargaMensalTabl
                   <td className="px-3 sm:px-4 py-2.5 text-sm text-card-foreground font-medium whitespace-nowrap">
                     {dataFormatada || "-"}
                   </td>
-                  <td className="px-3 sm:px-4 py-2.5 text-sm text-blue-400 text-right whitespace-nowrap font-mono">
-                    {formatCargaValue(deck1Value)}
-                  </td>
-                  <td className="px-3 sm:px-4 py-2.5 text-sm text-purple-400 text-right whitespace-nowrap font-mono">
-                    {formatCargaValue(deck2Value)}
-                  </td>
+                  {deckNamesToUse.map((name, deckIndex) => {
+                    const deckKey = `deck_${deckIndex + 1}` as keyof TableRow;
+                    const value = (row[deckKey] as number | null) ?? null;
+                    const colors = ["text-blue-400", "text-purple-400", "text-green-400", "text-yellow-400", "text-pink-400", "text-cyan-400", "text-orange-400", "text-indigo-400", "text-red-400", "text-teal-400", "text-lime-400", "text-amber-400"];
+                    return (
+                      <td 
+                        key={name}
+                        className={`px-3 sm:px-4 py-2.5 text-sm ${colors[deckIndex % colors.length]} text-right whitespace-nowrap font-mono`}
+                      >
+                        {formatCargaValue(value)}
+                      </td>
+                    );
+                  })}
                 </tr>
               );
             })}

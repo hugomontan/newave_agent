@@ -5,13 +5,17 @@ import { motion } from "framer-motion";
 import { LimitesIntercambioTable } from "./LimitesIntercambioTable";
 import { LimitesIntercambioChart } from "./LimitesIntercambioChart";
 import type { ComparisonData, TableRow } from "../shared/types";
+import { getDeckNames } from "../shared/types";
 
 interface LimitesIntercambioViewProps {
   comparison: ComparisonData;
 }
 
 export function LimitesIntercambioView({ comparison }: LimitesIntercambioViewProps) {
-  const { deck_1, deck_2, comparison_table, charts_by_par } = comparison;
+  const { deck_1, deck_2, comparison_table, charts_by_par, deck_displays, deck_count } = comparison;
+  
+  // Obter nomes de todos os decks (suporte N decks)
+  const allDeckNames = getDeckNames(comparison);
 
   // Agrupar por par_key se existir
   const groupedByPar = React.useMemo(() => {
@@ -53,8 +57,9 @@ export function LimitesIntercambioView({ comparison }: LimitesIntercambioViewPro
                 </h4>
                 <LimitesIntercambioTable 
                   data={group.rows}
-                  deck1Name={deck_1.name}
-                  deck2Name={deck_2.name}
+                  deck1Name={deck_1?.name || allDeckNames[0] || "Deck 1"}
+                  deck2Name={deck_2?.name || allDeckNames[allDeckNames.length - 1] || "Deck 2"}
+                  deckNames={allDeckNames}
                 />
               </div>
               {hasChartData && parChart.chart_data && (
@@ -76,8 +81,9 @@ export function LimitesIntercambioView({ comparison }: LimitesIntercambioViewPro
             </h4>
             <LimitesIntercambioTable 
               data={group.rows}
-              deck1Name={deck_1.name}
-              deck2Name={deck_2.name}
+              deck1Name={deck_1?.name || allDeckNames[0] || "Deck 1"}
+              deck2Name={deck_2?.name || allDeckNames[allDeckNames.length - 1] || "Deck 2"}
+              deckNames={allDeckNames}
             />
           </div>
         ))
@@ -85,8 +91,9 @@ export function LimitesIntercambioView({ comparison }: LimitesIntercambioViewPro
         // Fallback: renderizar tabela única se não houver agrupamento
         <LimitesIntercambioTable 
           data={comparison_table}
-          deck1Name={deck_1.name}
-          deck2Name={deck_2.name}
+          deck1Name={deck_1?.name || allDeckNames[0] || "Deck 1"}
+          deck2Name={deck_2?.name || allDeckNames[allDeckNames.length - 1] || "Deck 2"}
+          deckNames={allDeckNames}
         />
       ) : null}
 

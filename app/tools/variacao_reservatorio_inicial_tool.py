@@ -269,6 +269,7 @@ class VariacaoReservatorioInicialTool(NEWAVETool):
         - "reservatório inicial de Furnas"
         - "volume inicial percentual"
         - "v.inic"
+        - "volume inicial"
         
         Termos-chave: v.inic, volume inicial, reservatório inicial, volume inicial percentual, reservatório inicial por usina.
         """

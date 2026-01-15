@@ -5,13 +5,18 @@ import { motion } from "framer-motion";
 import { CargaMensalTable } from "./CargaMensalTable";
 import { CargaMensalChart } from "./CargaMensalChart";
 import type { ComparisonData } from "../shared/types";
+import { getDeckNames, isHistoricalAnalysis } from "../shared/types";
 
 interface CargaMensalViewProps {
   comparison: ComparisonData;
 }
 
 export function CargaMensalView({ comparison }: CargaMensalViewProps) {
-  const { deck_1, deck_2, comparison_table, chart_data } = comparison;
+  const { deck_1, deck_2, comparison_table, chart_data, deck_displays, deck_count } = comparison;
+  
+  // Obter nomes de todos os decks (suporte N decks)
+  const allDeckNames = getDeckNames(comparison);
+  const isHistorical = isHistoricalAnalysis(comparison);
 
   return (
     <motion.div
@@ -23,8 +28,9 @@ export function CargaMensalView({ comparison }: CargaMensalViewProps) {
       {comparison_table && comparison_table.length > 0 && (
         <CargaMensalTable
           data={comparison_table}
-          deck1Name={deck_1.name}
-          deck2Name={deck_2.name}
+          deck1Name={deck_1?.name || allDeckNames[0] || "Deck 1"}
+          deck2Name={deck_2?.name || allDeckNames[allDeckNames.length - 1] || "Deck 2"}
+          deckNames={allDeckNames}
         />
       )}
 

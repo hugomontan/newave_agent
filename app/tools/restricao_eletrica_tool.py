@@ -10,7 +10,7 @@ from app.utils.restricao_eletrica import RestricaoEletrica
 import os
 import pandas as pd
 import re
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Tuple
 
 
 class RestricaoEletricaTool(NEWAVETool):
@@ -60,7 +60,7 @@ class RestricaoEletricaTool(NEWAVETool):
         ]
         return any(kw in query_lower for kw in keywords)
     
-    def _extract_cod_rest_from_query(self, query: str, re_obj: RestricaoEletrica) -> Optional[int]:
+    def _extract_cod_rest_from_query(self, query: str, re_obj: RestricaoEletrica) -> Tuple[Optional[int], list[str]]:
         """
         Extrai código da restrição da query.
         Busca por código numérico ou por nome da restrição.
@@ -70,7 +70,7 @@ class RestricaoEletricaTool(NEWAVETool):
             re_obj: Objeto RestricaoEletrica já lido
             
         Returns:
-            Código da restrição ou None
+            Tupla (código da restrição ou None, lista de nomes extraídos)
         """
         query_lower = query.lower()
         
@@ -91,20 +91,92 @@ class RestricaoEletricaTool(NEWAVETool):
                 try:
                     codigo = int(match.group(1))
                     print(f"[TOOL] ✅ Código de restrição encontrado por padrão numérico: {codigo}")
-                    return codigo
+                    return codigo, []
                 except ValueError:
                     continue
         
-        # ETAPA 2: Buscar por nome da restrição usando o novo método
+        # ETAPA 2: Extrair possíveis nomes da query antes de buscar
+        # Padrões para extrair nomes de restrições da query
+        nome_patterns = [
+            r'restri[çc][ãa]o\s+(?:el[ée]trica\s+)?(?:de\s+|da\s+|do\s+)?([A-Z][A-Z0-9\s\+\-\>\/]+?)(?:\s|$)',  # "restrição de RSUL" ou "restrição RSUL"
+            r'(?:de\s+|da\s+|do\s+)([A-Z][A-Z0-9\s\+\-\>\/]+?)(?:\s|$)',  # "de RSUL" ou "da FNS"
+            r'\b([A-Z][A-Z0-9]{2,})\b',  # Qualquer palavra em maiúsculas com 3+ caracteres (sem espaços)
+        ]
+        
+        nomes_extraidos = []
+        palavras_comuns = {'restrição', 'restricao', 'elétrica', 'eletrica', 'qual', 'quais', 'de', 'da', 'do', 'as', 'os', 'the', 'of', 'a', 'an'}
+        
+        for pattern in nome_patterns:
+            matches = re.findall(pattern, query)
+            for match in matches:
+                nome = match.strip()
+                # Filtrar palavras muito curtas ou que são apenas palavras comuns
+                # Também filtrar se contém apenas uma palavra comum
+                palavras_nome = nome.lower().split()
+                if len(nome) >= 3 and nome.lower() not in palavras_comuns:
+                    # Verificar se não é apenas palavras comuns
+                    palavras_validas = [p for p in palavras_nome if p not in palavras_comuns and len(p) >= 2]
+                    if palavras_validas:
+                        nomes_extraidos.append(nome)
+        
+        # Remover duplicatas mantendo ordem
+        nomes_extraidos = list(dict.fromkeys(nomes_extraidos))
+        
+        print(f"[TOOL] Nomes extraídos da query: {nomes_extraidos}")
+        
+        # ETAPA 3: Buscar por nome da restrição
+        # Primeiro tentar com os nomes extraídos (mais específico)
+        for nome_extraido in nomes_extraidos:
+            # Aplicar mapeamento se necessário
+            nome_normalizado = nome_extraido.strip()
+            # Remover "+" no final se houver
+            nome_normalizado = re.sub(r'\s*\+\s*$', '', nome_normalizado).strip()
+            # Aplicar mapeamento
+            nome_mapeado = RestricaoEletrica.MAPEAMENTO_NOMES.get(nome_normalizado, nome_normalizado)
+            # Verificar variações case-insensitive
+            if nome_mapeado == nome_normalizado:
+                nome_lower = nome_normalizado.lower()
+                for nome_antigo, nome_novo in RestricaoEletrica.MAPEAMENTO_NOMES.items():
+                    if nome_lower == nome_antigo.lower():
+                        nome_mapeado = nome_novo
+                        break
+            
+            cod_rest = re_obj.buscar_por_nome(nome_mapeado.lower())
+            if cod_rest is not None:
+                nome_encontrado = re_obj.nomes_restricoes[
+                    re_obj.nomes_restricoes['cod_rest'] == cod_rest
+                ]['nome'].iloc[0] if not re_obj.nomes_restricoes.empty else str(cod_rest)
+                print(f"[TOOL] ✅ Código {cod_rest} encontrado por nome extraído '{nome_extraido}' (mapeado: '{nome_mapeado}'): '{nome_encontrado}'")
+                return cod_rest, nomes_extraidos
+        
+        # ETAPA 4: Buscar com a query completa (fallback)
         cod_rest = re_obj.buscar_por_nome(query_lower)
         if cod_rest is not None:
             nome_encontrado = re_obj.nomes_restricoes[
                 re_obj.nomes_restricoes['cod_rest'] == cod_rest
             ]['nome'].iloc[0] if not re_obj.nomes_restricoes.empty else str(cod_rest)
-            print(f"[TOOL] ✅ Código {cod_rest} encontrado por nome: '{nome_encontrado}'")
-            return cod_rest
+            print(f"[TOOL] ✅ Código {cod_rest} encontrado por nome (query completa): '{nome_encontrado}'")
+            return cod_rest, nomes_extraidos
         
-        return None
+        # ETAPA 5: Busca direta pelos nomes conhecidos (mapeados por código)
+        # Tentar buscar diretamente pelos nomes do mapeamento por código
+        for cod_rest_mapeado, nome_mapeado in RestricaoEletrica.MAPEAMENTO_POR_CODIGO.items():
+            if nome_mapeado.lower() in query_lower:
+                cod_rest = re_obj.buscar_por_nome(nome_mapeado.lower())
+                if cod_rest is not None:
+                    print(f"[TOOL] ✅ Código {cod_rest} encontrado por nome mapeado (código {cod_rest_mapeado}): '{nome_mapeado}'")
+                    return cod_rest, nomes_extraidos
+        
+        # ETAPA 6: Busca pelos nomes antigos (compatibilidade)
+        for nome_antigo, nome_novo in RestricaoEletrica.MAPEAMENTO_NOMES.items():
+            if nome_antigo.lower() in query_lower or nome_novo.lower() in query_lower:
+                cod_rest = re_obj.buscar_por_nome(nome_novo.lower())
+                if cod_rest is not None:
+                    print(f"[TOOL] ✅ Código {cod_rest} encontrado por nome mapeado: '{nome_novo}'")
+                    return cod_rest, nomes_extraidos
+        
+        print(f"[TOOL] ⚠️ Nenhum código de restrição encontrado na query")
+        return None, nomes_extraidos
     
     def _extract_patamar_from_query(self, query: str) -> Optional[int]:
         """
@@ -250,9 +322,18 @@ class RestricaoEletricaTool(NEWAVETool):
             
             # ETAPA 4: Identificar filtros
             print("[TOOL] ETAPA 4: Identificando filtros...")
-            cod_rest = self._extract_cod_rest_from_query(query, re_obj)
+            cod_rest, nomes_extraidos = self._extract_cod_rest_from_query(query, re_obj)
             patamar = self._extract_patamar_from_query(query)
             periodo = self._extract_periodo_from_query(query)
+            
+            # Verificar se a query menciona uma restrição específica mas não foi encontrada
+            if nomes_extraidos and cod_rest is None:
+                print(f"[TOOL] ⚠️ Query menciona restrição específica ({nomes_extraidos}) mas não foi encontrada")
+                return {
+                    "success": False,
+                    "error": f"Nenhuma restrição elétrica encontrada para: {', '.join(nomes_extraidos)}",
+                    "tool": self.get_name()
+                }
             
             if cod_rest is not None:
                 print(f"[TOOL] ✅ Filtro por código de restrição: {cod_rest}")
@@ -430,11 +511,12 @@ class RestricaoEletricaTool(NEWAVETool):
         - "limites da restrição 1 patamar 2"
         - "restrição elétrica período 2025/12"
         - "restrição Escoamento Madeira"
-        - "restrição Cachoeira Caldeirão"
-        - "limites da restrição Sul-SE"
-        - "restrição Imperatriz Sudeste"
+        - "restrição RSUL"
+        - "restrição FNS"
+        - "limites da restrição FNS"
         - "restrição FNS + FNESE"
-        - "cachoeira caldeirão + ferreira gomes"
+        - "restrição FNS + FNESE + XINGU"
+        - "restrição Cachoeira Caldeirão + Ferreira Gomes"
         
         Esta tool consulta o arquivo restricao-eletrica.csv e retorna informações sobre restrições elétricas, incluindo:
         - Fórmulas das restrições (ger_usih, ener_interc, etc.)
@@ -443,7 +525,7 @@ class RestricaoEletricaTool(NEWAVETool):
         
         A tool permite filtrar por:
         - Código da restrição (cod_rest) - ex: "restrição 1", "código restrição 20"
-        - Nome da restrição - ex: "Escoamento Madeira", "Cachoeira Caldeirão", "Sul-SE", "Imperatriz Sudeste"
+        - Nome da restrição - ex: "Escoamento Madeira", "RSUL", "FNS", "FNS + FNESE", "FNS + FNESE + XINGU", "Cachoeira Caldeirão + Ferreira Gomes"
         - Patamar (1, 2, 3, ...)
         - Período (formato YYYY/MM)
         

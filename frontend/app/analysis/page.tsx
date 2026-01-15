@@ -28,9 +28,11 @@ import {
   getSession,
   deleteSession,
   reindexDocs,
+  loadDeckFromRepo,
   UploadResponse,
   StreamEvent,
 } from "@/lib/api";
+import { DeckSelector, DeckInfo } from "@/components/DeckSelector";
 import { motion } from "framer-motion";
 import { Upload, Send, MoreVertical, RefreshCw, Trash2, FileText, ArrowLeft } from "lucide-react";
 
@@ -170,7 +172,7 @@ export default function AnalysisPage() {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [selectedDeck, setSelectedDeck] = useState<"december" | "january" | "upload" | null>(null);
+  const [selectedDeckInfo, setSelectedDeckInfo] = useState<DeckInfo | null>(null);
   const [files, setFiles] = useState<string[]>([]);
   const [filesCount, setFilesCount] = useState(0);
   const [isReindexing, setIsReindexing] = useState(false);
@@ -217,35 +219,24 @@ export default function AnalysisPage() {
     scrollToBottom();
   }, [messages, agentSteps, streamingCode, streamingResponse]);
 
-  // Carregar deck do repositório
-  const loadDeckFromRepo = async (deckName: "december" | "january") => {
+  // Carregar deck do repositório usando o novo DeckSelector
+  const handleDeckSelection = async (decks: DeckInfo[]) => {
+    if (decks.length === 0) return;
+    
+    const deck = decks[0]; // Modo single - apenas um deck
+    
     try {
-      // Chamar API para carregar deck do repositório
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/load-deck`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          deck_name: deckName === "december" ? "NW202512" : "NW202601",
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error("Erro ao carregar deck do repositório");
-      }
-
-      const data = await response.json();
+      const data = await loadDeckFromRepo(deck.name);
       setSessionId(data.session_id);
       setFilesCount(data.files_count || 0);
-      setSelectedDeck(deckName);
+      setSelectedDeckInfo(deck);
       setIsDeckSelectOpen(false);
 
       setMessages([
         {
           id: Date.now().toString(),
           role: "assistant",
-          content: `Deck ${deckName === "december" ? "Dezembro 2025" : "Janeiro 2026"} carregado do repositório. Faça sua consulta.`,
+          content: `Deck **${deck.display_name}** carregado do repositório. Faça sua consulta.`,
           timestamp: new Date(),
         },
       ]);
@@ -267,7 +258,7 @@ export default function AnalysisPage() {
   const handleUploadSuccess = async (response: UploadResponse) => {
     setSessionId(response.session_id);
     setFilesCount(response.files_count);
-    setSelectedDeck("upload");
+    setSelectedDeckInfo(null); // Upload manual, sem DeckInfo
 
     try {
       const sessionInfo = await getSession(response.session_id);
@@ -732,7 +723,7 @@ export default function AnalysisPage() {
     }
 
     setSessionId(null);
-    setSelectedDeck(null);
+    setSelectedDeckInfo(null);
     setFiles([]);
     setFilesCount(0);
     setMessages([]);
@@ -990,13 +981,13 @@ export default function AnalysisPage() {
                       </code>
                     </div>
                     
-                    {selectedDeck && (
+                    {(selectedDeckInfo || sessionId) && (
                       <div className="px-2 py-1.5">
                         <p className="text-xs text-muted-foreground font-medium mb-1">Deck Selecionado</p>
                         <p className="text-xs text-foreground">
-                          {selectedDeck === "december" ? "Dezembro 2025 (NW202512)" : 
-                           selectedDeck === "january" ? "Janeiro 2026 (NW202601)" : 
-                           "Upload Manual"}
+                          {selectedDeckInfo 
+                            ? `${selectedDeckInfo.display_name} (${selectedDeckInfo.name})`
+                            : "Upload Manual"}
                         </p>
                       </div>
                     )}
@@ -1172,30 +1163,16 @@ export default function AnalysisPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Deck Selection Dialog */}
-      <Dialog open={isDeckSelectOpen} onOpenChange={setIsDeckSelectOpen}>
-        <DialogContent className="bg-card border-border">
-          <DialogHeader>
-            <DialogTitle className="text-card-foreground">Selecionar Deck do Repositório</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <Button
-              onClick={() => loadDeckFromRepo("december")}
-              className="w-full"
-              variant="outline"
-            >
-              Dezembro 2025 (NW202512)
-            </Button>
-            <Button
-              onClick={() => loadDeckFromRepo("january")}
-              className="w-full"
-              variant="outline"
-            >
-              Janeiro 2026 (NW202601)
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Deck Selection using DeckSelector component */}
+      <DeckSelector
+        mode="single"
+        open={isDeckSelectOpen}
+        onOpenChange={setIsDeckSelectOpen}
+        onSelect={handleDeckSelection}
+        initialSelected={selectedDeckInfo ? [selectedDeckInfo.name] : []}
+        title="Selecionar Deck para Análise"
+        description="Escolha um deck do repositório para analisar"
+      />
     </main>
   );
 }
