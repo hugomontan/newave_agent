@@ -56,15 +56,18 @@ export interface ComparisonData {
   comparison_by_ree?: Record<string, any>;
   stats?: Record<string, any>;
   tool_name?: string;
+  meses_ordenados?: string[]; // Meses no formato YYYY-MM para matriz transposta
 }
 
 export interface MatrixRow {
   nome_usina: string;
-  codigo_usina: number;
-  periodo_inicio: string;
-  periodo_fim: string;
+  codigo_usina?: number;  // Opcional - pode ser undefined
+  periodo?: string;  // Mês individual (ex: "2025-12")
+  periodo_inicio?: string;  // Período original início
+  periodo_fim?: string;  // Período original fim
   gtmin_values: Record<string, number | null>;
-  matrix: Record<string, number | null>;
+  matrix?: Record<string, number | null>;  // Opcional - matriz de diferenças
+  value_groups?: Record<string | number, string[]>;  // Grupos de valores iguais para coloração (chave pode ser string do JSON)
 }
 
 // Helper para verificar se é análise histórica (mais de 2 decks)

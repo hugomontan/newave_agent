@@ -3,58 +3,63 @@
 import React from "react";
 import { motion } from "framer-motion";
 
-interface MatrixCell {
-  value: number | null;
-  difference: number | null;
-}
-
-interface MatrixRow {
+interface VazaoMinimaMatrixRow {
   nome_usina: string;
   codigo_usina?: number;
-  periodo?: string;  // Mês individual (ex: "2025-12")
+  tipo_vazao: "VAZMIN" | "VAZMINT";  // IMPORTANTE: tipo de vazão
+  periodo?: string;  // Mês individual (ex: "2025-12") - apenas para VAZMINT
   periodo_inicio?: string;  // Período original início
   periodo_fim?: string;  // Período original fim
-  gtmin_values: Record<string, number | null>;
+  vazao_values: Record<string, number | null>;  // Similar a gtmin_values
   matrix?: Record<string, number | null>;  // Opcional - matriz de diferenças
-  value_groups?: Record<string | number, string[]>;  // Grupos de valores iguais para coloração (chave pode ser string do JSON)
+  value_groups?: Record<string | number, string[]>;  // Grupos de valores iguais para coloração
 }
 
-interface GTMINMatrixTableProps {
-  matrixData: MatrixRow[];
+interface VazaoMinimaMatrixTableProps {
+  matrixData: VazaoMinimaMatrixRow[];
   deckNames: string[];
+  tipoVazao?: "VAZMIN" | "VAZMINT";  // Opcional: filtrar por tipo
 }
 
-export function GTMINMatrixTable({ matrixData, deckNames }: GTMINMatrixTableProps) {
-  console.log("[GTMIN_MATRIX_TABLE] Recebido:", {
+export function VazaoMinimaMatrixTable({ matrixData, deckNames, tipoVazao }: VazaoMinimaMatrixTableProps) {
+  console.log("[VAZAO_MINIMA_MATRIX_TABLE] Recebido:", {
     matrixData_length: matrixData?.length,
     matrixData_sample: matrixData?.[0],
     deckNames,
+    tipoVazao,
   });
   
-  // Debug detalhado: verificar correspondência entre deckNames e chaves em gtmin_values
-  if (matrixData && matrixData.length > 0 && deckNames && deckNames.length > 0) {
-    const firstRow = matrixData[0];
-    const gtminValuesKeys = Object.keys(firstRow.gtmin_values || {});
-    console.log("[GTMIN_MATRIX_TABLE] [DEBUG] Verificação de correspondência:", {
+  // Filtrar por tipo_vazao se especificado
+  const filteredData = React.useMemo(() => {
+    if (!tipoVazao) return matrixData;
+    return matrixData.filter(row => row.tipo_vazao === tipoVazao);
+  }, [matrixData, tipoVazao]);
+  
+  // Debug detalhado: verificar correspondência entre deckNames e chaves em vazao_values
+  if (filteredData && filteredData.length > 0 && deckNames && deckNames.length > 0) {
+    const firstRow = filteredData[0];
+    const vazaoValuesKeys = Object.keys(firstRow.vazao_values || {});
+    console.log("[VAZAO_MINIMA_MATRIX_TABLE] [DEBUG] Verificação de correspondência:", {
       deckNames,
-      gtminValuesKeys,
-      correspondencia: deckNames.every(dn => gtminValuesKeys.includes(dn)),
-      chaves_em_deckNames: gtminValuesKeys.every(k => deckNames.includes(k)),
-      primeira_linha_valores: firstRow.gtmin_values,
+      vazaoValuesKeys,
+      correspondencia: deckNames.every(dn => vazaoValuesKeys.includes(dn)),
+      chaves_em_deckNames: vazaoValuesKeys.every(k => deckNames.includes(k)),
+      primeira_linha_valores: firstRow.vazao_values,
+      tipo_vazao: firstRow.tipo_vazao,
     });
   }
   
-  if (!matrixData || matrixData.length === 0) {
-    console.log("[GTMIN_MATRIX_TABLE] ⚠️ matrixData vazio ou inválido");
+  if (!filteredData || filteredData.length === 0) {
+    console.log("[VAZAO_MINIMA_MATRIX_TABLE] ⚠️ matrixData vazio ou inválido");
     return (
       <div className="text-center py-8 text-muted-foreground">
-        Nenhum dado disponível para exibição.
+        Nenhum dado disponível para exibição{tipoVazao ? ` (${tipoVazao})` : ""}.
       </div>
     );
   }
   
   if (!deckNames || deckNames.length === 0) {
-    console.log("[GTMIN_MATRIX_TABLE] ⚠️ deckNames vazio ou inválido");
+    console.log("[VAZAO_MINIMA_MATRIX_TABLE] ⚠️ deckNames vazio ou inválido");
     return (
       <div className="text-center py-8 text-muted-foreground">
         Nenhum deck disponível para exibição.
@@ -69,7 +74,6 @@ export function GTMINMatrixTable({ matrixData, deckNames }: GTMINMatrixTableProp
   };
 
   // Função para obter cor da célula baseada no valor (para colorir valores iguais)
-  // valueGroups pode ter chaves como string (JSON) ou number (TypeScript)
   const getCellColor = (value: number | null | undefined, valueGroups?: Record<string | number, string[]>, deckName?: string): string => {
     if (value === null || value === undefined) return "bg-muted/30";
     
@@ -109,9 +113,9 @@ export function GTMINMatrixTable({ matrixData, deckNames }: GTMINMatrixTableProp
   
   // Agrupar linhas por usina para melhor organização
   const groupedByUsina = React.useMemo(() => {
-    const grouped: Record<string, MatrixRow[]> = {};
-    matrixData.forEach((row) => {
-      const usinaKey = `${row.nome_usina}-${row.codigo_usina || ''}`;
+    const grouped: Record<string, VazaoMinimaMatrixRow[]> = {};
+    filteredData.forEach((row) => {
+      const usinaKey = `${row.nome_usina}-${row.codigo_usina || ''}-${row.tipo_vazao}`;
       if (!grouped[usinaKey]) {
         grouped[usinaKey] = [];
       }
@@ -126,21 +130,21 @@ export function GTMINMatrixTable({ matrixData, deckNames }: GTMINMatrixTableProp
       });
     });
     return grouped;
-  }, [matrixData]);
+  }, [filteredData]);
 
   // Debug: verificar se groupedByUsina está vazio
   const usinaEntries = Object.entries(groupedByUsina);
-  console.log("[GTMIN_MATRIX_TABLE] [DEBUG] Renderização:", {
+  console.log("[VAZAO_MINIMA_MATRIX_TABLE] [DEBUG] Renderização:", {
     groupedByUsina_count: usinaEntries.length,
     usinaKeys: Object.keys(groupedByUsina),
     firstUsinaRows: usinaEntries[0] ? usinaEntries[0][1].length : 0,
   });
   
   if (usinaEntries.length === 0) {
-    console.log("[GTMIN_MATRIX_TABLE] ⚠️ Nenhuma usina encontrada para renderizar");
+    console.log("[VAZAO_MINIMA_MATRIX_TABLE] ⚠️ Nenhuma usina encontrada para renderizar");
     return (
       <div className="text-center py-8 text-muted-foreground">
-        Nenhuma usina encontrada nos dados.
+        Nenhuma usina encontrada nos dados{tipoVazao ? ` (${tipoVazao})` : ""}.
       </div>
     );
   }
@@ -151,6 +155,7 @@ export function GTMINMatrixTable({ matrixData, deckNames }: GTMINMatrixTableProp
         const firstRow = rows[0];
         const usinaName = firstRow.nome_usina;
         const usinaCodigo = firstRow.codigo_usina;
+        const tipoVazaoRow = firstRow.tipo_vazao;
 
         return (
           <motion.div
@@ -166,21 +171,26 @@ export function GTMINMatrixTable({ matrixData, deckNames }: GTMINMatrixTableProp
                 <h3 className="text-lg font-semibold text-card-foreground">
                   {usinaName}
                 </h3>
-                {usinaCodigo && (
-                  <p className="text-sm text-muted-foreground">
-                    Código: {usinaCodigo}
-                  </p>
-                )}
+                <div className="flex items-center gap-2 mt-1">
+                  {usinaCodigo && (
+                    <p className="text-sm text-muted-foreground">
+                      Código: {usinaCodigo}
+                    </p>
+                  )}
+                  <span className="text-xs px-2 py-1 bg-primary/10 text-primary rounded">
+                    {tipoVazaoRow === "VAZMINT" ? "VAZMINT (com período)" : "VAZMIN (sem período)"}
+                  </span>
+                </div>
               </div>
             </div>
 
-            {/* Tabela: Linhas = meses, Colunas = decks */}
+            {/* Tabela: Linhas = meses/período, Colunas = decks */}
             <div className="overflow-x-auto">
               <table className="w-full border-collapse">
                 <thead>
                   <tr>
                     <th className="border border-border bg-muted/50 px-3 py-2 text-left text-sm font-semibold text-card-foreground sticky left-0 z-10">
-                      Período
+                      {tipoVazaoRow === "VAZMINT" ? "Período" : "Tipo"}
                     </th>
                     {deckNames.map((deckName) => (
                       <th
@@ -194,24 +204,29 @@ export function GTMINMatrixTable({ matrixData, deckNames }: GTMINMatrixTableProp
                 </thead>
                 <tbody>
                   {rows.map((row, rowIndex) => {
-                    const periodo = row.periodo || row.periodo_inicio || 'N/A';
+                    // Para VAZMINT: mostrar período, para VAZMIN: mostrar "N/A" ou tipo
+                    const periodoDisplay = tipoVazaoRow === "VAZMINT" 
+                      ? (row.periodo || row.periodo_inicio || 'N/A')
+                      : "N/A";
+                    
                     return (
-                      <tr key={`${usinaKey}-${periodo}-${rowIndex}`}>
+                      <tr key={`${usinaKey}-${periodoDisplay}-${rowIndex}`}>
                         <td className="border border-border bg-muted/30 px-3 py-2 text-sm font-medium text-card-foreground sticky left-0 z-10">
-                          {periodo}
+                          {periodoDisplay}
                         </td>
                         {deckNames.map((deckName) => {
-                          const value = row.gtmin_values?.[deckName];
+                          const value = row.vazao_values?.[deckName];
                           const cellColor = getCellColor(value, row.value_groups, deckName);
                           const textColor = getTextColor(value);
                           
                           // Debug para primeira célula da primeira linha
                           if (rowIndex === 0 && deckNames.indexOf(deckName) === 0) {
-                            console.log("[GTMIN_MATRIX_TABLE] [DEBUG] Primeira célula:", {
+                            console.log("[VAZAO_MINIMA_MATRIX_TABLE] [DEBUG] Primeira célula:", {
                               deckName,
                               value,
-                              gtmin_values: row.gtmin_values,
+                              vazao_values: row.vazao_values,
                               hasValue: value !== null && value !== undefined,
+                              tipo_vazao: row.tipo_vazao,
                             });
                           }
                           
@@ -221,7 +236,7 @@ export function GTMINMatrixTable({ matrixData, deckNames }: GTMINMatrixTableProp
                               className={`border border-border px-3 py-2 text-center text-sm ${cellColor} ${textColor}`}
                             >
                               {value !== null && value !== undefined ? (
-                                <span className="font-medium">{formatValue(value)}</span>
+                                <span className="font-medium">{formatValue(value)} <span className="text-xs text-muted-foreground">m³/s</span></span>
                               ) : (
                                 <span className="text-muted-foreground">-</span>
                               )}

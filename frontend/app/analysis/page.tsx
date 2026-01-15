@@ -163,6 +163,20 @@ interface Message {
     tool_name?: string;
     comparison_by_type?: Record<string, unknown>;
     comparison_by_usina?: Record<string, unknown>;
+    matrix_data?: Array<{
+      nome_usina: string;
+      codigo_usina?: number;
+      periodo?: string;
+      periodo_inicio?: string;
+      periodo_fim?: string;
+      gtmin_values?: Record<string, number | null>;
+      matrix?: Record<string, number | null>;
+      value_groups?: Record<string | number, string[]>;
+    }>;
+    deck_names?: string[];
+    deck_displays?: string[];
+    deck_count?: number;
+    stats?: Record<string, unknown>;
   };
 }
 

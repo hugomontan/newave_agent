@@ -355,7 +355,11 @@ def format_comparison_response(
     if formatted.get("stats"):
         comparison_data["stats"] = formatted.get("stats")
     if formatted.get("matrix_data"):
-        comparison_data["matrix_data"] = formatted.get("matrix_data")
+        matrix_data_value = formatted.get("matrix_data")
+        safe_print(f"[INTERPRETER] [COMPARISON] Adicionando matrix_data ao comparison_data: {len(matrix_data_value) if isinstance(matrix_data_value, list) else 'N/A'} registros")
+        if isinstance(matrix_data_value, list) and len(matrix_data_value) > 0:
+            safe_print(f"[INTERPRETER] [COMPARISON] Primeiro registro matrix_data: {matrix_data_value[0]}")
+        comparison_data["matrix_data"] = matrix_data_value
     
     # Para ClastValoresTool, CargaMensalTool, CadicTool e LimitesIntercambioTool, retornar apenas tabela e gráfico (sem LLM)
     if tool_used == "ClastValoresTool":

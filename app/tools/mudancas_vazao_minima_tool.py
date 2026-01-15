@@ -134,8 +134,12 @@ class MudancasVazaoMinimaTool(NEWAVETool):
                     "tool": self.get_name()
                 }
             
-            # Para compatibilidade, usar primeiro e último deck como "dezembro" e "janeiro"
-            # Ordenados cronologicamente, então primeiro é mais antigo
+            # Verificar se há mais de 2 decks - usar matriz de comparação
+            if len(self.selected_decks) > 2:
+                print(f"[TOOL] ✅ {len(self.selected_decks)} decks detectados - usando matriz de comparação")
+                return self._execute_multi_deck_matrix(query)
+            
+            # Para compatibilidade, usar primeiro e último deck (2 decks)
             deck_december_path = self.deck_paths.get(self.selected_decks[0])
             deck_january_path = self.deck_paths.get(self.selected_decks[-1])
             deck_december_name = self.deck_display_names.get(self.selected_decks[0], "Deck Anterior")
@@ -280,6 +284,245 @@ class MudancasVazaoMinimaTool(NEWAVETool):
                 "comparison_table": comparison_table,
                 "stats": stats,
                 "description": description
+            }
+            
+        except Exception as e:
+            print(f"[TOOL] ❌ Erro ao processar: {type(e).__name__}: {e}")
+            import traceback
+            traceback.print_exc()
+            return {
+                "success": False,
+                "error": f"Erro ao processar análise de vazão mínima: {str(e)}",
+                "error_type": type(e).__name__,
+                "tool": self.get_name()
+            }
+    
+    def _execute_multi_deck_matrix(self, query: str) -> Dict[str, Any]:
+        """
+        Executa análise de vazão mínima para múltiplos decks (mais de 2) usando matriz de comparação.
+        Retorna formato idêntico ao GTMIN, mas com separação de VAZMIN/VAZMINT.
+        
+        Args:
+            query: Query do usuário
+            
+        Returns:
+            Dicionário com dados formatados para matriz de comparação
+        """
+        print("[TOOL] Executando análise de matriz para múltiplos decks...")
+        
+        try:
+            # ETAPA 1: Ler MODIF.DAT de todos os decks
+            print("[TOOL] ETAPA 1: Lendo arquivos MODIF.DAT de todos os decks...")
+            decks_modif = {}
+            decks_vazmin = {}
+            deck_names = []
+            
+            for deck_name in self.selected_decks:
+                deck_path = self.deck_paths.get(deck_name)
+                deck_display_name = self.deck_display_names.get(deck_name, deck_name)
+                deck_names.append(deck_display_name)
+                
+                modif = self._read_modif_file(deck_path)
+                if modif is None:
+                    print(f"[TOOL] ⚠️ Arquivo MODIF.DAT não encontrado em {deck_path}")
+                    continue
+                
+                decks_modif[deck_display_name] = modif
+                vazmin_records = self._extract_vazmin_records(modif)
+                decks_vazmin[deck_display_name] = vazmin_records
+                print(f"[TOOL] ✅ Deck {deck_display_name}: {len(vazmin_records)} registros VAZMIN/VAZMINT")
+            
+            if len(decks_modif) < 2:
+                return {
+                    "success": False,
+                    "error": "São necessários pelo menos 2 decks válidos para comparação",
+                    "tool": self.get_name()
+                }
+            
+            # ETAPA 2: Criar mapeamento código -> nome das usinas (usar primeiro e último deck como base)
+            print("[TOOL] ETAPA 2: Criando mapeamento código -> nome das usinas...")
+            first_modif = list(decks_modif.values())[0]
+            last_modif = list(decks_modif.values())[-1]
+            mapeamento_codigo_nome = self._create_codigo_nome_mapping(first_modif, last_modif)
+            print(f"[TOOL] ✅ Mapeamento criado: {len(mapeamento_codigo_nome)} usinas mapeadas")
+            
+            # ETAPA 3: Extrair usina da query (opcional)
+            print("[TOOL] ETAPA 3: Verificando se há filtro por usina na query...")
+            codigo_usina_filtro = self._extract_usina_from_query(query, first_modif, last_modif, mapeamento_codigo_nome)
+            if codigo_usina_filtro is not None:
+                nome_usina_filtro = mapeamento_codigo_nome.get(codigo_usina_filtro, f"Usina {codigo_usina_filtro}")
+                print(f"[TOOL] ✅ Filtro por usina detectado: {codigo_usina_filtro} - {nome_usina_filtro}")
+                # Aplicar filtro
+                for deck_name in decks_vazmin:
+                    decks_vazmin[deck_name] = [
+                        r for r in decks_vazmin[deck_name] 
+                        if r.get('codigo_usina') == codigo_usina_filtro
+                    ]
+            
+            # ETAPA 4: Criar estrutura de dados para matriz
+            print("[TOOL] ETAPA 4: Criando estrutura de matriz de comparação...")
+            
+            # Separar VAZMINT e VAZMIN para processamento diferente
+            # VAZMINT: chave (codigo_usina, tipo_vazao, periodo_inicio)
+            # VAZMIN: chave (codigo_usina, tipo_vazao, vazao_value) - incluir valor na chave
+            
+            def create_vazmint_key(record):
+                """Cria chave para VAZMINT baseada em código, tipo e período."""
+                codigo = int(record.get('codigo_usina', 0))
+                tipo_vazao = record.get('tipo_vazao', 'VAZMINT')
+                periodo = record.get('periodo_inicio', 'N/A')
+                return (codigo, tipo_vazao, periodo)
+            
+            def create_vazmin_key(record):
+                """Cria chave para VAZMIN baseada em código, tipo e valor."""
+                codigo = int(record.get('codigo_usina', 0))
+                tipo_vazao = record.get('tipo_vazao', 'VAZMIN')
+                vazao_val = self._sanitize_number(record.get('vazao'))
+                # Arredondar para evitar problemas de precisão float
+                vazao_rounded = round(vazao_val, 2) if vazao_val is not None else None
+                return (codigo, tipo_vazao, vazao_rounded)
+            
+            # Coletar todas as chaves únicas
+            all_keys = set()
+            
+            # Coletar chaves VAZMINT
+            for vazmin_list in decks_vazmin.values():
+                for record in vazmin_list:
+                    if record.get('tipo_vazao') == 'VAZMINT':
+                        key = create_vazmint_key(record)
+                        all_keys.add(key)
+            
+            # Coletar chaves VAZMIN (incluir valor na chave)
+            for vazmin_list in decks_vazmin.values():
+                for record in vazmin_list:
+                    if record.get('tipo_vazao') == 'VAZMIN':
+                        vazao_val = self._sanitize_number(record.get('vazao'))
+                        if vazao_val is not None:
+                            key = create_vazmin_key(record)
+                            all_keys.add(key)
+            
+            print(f"[TOOL] ✅ Total de chaves únicas: {len(all_keys)}")
+            
+            # ETAPA 5: Construir matriz de comparação
+            matrix_data = []
+            
+            for key in all_keys:
+                if len(key) == 3:
+                    codigo_usina, tipo_vazao, third_component = key
+                else:
+                    continue
+                
+                nome_usina = mapeamento_codigo_nome.get(codigo_usina, f"Usina {codigo_usina}")
+                
+                # Coletar valores de vazão de cada deck
+                vazao_values = {}
+                
+                for deck_display_name in deck_names:
+                    if deck_display_name not in decks_vazmin:
+                        vazao_values[deck_display_name] = None
+                        continue
+                    
+                    vazmin_list = decks_vazmin[deck_display_name]
+                    matching_record = None
+                    
+                    # Buscar registro correspondente
+                    for record in vazmin_list:
+                        if tipo_vazao == 'VAZMINT':
+                            # VAZMINT: comparar por código e período
+                            if (record.get('codigo_usina') == codigo_usina and
+                                record.get('tipo_vazao') == 'VAZMINT' and
+                                record.get('periodo_inicio') == third_component):
+                                matching_record = record
+                                break
+                        elif tipo_vazao == 'VAZMIN':
+                            # VAZMIN: comparar por código e valor (arredondado)
+                            record_vazao = self._sanitize_number(record.get('vazao'))
+                            record_vazao_rounded = round(record_vazao, 2) if record_vazao is not None else None
+                            if (record.get('codigo_usina') == codigo_usina and
+                                record.get('tipo_vazao') == 'VAZMIN' and
+                                record_vazao_rounded == third_component):
+                                matching_record = record
+                                break
+                    
+                    if matching_record:
+                        vazao_val = self._sanitize_number(matching_record.get('vazao'))
+                        vazao_values[deck_display_name] = round(vazao_val, 2) if vazao_val is not None else None
+                    else:
+                        vazao_values[deck_display_name] = None
+                
+                # Verificar se há alguma mudança (não todos None ou todos iguais)
+                valores_nao_nulos = [v for v in vazao_values.values() if v is not None]
+                if len(valores_nao_nulos) == 0:
+                    continue  # Pular se não há valores
+                
+                # Verificar se há variação
+                valores_unicos = set(valores_nao_nulos)
+                if len(valores_unicos) <= 1:
+                    continue  # Pular se todos os valores são iguais
+                
+                # Determinar período para o registro
+                if tipo_vazao == 'VAZMINT':
+                    periodo_inicio = third_component  # third_component é o período
+                    periodo_fim = None
+                else:  # VAZMIN
+                    periodo_inicio = "N/A"
+                    periodo_fim = None
+                
+                # Calcular diferenças entre todos os pares de decks
+                matrix_row = {
+                    "nome_usina": nome_usina,
+                    "codigo_usina": codigo_usina,
+                    "tipo_vazao": tipo_vazao,  # IMPORTANTE: incluir tipo_vazao
+                    "periodo_inicio": periodo_inicio,
+                    "periodo_fim": periodo_fim,
+                    "vazao_values": vazao_values,  # Dict[deck_name, value] - similar a gtmin_values
+                    "matrix": {}  # Dict[(deck_from, deck_to), difference]
+                }
+                
+                # Preencher matriz de diferenças
+                # Usar string como chave para compatibilidade com JSON
+                for i, deck_from in enumerate(deck_names):
+                    for j, deck_to in enumerate(deck_names):
+                        if i == j:
+                            matrix_row["matrix"][f"{deck_from},{deck_to}"] = 0.0
+                        else:
+                            val_from = vazao_values.get(deck_from)
+                            val_to = vazao_values.get(deck_to)
+                            
+                            if val_from is not None and val_to is not None:
+                                diff = round(val_to - val_from, 2)
+                                matrix_row["matrix"][f"{deck_from},{deck_to}"] = diff
+                            elif val_from is None and val_to is not None:
+                                matrix_row["matrix"][f"{deck_from},{deck_to}"] = val_to  # Novo
+                            elif val_from is not None and val_to is None:
+                                matrix_row["matrix"][f"{deck_from},{deck_to}"] = -val_from  # Removido
+                            else:
+                                matrix_row["matrix"][f"{deck_from},{deck_to}"] = None
+                
+                matrix_data.append(matrix_row)
+            
+            print(f"[TOOL] ✅ Matriz criada: {len(matrix_data)} registros com variações")
+            
+            # ETAPA 6: Calcular estatísticas
+            stats = {
+                "total_registros": len(matrix_data),
+                "total_decks": len(deck_names),
+                "usinas_unicas": len(set(row["codigo_usina"] for row in matrix_data)),
+                "tipos_vazao": {
+                    "VAZMIN": len([r for r in matrix_data if r["tipo_vazao"] == "VAZMIN"]),
+                    "VAZMINT": len([r for r in matrix_data if r["tipo_vazao"] == "VAZMINT"])
+                }
+            }
+            
+            return {
+                "success": True,
+                "is_comparison": True,
+                "tool": self.get_name(),
+                "matrix_data": matrix_data,
+                "deck_names": deck_names,
+                "stats": stats,
+                "visualization_type": "vazao_minima_matrix",
+                "description": f"Matriz de comparação de vazão mínima entre {len(deck_names)} decks, com {len(matrix_data)} registros com variações. Separado por VAZMIN (sem período) e VAZMINT (com período)."
             }
             
         except Exception as e:

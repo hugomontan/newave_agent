@@ -494,6 +494,13 @@ def run_query_stream(
                             safe_print(f"[GRAPH] [DEBUG] Enviando comparison_data - tool_name: {cleaned_comparison_data.get('tool_name')}")
                             safe_print(f"[GRAPH] [DEBUG] Enviando comparison_data - keys: {list(cleaned_comparison_data.keys())}")
                             safe_print(f"[GRAPH] [DEBUG] Enviando comparison_data - chart_data presente: {cleaned_comparison_data.get('chart_data') is not None}")
+                            matrix_data = cleaned_comparison_data.get('matrix_data')
+                            if matrix_data:
+                                safe_print(f"[GRAPH] [DEBUG] Enviando comparison_data - matrix_data presente: {len(matrix_data) if isinstance(matrix_data, list) else 'N/A'} registros")
+                                if isinstance(matrix_data, list) and len(matrix_data) > 0:
+                                    safe_print(f"[GRAPH] [DEBUG] Enviando comparison_data - matrix_data[0]: {matrix_data[0]}")
+                            else:
+                                safe_print(f"[GRAPH] [DEBUG] Enviando comparison_data - matrix_data: None ou vazio")
                         yield f"data: {json.dumps({'type': 'response_complete', 'response': response, 'comparison_data': cleaned_comparison_data}, allow_nan=False)}\n\n"
                 
                 if not (node_name == "comparison_tool_router" and node_output.get("disambiguation")):

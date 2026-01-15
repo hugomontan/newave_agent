@@ -3,7 +3,9 @@
 import React from "react";
 import { motion } from "framer-motion";
 import { VazaoMinimaGroupedTable } from "./VazaoMinimaGroupedTable";
+import { VazaoMinimaMatrixTable } from "./VazaoMinimaMatrixTable";
 import type { ComparisonData, TableRow, Difference } from "../shared/types";
+import { getDeckNames } from "../shared/types";
 
 // Configuração de tamanhos das mensagens (pode ser ajustado para testar)
 const MESSAGE_SIZES = {
@@ -17,10 +19,21 @@ interface VazaoMinimaViewProps {
 }
 
 export function VazaoMinimaView({ comparison }: VazaoMinimaViewProps) {
-  const { deck_1, deck_2, comparison_table } = comparison;
+  const { deck_1, deck_2, comparison_table, matrix_data, deck_displays, deck_count, visualization_type, deck_names, meses_ordenados } = comparison;
+  
+  // Obter nomes de todos os decks (suporte N decks)
+  const allDeckNames = getDeckNames(comparison);
+  
+  // Usar primeiro e último deck para exibição (compatibilidade com formato atual)
+  const deck1Name = deck_displays?.[0] || allDeckNames[0] || deck_1?.name || "Deck 1";
+  const deck2Name = deck_displays?.[deck_displays.length - 1] || allDeckNames[allDeckNames.length - 1] || deck_2?.name || "Deck 2";
+  
+  // Detectar se estamos usando matriz (matrix_data disponível)
+  const hasMatrixData = matrix_data && matrix_data.length > 0;
 
   // Função para mapear row para formato de differences
-  const mapRowToDifference = (row: TableRow): Difference => {
+  // IMPORTANTE: Preservar todos os campos do row original, especialmente month_* e change_type_*
+  const mapRowToDifference = (row: TableRow): Difference & Record<string, any> => {
     const periodValue = row.period !== undefined ? String(row.period) :
                        (row.data !== undefined ? String(row.data) : "");
     
@@ -30,8 +43,9 @@ export function VazaoMinimaView({ comparison }: VazaoMinimaViewProps) {
     // Usar tipo_vazao do row se disponível, senão usar classe, senão fallback para VAZMIN
     const tipoVazao = (row.tipo_vazao as string) || (row.classe as string) || "VAZMIN";
     
-    return {
-      field: tipoVazao,
+    // Criar objeto base
+    const diff: Difference & Record<string, any> = {
+      field: row.field || row.nome_usina || tipoVazao,
       period: periodValue,
       periodo_coluna: row.periodo_coluna ? String(row.periodo_coluna) : undefined,
       deck_1_value: deck1Value !== null && deck1Value !== undefined ? Number(deck1Value) : 0,
@@ -40,6 +54,18 @@ export function VazaoMinimaView({ comparison }: VazaoMinimaViewProps) {
       difference_percent: row.diferenca_percent ?? row.difference_percent ?? null,
       is_inclusao_ou_exclusao: row.is_inclusao_ou_exclusao ?? false,
     };
+    
+    // IMPORTANTE: Preservar todos os campos do row original, especialmente:
+    // - month_YYYY-MM (valores por mês para matriz transposta)
+    // - change_type_YYYY-MM (tipos de mudança por mês)
+    // - deck_name, nome_usina, codigo_usina, tipo_vazao, classe, etc.
+    Object.keys(row).forEach((key) => {
+      if (!(key in diff)) {
+        diff[key] = (row as any)[key];
+      }
+    });
+    
+    return diff;
   };
 
   // Agrupar por tipo_vazao primeiro, depois por tipo_mudanca
@@ -88,6 +114,28 @@ export function VazaoMinimaView({ comparison }: VazaoMinimaViewProps) {
     return Object.keys(grouped).length > 0 ? grouped : null;
   }, [comparison_table]);
 
+  // Separar matrix_data por tipo_vazao (VAZMIN e VAZMINT)
+  const matrixDataByTipoVazao = React.useMemo(() => {
+    if (!hasMatrixData || !matrix_data) return null;
+    
+    const vazmin: any[] = [];
+    const vazmint: any[] = [];
+    
+    matrix_data.forEach((row: any) => {
+      const tipoVazao = row.tipo_vazao || "VAZMIN";
+      if (tipoVazao === "VAZMINT") {
+        vazmint.push(row);
+      } else {
+        vazmin.push(row);
+      }
+    });
+    
+    return {
+      VAZMIN: vazmin.length > 0 ? vazmin : null,
+      VAZMINT: vazmint.length > 0 ? vazmint : null
+    };
+  }, [hasMatrixData, matrix_data]);
+
   // Determinar label da primeira coluna
   const firstColumnLabel = React.useMemo(() => {
     if (comparison_table && comparison_table.length > 0) {
@@ -112,8 +160,42 @@ export function VazaoMinimaView({ comparison }: VazaoMinimaViewProps) {
       animate={{ opacity: 1, y: 0 }}
       className="w-full space-y-6 mt-4"
     >
-      {groupedByTipoVazao ? (
-        // Renderizar seções separadas por tipo_vazao (VAZMIN e VAZMINT)
+      {hasMatrixData && comparison_table && comparison_table.length > 0 ? (
+        // Renderizar usando matriz transposta (N decks) - formato igual ao GTMIN
+        // Separar por tipo_vazao (VAZMIN e VAZMINT)
+        (["VAZMIN", "VAZMINT"] as const).map((tipoVazao) => {
+          // Filtrar comparison_table por tipo_vazao
+          const filteredTable = comparison_table.filter((row: TableRow) => {
+            const rowTipoVazao = (row.tipo_vazao as string) || (row.classe as string) || "VAZMIN";
+            return rowTipoVazao === tipoVazao;
+          });
+          
+          if (!filteredTable || filteredTable.length === 0) {
+            return null;
+          }
+          
+          return (
+            <div key={tipoVazao} className="space-y-4">
+              {/* Título principal da seção (VAZMIN ou VAZMINT) */}
+              <h3 className="text-xl font-bold text-card-foreground border-b border-border pb-2">
+                {tipoVazao === "VAZMINT" ? "VAZMINT (Vazão Mínima com Período)" : "VAZMIN (Vazão Mínima sem Período)"}
+              </h3>
+              
+              {/* Renderizar tabela agrupada (suporta matriz transposta) */}
+              <VazaoMinimaGroupedTable 
+                differences={filteredTable.map(mapRowToDifference)}
+                deck1Name={deck1Name}
+                deck2Name={deck2Name}
+                deckNames={allDeckNames}
+                firstColumnLabel={firstColumnLabel}
+                mesesOrdenados={meses_ordenados as string[] | undefined}
+                tipoVazao={tipoVazao}
+              />
+            </div>
+          );
+        })
+      ) : groupedByTipoVazao ? (
+        // Renderizar seções separadas por tipo_vazao (VAZMIN e VAZMINT) - formato tradicional
         (["VAZMIN", "VAZMINT"] as const).map((tipoVazao) => {
           const gruposPorTipoVazao = groupedByTipoVazao[tipoVazao];
           if (!gruposPorTipoVazao || Object.keys(gruposPorTipoVazao).length === 0) {
@@ -137,9 +219,12 @@ export function VazaoMinimaView({ comparison }: VazaoMinimaViewProps) {
                     </h4>
                     <VazaoMinimaGroupedTable 
                       differences={mappedRows}
-                      deck1Name={deck_1.name}
-                      deck2Name={deck_2.name}
+                      deck1Name={deck1Name}
+                      deck2Name={deck2Name}
+                      deckNames={allDeckNames}
                       firstColumnLabel={firstColumnLabel}
+                      mesesOrdenados={meses_ordenados as string[] | undefined}
+                      tipoVazao={tipoVazao}
                     />
                   </div>
                 );
@@ -151,24 +236,26 @@ export function VazaoMinimaView({ comparison }: VazaoMinimaViewProps) {
         // Fallback: renderizar tabela única se não houver agrupamento
         <VazaoMinimaGroupedTable 
           differences={comparison_table.map(mapRowToDifference)}
-          deck1Name={deck_1.name}
-          deck2Name={deck_2.name}
+          deck1Name={deck1Name}
+          deck2Name={deck2Name}
+          deckNames={allDeckNames}
           firstColumnLabel={firstColumnLabel}
+          mesesOrdenados={meses_ordenados as string[] | undefined}
         />
       ) : null}
 
       {/* Mensagem de erro se algum deck falhou */}
-      {(!deck_1.success || !deck_2.success) && (
+      {((deck_1 && !deck_1.success) || (deck_2 && !deck_2.success)) && (
         <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-4">
           <h3 className={`${MESSAGE_SIZES.errorTitle} font-semibold text-destructive mb-2`}>
             Erros na comparação:
           </h3>
-          {!deck_1.success && (
+          {deck_1 && !deck_1.success && (
             <p className={`${MESSAGE_SIZES.errorText} text-destructive/80`}>
               {deck_1.name}: {deck_1.error || "Erro desconhecido"}
             </p>
           )}
-          {!deck_2.success && (
+          {deck_2 && !deck_2.success && (
             <p className={`${MESSAGE_SIZES.errorText} text-destructive/80`}>
               {deck_2.name}: {deck_2.error || "Erro desconhecido"}
             </p>

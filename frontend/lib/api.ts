@@ -188,6 +188,19 @@ export interface StreamEvent {
       difference_percent: number;
     }>;
     comparison_table?: Array<any>;
+    matrix_data?: Array<{
+      nome_usina: string;
+      codigo_usina?: number;
+      periodo?: string;
+      periodo_inicio?: string;
+      periodo_fim?: string;
+      gtmin_values: Record<string, number | null>;
+      matrix?: Record<string, number | null>;
+      value_groups?: Record<number, string[]>;
+    }>;
+    deck_names?: string[];
+    deck_displays?: string[];
+    deck_count?: number;
     visualization_type?: string;
     tool_name?: string;
     comparison_by_type?: Record<string, any>;

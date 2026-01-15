@@ -90,6 +90,7 @@ export function ComparisonRouter({ comparison }: ComparisonRouterProps) {
       return <LimitesIntercambioView comparison={comparison} />;
 
     case "gtmin_changes_table":
+    case "gtmin_matrix":
       return <GTMINView comparison={comparison} />;
 
     case "vazao_minima_changes_table":
