@@ -6,10 +6,10 @@ import json
 from typing import Dict, Any
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
-from app.rag.vectorstore import similarity_search
-from app.rag.indexer import load_specific_documentation, NEWAVE_FILES
-from app.config import RAG_TOP_K, OPENAI_API_KEY, OPENAI_MODEL, safe_print
-from app.agents.single_deck.state import SingleDeckState
+from newave_agent.app.rag.vectorstore import similarity_search
+from newave_agent.app.rag.indexer import load_specific_documentation, NEWAVE_FILES
+from newave_agent.app.config import RAG_TOP_K, OPENAI_API_KEY, OPENAI_MODEL, safe_print
+from newave_agent.app.agents.single_deck.state import SingleDeckState
 
 
 # Prompt para seleção inicial de arquivos candidatos

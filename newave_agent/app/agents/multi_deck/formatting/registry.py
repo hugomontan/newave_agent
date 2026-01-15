@@ -101,7 +101,7 @@ def format_comparison_response(
     Returns:
         Dict com final_response formatado e comparison_data
     """
-    from app.config import safe_print
+    from newave_agent.app.config import safe_print
     
     # Limpar query se vier de disambiguation (remover tag __DISAMBIG__)
     if query.startswith("__DISAMBIG__:"):

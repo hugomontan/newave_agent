@@ -2,7 +2,7 @@
 Tool para consultar geração de usinas não simuladas do SISTEMA.DAT.
 Acessa o arquivo SISTEMA.DAT, propriedade geracao_usinas_nao_simuladas.
 """
-from app.tools.base import NEWAVETool
+from newave_agent.app.tools.base import NEWAVETool
 from inewave.newave import Sistema
 import os
 import pandas as pd

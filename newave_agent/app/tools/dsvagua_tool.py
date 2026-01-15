@@ -2,7 +2,7 @@
 Tool para consultar desvios de água para usos consuntivos do DSVAGUA.DAT.
 Acessa dados de desvios de água por usina e estágio.
 """
-from app.tools.base import NEWAVETool
+from newave_agent.app.tools.base import NEWAVETool
 from inewave.newave import Dsvagua, Confhd
 import os
 import pandas as pd

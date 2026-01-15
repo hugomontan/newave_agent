@@ -2,8 +2,8 @@
 Node que executa o código Python gerado para comparação multi-deck.
 Para Multi-Deck Agent.
 """
-from app.agents.multi_deck.state import MultiDeckState
-from app.utils.code_executor import execute_python_code
+from newave_agent.app.agents.multi_deck.state import MultiDeckState
+from newave_agent.app.utils.code_executor import execute_python_code
 
 
 def comparison_executor_node(state: MultiDeckState) -> dict:

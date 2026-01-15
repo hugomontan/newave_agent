@@ -2,7 +2,7 @@
 Tool para consultar agrupamentos de intercâmbio.
 Acessa o arquivo AGRINT.DAT, propriedades agrupamentos e limites_agrupamentos.
 """
-from app.tools.base import NEWAVETool
+from newave_agent.app.tools.base import NEWAVETool
 from inewave.newave import Agrint
 import os
 import pandas as pd

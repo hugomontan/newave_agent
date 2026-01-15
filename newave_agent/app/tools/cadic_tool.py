@@ -3,7 +3,7 @@ Tool para consultar cargas e ofertas adicionais do C_ADIC.DAT.
 Valores positivos = cargas adicionais (aumentam demanda)
 Valores negativos = ofertas adicionais (reduzem demanda)
 """
-from app.tools.base import NEWAVETool
+from newave_agent.app.tools.base import NEWAVETool
 from inewave.newave import Cadic, Sistema
 import os
 import pandas as pd

@@ -1,3 +1,9 @@
 """
-Módulo de Tools pré-programadas para consultas frequentes ao DECOMP.
+Tools do DECOMP Agent.
 """
+
+from .uh_usinas_hidreletricas_tool import UHUsinasHidrelétricasTool
+
+__all__ = [
+    "UHUsinasHidrelétricasTool",
+]

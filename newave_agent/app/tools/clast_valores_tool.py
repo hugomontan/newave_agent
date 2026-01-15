@@ -3,7 +3,7 @@ Tool para consultar valores estruturais e conjunturais do CLAST.DAT.
 Valores estruturais: custos base das classes térmicas (propriedade usinas)
 Valores conjunturais: modificações sazonais dos custos (propriedade modificacoes)
 """
-from app.tools.base import NEWAVETool
+from newave_agent.app.tools.base import NEWAVETool
 from inewave.newave import Clast
 import os
 import pandas as pd

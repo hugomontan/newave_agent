@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 from typing import List, Dict, Optional, TypedDict
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from app.config import BASE_DIR
+from newave_agent.app.config import BASE_DIR
 
 DECKS_DIR = BASE_DIR / "decks"
 

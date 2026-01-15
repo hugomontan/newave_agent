@@ -6,8 +6,8 @@ from typing import Dict, Any
 import json
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
-from app.config import OPENAI_API_KEY, OPENAI_MODEL, safe_print
-from app.utils.text_utils import clean_response_text
+from newave_agent.app.config import OPENAI_API_KEY, OPENAI_MODEL, safe_print
+from newave_agent.app.utils.text_utils import clean_response_text
 from .summarizers import summarize_deck_data
 from .simple_formatters import generate_fallback_comparison_response
 from ..prompts import (

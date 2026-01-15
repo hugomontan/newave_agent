@@ -5,10 +5,10 @@ Espelhado do multi-deck, mas adaptado para um único deck.
 import re
 import math
 from typing import Dict, Any, List, Optional, Tuple
-from app.agents.single_deck.formatters.base import SingleDeckFormatter
-from app.agents.shared.formatting.data_processors.limites_intercambio_processor import LimitesIntercambioDataProcessor
-from app.agents.single_deck.formatters.text_formatters.simple import format_limites_intercambio_simple
-from app.config import safe_print
+from newave_agent.app.agents.single_deck.formatters.base import SingleDeckFormatter
+from newave_agent.app.agents.shared.formatting.data_processors.limites_intercambio_processor import LimitesIntercambioDataProcessor
+from newave_agent.app.agents.single_deck.formatters.text_formatters.simple import format_limites_intercambio_simple
+from newave_agent.app.config import safe_print
 
 
 class LimitesIntercambioSingleDeckFormatter(SingleDeckFormatter):

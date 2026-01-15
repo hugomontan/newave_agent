@@ -6,8 +6,8 @@ Para Single Deck Agent.
 from typing import Dict, Any
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
-from app.config import OPENAI_API_KEY, OPENAI_MODEL, safe_print
-from app.agents.multi_deck.state import MultiDeckState
+from newave_agent.app.config import OPENAI_API_KEY, OPENAI_MODEL, safe_print
+from newave_agent.app.agents.multi_deck.state import MultiDeckState
 
 
 LLM_PLANNER_SYSTEM_PROMPT = """Você é um especialista em análise de dados NEWAVE e na biblioteca inewave.

@@ -2,9 +2,9 @@
 Formatter para ConfhdTool no single deck.
 """
 from typing import Dict, Any
-from app.agents.single_deck.formatters.base import SingleDeckFormatter
-from app.agents.shared.formatting.data_processors.confhd_processor import ConfhdDataProcessor
-from app.agents.single_deck.formatters.text_formatters.simple import format_confhd_simple
+from newave_agent.app.agents.single_deck.formatters.base import SingleDeckFormatter
+from newave_agent.app.agents.shared.formatting.data_processors.confhd_processor import ConfhdDataProcessor
+from newave_agent.app.agents.single_deck.formatters.text_formatters.simple import format_confhd_simple
 
 
 class ConfhdSingleDeckFormatter(SingleDeckFormatter):

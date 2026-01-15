@@ -8,17 +8,17 @@ import os
 import json as json_module
 from typing import Generator, Any, Optional
 from langgraph.graph import StateGraph, END
-from app.agents.single_deck.state import SingleDeckState
-from app.agents.single_deck.nodes.rag_nodes import (
+from newave_agent.app.agents.single_deck.state import SingleDeckState
+from newave_agent.app.agents.single_deck.nodes.rag_nodes import (
     rag_retriever_node,
     rag_simple_node,
     rag_enhanced_node,
 )
-from app.agents.single_deck.nodes.llm_nodes import (
+from newave_agent.app.agents.single_deck.nodes.llm_nodes import (
     llm_planner_node,
 )
-from app.utils.observability import get_langfuse_handler
-from app.config import safe_print
+from newave_agent.app.utils.observability import get_langfuse_handler
+from newave_agent.app.config import safe_print
 
 # Função auxiliar para escrever no log de debug de forma segura
 def _write_debug_log(data: dict):
@@ -212,7 +212,7 @@ def create_single_deck_agent() -> StateGraph:
     6. Interpreter: Interpreta resultados e gera resposta
     """
     # Importar nodes específicos do single deck
-    from app.agents.single_deck.nodes import (
+    from newave_agent.app.agents.single_deck.nodes import (
         tool_router_node,
         coder_node,
         executor_node,
@@ -366,7 +366,7 @@ def run_query(query: str, deck_path: str, session_id: Optional[str] = None, llm_
         try:
             if hasattr(langfuse_handler, 'flush'):
                 langfuse_handler.flush()
-            from app.utils.observability import flush_langfuse
+            from newave_agent.app.utils.observability import flush_langfuse
             flush_langfuse()
         except Exception as e:
             safe_print(f"[LANGFUSE DEBUG] ❌ Erro ao fazer flush: {e}")
@@ -577,7 +577,7 @@ def run_query_stream(query: str, deck_path: str, session_id: Optional[str] = Non
             try:
                 if hasattr(langfuse_handler, 'flush'):
                     langfuse_handler.flush()
-                from app.utils.observability import flush_langfuse
+                from newave_agent.app.utils.observability import flush_langfuse
                 flush_langfuse()
             except Exception as e:
                 safe_print(f"[LANGFUSE DEBUG] ❌ Erro ao fazer flush (stream): {e}")

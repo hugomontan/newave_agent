@@ -2,7 +2,7 @@
 Tool para consultar dados de carga mensais por submercado.
 Acessa o arquivo SISTEMA.DAT, propriedade mercado_energia.
 """
-from app.tools.base import NEWAVETool
+from newave_agent.app.tools.base import NEWAVETool
 from inewave.newave import Sistema
 import os
 import pandas as pd

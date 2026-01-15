@@ -2,8 +2,8 @@
 Tool para consultar dados de carga mensais por submercado.
 Acessa o arquivo SISTEMA.DAT, propriedade mercado_energia.
 """
-from app.tools.base import NEWAVETool
-from app.agents.single_deck.formatters.data_formatters.carga_mensal_formatter import CargaMensalSingleDeckFormatter
+from newave_agent.app.tools.base import NEWAVETool
+from newave_agent.app.agents.single_deck.formatters.data_formatters.carga_mensal_formatter import CargaMensalSingleDeckFormatter
 from inewave.newave import Sistema
 import os
 import pandas as pd

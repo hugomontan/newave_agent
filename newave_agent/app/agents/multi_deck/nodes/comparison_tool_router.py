@@ -9,14 +9,14 @@ import os
 import json as json_module
 from typing import Optional, Dict, Any, List
 from concurrent.futures import ThreadPoolExecutor
-from app.agents.multi_deck.state import MultiDeckState
-from app.agents.multi_deck.tools import (
+from newave_agent.app.agents.multi_deck.state import MultiDeckState
+from newave_agent.app.agents.multi_deck.tools import (
     get_available_tools as get_multi_deck_tools,
     get_tools_for_semantic_matching
 )
-from app.tools.semantic_matcher import find_best_tool_semantic, find_top_tools_semantic
-from app.tools.base import NEWAVETool
-from app.config import (
+from newave_agent.app.tools.semantic_matcher import find_best_tool_semantic, find_top_tools_semantic
+from newave_agent.app.tools.base import NEWAVETool
+from newave_agent.app.config import (
     SEMANTIC_MATCHING_ENABLED, 
     SEMANTIC_MATCH_THRESHOLD, 
     SEMANTIC_MATCH_MIN_SCORE, 
@@ -216,7 +216,7 @@ def comparison_tool_router_node(state: MultiDeckState) -> dict:
             # Para tools single-deck, usar MultiDeckComparisonTool como wrapper
             # que executa a tool em todos os decks selecionados
             safe_print(f"[TOOL ROUTER] [COMPARISON] Tool {tool_name} é single-deck - usando MultiDeckComparisonTool como wrapper")
-            from app.tools.multi_deck_comparison_tool import MultiDeckComparisonTool
+            from newave_agent.app.tools.multi_deck_comparison_tool import MultiDeckComparisonTool
             
             first_deck_path = deck_paths.get(selected_decks[0], deck_path) if selected_decks else deck_path
             # Passar a tool_class diretamente para evitar semantic matching desnecessário
@@ -652,7 +652,7 @@ def _generate_disambiguation_response(
     Returns:
         Dict com final_response e disambiguation
     """
-    from app.config import DISAMBIGUATION_MAX_OPTIONS
+    from newave_agent.app.config import DISAMBIGUATION_MAX_OPTIONS
     
     safe_print("[TOOL ROUTER] Gerando resposta de disambiguation com descrições fixas...")
     
@@ -675,7 +675,7 @@ def _create_fallback_disambiguation(
     Returns:
         Dict com final_response e disambiguation
     """
-    from app.config import DISAMBIGUATION_MAX_OPTIONS
+    from newave_agent.app.config import DISAMBIGUATION_MAX_OPTIONS
     
     safe_print("[TOOL ROUTER] Criando disambiguation com opções fixas...")
     

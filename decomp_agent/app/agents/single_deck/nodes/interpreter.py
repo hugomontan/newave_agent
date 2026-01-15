@@ -7,6 +7,8 @@ import json as json_module
 from decomp_agent.app.agents.single_deck.state import SingleDeckState
 from decomp_agent.app.config import safe_print
 from shared.utils.text_utils import clean_response_text
+from decomp_agent.app.agents.single_deck.formatters.registry import get_formatter_for_tool
+from decomp_agent.app.agents.single_deck.tools import get_available_tools
 
 
 # Função auxiliar para escrever no log de debug de forma segura
@@ -37,25 +39,67 @@ def interpreter_node(state: SingleDeckState) -> dict:
         
         if tool_result:
             safe_print(f"[INTERPRETER DECOMP] Processando resultado de tool: {tool_used}")
+            safe_print(f"[INTERPRETER DECOMP]   Success: {tool_result.get('success', False)}")
             
-            # Por enquanto, formatação simples (formatters serão adicionados depois)
-            data = tool_result.get("data", [])
-            summary = tool_result.get("summary", {})
+            # Obter tool instance para usar no registry
+            tool_instance = None
+            deck_path = state.get("deck_path", "")
+            try:
+                available_tools = get_available_tools(deck_path)
+                for tool in available_tools:
+                    if tool.get_name() == tool_used:
+                        tool_instance = tool
+                        break
+            except Exception as e:
+                safe_print(f"[INTERPRETER DECOMP] [AVISO] Erro ao obter tools: {e}")
             
-            response = f"## Resultado da Tool: {tool_used}\n\n"
-            
-            if data:
-                response += f"Total de registros: {len(data)}\n\n"
-                response += "### Dados\n\n"
-                # Adicionar dados formatados (simplificado por enquanto)
-                response += "Dados processados com sucesso.\n"
+            if tool_instance is None:
+                safe_print(f"[INTERPRETER DECOMP] [AVISO] Tool instance não encontrada, usando formatter genérico")
+                from decomp_agent.app.agents.single_deck.formatters.generic_formatter import GenericSingleDeckFormatter
+                formatter = GenericSingleDeckFormatter()
             else:
-                response += "Nenhum dado encontrado.\n"
+                # Obter formatter via registry
+                safe_print(f"[INTERPRETER DECOMP] Obtendo formatter para tool: {tool_used}")
+                formatter = get_formatter_for_tool(tool_instance, tool_result)
+                safe_print(f"[INTERPRETER DECOMP] Formatter selecionado: {formatter.__class__.__name__}")
             
-            return {
-                "final_response": clean_response_text(response, max_emojis=2),
-                "visualization_data": None
-            }
+            query = state.get("query", "")
+            # Se a query veio de disambiguation, extrair apenas a parte original
+            if query.startswith("__DISAMBIG__:"):
+                try:
+                    parts = query.split(":", 2)
+                    if len(parts) == 3:
+                        query = parts[2].strip()
+                except Exception:
+                    pass
+            elif " - " in query:
+                query = query.split(" - ", 1)[0].strip()
+            
+            # Formatar resposta usando o formatter
+            try:
+                formatted = formatter.format_response(tool_result, tool_used, query)
+                safe_print(f"[INTERPRETER DECOMP] [OK] Resposta formatada com sucesso")
+                safe_print(f"[INTERPRETER DECOMP]   Tem visualization_data: {bool(formatted.get('visualization_data'))}")
+                
+                return {
+                    "final_response": clean_response_text(formatted.get("final_response", ""), max_emojis=2),
+                    "visualization_data": formatted.get("visualization_data")
+                }
+            except Exception as e:
+                safe_print(f"[INTERPRETER DECOMP] [ERRO] Erro ao formatar resposta: {e}")
+                import traceback
+                traceback.print_exc()
+                # Fallback: resposta simples
+                response = f"## Resultado da Tool: {tool_used}\n\n"
+                if tool_result.get("success"):
+                    data_count = len(tool_result.get("data", []))
+                    response += f"Total de registros: {data_count}\n\nDados processados com sucesso."
+                else:
+                    response += f"Erro: {tool_result.get('error', 'Erro desconhecido')}"
+                return {
+                    "final_response": clean_response_text(response, max_emojis=2),
+                    "visualization_data": None
+                }
         
         # Verificar se há disambiguation
         disambiguation = state.get("disambiguation")

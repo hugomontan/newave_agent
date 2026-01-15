@@ -2,8 +2,8 @@
 Node que executa o código Python gerado.
 Para Single Deck Agent.
 """
-from app.agents.single_deck.state import SingleDeckState
-from app.utils.code_executor import execute_python_code
+from newave_agent.app.agents.single_deck.state import SingleDeckState
+from newave_agent.app.utils.code_executor import execute_python_code
 
 
 def executor_node(state: SingleDeckState) -> dict:

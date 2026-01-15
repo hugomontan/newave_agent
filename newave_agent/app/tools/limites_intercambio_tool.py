@@ -2,7 +2,7 @@
 Tool para consultar limites de intercâmbio entre subsistemas.
 Acessa o arquivo SISTEMA.DAT, propriedade limites_intercambio.
 """
-from app.tools.base import NEWAVETool
+from newave_agent.app.tools.base import NEWAVETool
 from inewave.newave import Sistema
 import os
 import pandas as pd

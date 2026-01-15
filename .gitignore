@@ -26,11 +26,19 @@ data/
 uploads/
 *.log
 
-# Frontend
+# Frontend (na raiz)
 node_modules/
 .next/
 dist/
 build/
+.env.local
+.env*.local
+
+# Agents específicos
+newave_agent/data/
+newave_agent/uploads/
+decomp_agent/data/
+decomp_agent/uploads/
 
 # Backup
 *.backup

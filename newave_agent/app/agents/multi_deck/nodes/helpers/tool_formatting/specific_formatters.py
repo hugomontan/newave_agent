@@ -9,8 +9,8 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import base64
 import io
-from app.config import safe_print
-from app.utils.text_utils import clean_response_text
+from newave_agent.app.config import safe_print
+from newave_agent.app.utils.text_utils import clean_response_text
 
 
 def format_carga_mensal_response(tool_result: dict, tool_used: str) -> dict:

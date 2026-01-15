@@ -2,7 +2,7 @@
 Tool para consultar cadastro de usinas termoelétricas do TERM.DAT.
 Acessa dados estruturais e operacionais básicos das usinas térmicas.
 """
-from app.tools.base import NEWAVETool
+from newave_agent.app.tools.base import NEWAVETool
 import os
 import pandas as pd
 import re

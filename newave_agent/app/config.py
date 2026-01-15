@@ -42,7 +42,7 @@ def safe_print(*args, **kwargs):
     Evita erros de encoding (OSError: [Errno 22] Invalid argument).
     
     Uso:
-        from app.config import safe_print
+        from newave_agent.app.config import safe_print
         safe_print("Mensagem com emoji ✅")  # Funciona no Windows
     """
     try:
@@ -70,8 +70,10 @@ def safe_print(*args, **kwargs):
 # Base paths
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# Carregar variáveis de ambiente do arquivo .env na raiz de newave_agent
-env_path = BASE_DIR / ".env"
+# Carregar variáveis de ambiente do arquivo .env na raiz do projeto (nw_multi)
+# BASE_DIR é newave_agent/, então precisamos subir 1 nível para chegar na raiz
+PROJECT_ROOT = BASE_DIR.parent
+env_path = PROJECT_ROOT / ".env"
 load_dotenv(dotenv_path=env_path)
 DATA_DIR = BASE_DIR / "data"
 DOCS_DIR = DATA_DIR / "docs"

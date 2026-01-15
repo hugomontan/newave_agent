@@ -6,9 +6,9 @@ import numpy as np
 import re
 import hashlib
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from app.tools.base import NEWAVETool
-from app.rag.vectorstore import get_embeddings
-from app.config import QUERY_EXPANSION_ENABLED, SEMANTIC_MATCH_MIN_SCORE, safe_print
+from newave_agent.app.tools.base import NEWAVETool
+from newave_agent.app.rag.vectorstore import get_embeddings
+from newave_agent.app.config import QUERY_EXPANSION_ENABLED, SEMANTIC_MATCH_MIN_SCORE, safe_print
 
 # Cache global de embeddings das tools
 # Estrutura: {tool_name: {'description_hash': str, 'embedding': list[float], 'embedding_normalized': np.ndarray}}

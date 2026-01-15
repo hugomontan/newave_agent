@@ -7,7 +7,7 @@ Acessa informações de configuração do sistema hidrelétrico, incluindo:
 - Configurações de modificação
 - Histórico de vazões
 """
-from app.tools.base import NEWAVETool
+from newave_agent.app.tools.base import NEWAVETool
 from inewave.newave import Confhd
 import os
 import pandas as pd

@@ -3,13 +3,13 @@ Tool para consultar valores estruturais e conjunturais do CLAST.DAT.
 Valores estruturais: custos base das classes térmicas (propriedade usinas)
 Valores conjunturais: modificações sazonais dos custos (propriedade modificacoes)
 """
-from app.tools.base import NEWAVETool
+from newave_agent.app.tools.base import NEWAVETool
 from inewave.newave import Clast
 import os
 import pandas as pd
 import re
 from typing import Dict, Any, Optional
-from app.agents.single_deck.formatters.data_formatters.clast_formatter import ClastSingleDeckFormatter
+from newave_agent.app.agents.single_deck.formatters.data_formatters.clast_formatter import ClastSingleDeckFormatter
 
 class ClastValoresTool(NEWAVETool):
     """
@@ -539,5 +539,5 @@ class ClastValoresTool(NEWAVETool):
         Nota: O formatter é obtido automaticamente via registry em formatting/registry.py.
         Este método é mantido para compatibilidade, mas não é mais usado.
         """
-        from app.agents.multi_deck.formatting.data_formatters.temporal_formatters import ClastComparisonFormatter
+        from newave_agent.app.agents.multi_deck.formatting.data_formatters.temporal_formatters import ClastComparisonFormatter
         return ClastComparisonFormatter()

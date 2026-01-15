@@ -4,7 +4,7 @@ Para tools que não precisam de estruturação rígida.
 Suporta N decks para comparação dinâmica.
 """
 from typing import Dict, Any, List
-from app.agents.multi_deck.formatting.base import ComparisonFormatter, DeckData
+from newave_agent.app.agents.multi_deck.formatting.base import ComparisonFormatter, DeckData
 
 
 class LLMFreeFormatter(ComparisonFormatter):

@@ -93,6 +93,7 @@ class DeckInfo(BaseModel):
     display_name: str
     year: int
     month: int
+    week: int | None = None
 
 class DecksListResponse(BaseModel):
     decks: list[DeckInfo]
@@ -283,7 +284,16 @@ async def list_decks():
     from decomp_agent.app.utils.deck_loader import list_available_decks
     try:
         available_decks = list_available_decks()
-        decks = [DeckInfo(name=d["name"], display_name=d["display_name"], year=d["year"], month=d["month"]) for d in available_decks]
+        decks = [
+            DeckInfo(
+                name=d["name"], 
+                display_name=d["display_name"], 
+                year=d["year"], 
+                month=d["month"],
+                week=d.get("week")
+            ) 
+            for d in available_decks
+        ]
         return DecksListResponse(decks=decks, total=len(decks))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro ao listar decks: {str(e)}")
@@ -336,7 +346,8 @@ async def init_comparison_mode(request: InitComparisonRequest = None):
                 name=name,
                 display_name=get_deck_display_name(name),
                 year=next(d["year"] for d in available_decks if d["name"] == name),
-                month=next(d["month"] for d in available_decks if d["name"] == name)
+                month=next(d["month"] for d in available_decks if d["name"] == name),
+                week=next((d.get("week") for d in available_decks if d["name"] == name), None)
             )
             for name in selected_deck_names
         ]

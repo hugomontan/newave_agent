@@ -3,8 +3,8 @@ Formatter genérico para single deck - usa LLM para formatar qualquer tool.
 """
 
 from typing import Dict, Any
-from app.agents.single_deck.formatters.base import SingleDeckFormatter
-from app.agents.single_deck.nodes.helpers.tool_formatting.llm_formatter import format_tool_response_with_llm
+from newave_agent.app.agents.single_deck.formatters.base import SingleDeckFormatter
+from newave_agent.app.agents.single_deck.nodes.helpers.tool_formatting.llm_formatter import format_tool_response_with_llm
 
 
 class GenericSingleDeckFormatter(SingleDeckFormatter):

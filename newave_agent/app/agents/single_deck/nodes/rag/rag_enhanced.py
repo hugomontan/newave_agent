@@ -5,10 +5,10 @@ Para Single Deck Agent.
 """
 from pathlib import Path
 from typing import Dict, Any
-from app.rag.vectorstore import similarity_search
-from app.rag.indexer import load_specific_documentation, NEWAVE_FILES
-from app.config import RAG_TOP_K, BASE_DIR, safe_print
-from app.agents.single_deck.state import SingleDeckState
+from newave_agent.app.rag.vectorstore import similarity_search
+from newave_agent.app.rag.indexer import load_specific_documentation, NEWAVE_FILES
+from newave_agent.app.config import RAG_TOP_K, BASE_DIR, safe_print
+from newave_agent.app.agents.single_deck.state import SingleDeckState
 
 
 def load_tools_context() -> str:

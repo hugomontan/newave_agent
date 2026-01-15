@@ -8,11 +8,11 @@ Para Single Deck Agent - sem lógica de comparação.
 from typing import Optional, Dict, Any, List
 import os
 import json as json_module
-from app.agents.single_deck.state import SingleDeckState
-from app.agents.single_deck.tools import get_available_tools
-from app.tools.semantic_matcher import find_best_tool_semantic, find_top_tools_semantic
-from app.tools.base import NEWAVETool
-from app.config import (
+from newave_agent.app.agents.single_deck.state import SingleDeckState
+from newave_agent.app.agents.single_deck.tools import get_available_tools
+from newave_agent.app.tools.semantic_matcher import find_best_tool_semantic, find_top_tools_semantic
+from newave_agent.app.tools.base import NEWAVETool
+from newave_agent.app.config import (
     SEMANTIC_MATCHING_ENABLED, 
     SEMANTIC_MATCH_THRESHOLD, 
     SEMANTIC_MATCH_MIN_SCORE, 
@@ -487,7 +487,7 @@ def _generate_disambiguation_response(
     Returns:
         Dict com final_response e disambiguation
     """
-    from app.config import DISAMBIGUATION_MAX_OPTIONS
+    from newave_agent.app.config import DISAMBIGUATION_MAX_OPTIONS
     
     safe_print("[TOOL ROUTER] Gerando resposta de disambiguation com descrições fixas...")
     
@@ -510,7 +510,7 @@ def _create_fallback_disambiguation(
     Returns:
         Dict com final_response e disambiguation
     """
-    from app.config import DISAMBIGUATION_MAX_OPTIONS
+    from newave_agent.app.config import DISAMBIGUATION_MAX_OPTIONS
     
     safe_print("[TOOL ROUTER] Criando disambiguation com opções fixas...")
     

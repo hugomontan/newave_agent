@@ -3,8 +3,8 @@ Formatter para UsinasNaoSimuladasTool no single deck.
 """
 from typing import Dict, Any, List, Optional
 from datetime import datetime
-from app.agents.single_deck.formatters.base import SingleDeckFormatter
-from app.agents.single_deck.formatters.text_formatters.simple import format_usinas_nao_simuladas_simple
+from newave_agent.app.agents.single_deck.formatters.base import SingleDeckFormatter
+from newave_agent.app.agents.single_deck.formatters.text_formatters.simple import format_usinas_nao_simuladas_simple
 
 
 class UsinasNaoSimuladasSingleDeckFormatter(SingleDeckFormatter):

@@ -4,7 +4,7 @@ Modulo de observabilidade com Langfuse para rastrear chamadas LLM.
 from typing import Optional
 from langfuse.langchain import CallbackHandler
 from langfuse import Langfuse
-from app.config import LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, LANGFUSE_HOST, safe_print
+from newave_agent.app.config import LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, LANGFUSE_HOST, safe_print
 
 
 def get_langfuse_handler(

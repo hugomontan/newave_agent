@@ -6,7 +6,7 @@ Suporta N decks para comparação dinâmica.
 import math
 import re
 from typing import Dict, Any, List, Optional, Tuple
-from app.agents.multi_deck.formatting.base import ComparisonFormatter, DeckData
+from newave_agent.app.agents.multi_deck.formatting.base import ComparisonFormatter, DeckData
 
 
 class ClastComparisonFormatter(ComparisonFormatter):
@@ -761,7 +761,7 @@ class ClastComparisonFormatter(ComparisonFormatter):
         Mantido para compatibilidade com código legado.
         """
         # Converter para formato novo usando DeckData
-        from app.agents.multi_deck.formatting.base import DeckData
+        from newave_agent.app.agents.multi_deck.formatting.base import DeckData
         
         decks_data = [
             DeckData(
@@ -1156,7 +1156,7 @@ class CargaComparisonFormatter(ComparisonFormatter):
                 chart_datasets[deck_idx]["data"].append(value)
             
             # Debug: verificar se valores foram adicionados
-            from app.config import safe_print
+            from newave_agent.app.config import safe_print
             safe_print(f"[CargaComparisonFormatter] Linha tabela para {periodo_key}: {list(table_row.keys())}")
             safe_print(f"[CargaComparisonFormatter] Valores: {[table_row.get(f'deck_{i+1}') for i in range(len(decks_info))]}")
             
@@ -1178,7 +1178,7 @@ class CargaComparisonFormatter(ComparisonFormatter):
             y_axis = "Carga (MWméd)"
         
         # Debug: verificar estrutura final da tabela
-        from app.config import safe_print
+        from newave_agent.app.config import safe_print
         if comparison_table:
             first_row = comparison_table[0]
             safe_print(f"[CargaComparisonFormatter] ✅ Tabela gerada - Total de linhas: {len(comparison_table)}")
@@ -1312,7 +1312,7 @@ class CargaComparisonFormatter(ComparisonFormatter):
                 table_row[deck_key] = round(media, 2) if media is not None else None
             
             # Debug: verificar se valores foram adicionados
-            from app.config import safe_print
+            from newave_agent.app.config import safe_print
             safe_print(f"[CargaComparisonFormatter] Linha tabela por submercado {nome_sub}: {list(table_row.keys())}")
             safe_print(f"[CargaComparisonFormatter] Valores: {[table_row.get(f'deck_{i+1}') for i in range(len(decks_info))]}")
             
@@ -2679,7 +2679,7 @@ class LimitesIntercambioComparisonFormatter(ComparisonFormatter):
                         table_row[deck_key] = self._safe_round(val)
                     
                     # Debug: verificar se valores foram adicionados
-                    from app.config import safe_print
+                    from newave_agent.app.config import safe_print
                     if len(comparison_table) < 3:  # Log apenas nas primeiras 3 linhas
                         safe_print(f"[LimitesIntercambioFormatter] Linha tabela para {par_key} - {periodo}: {list(table_row.keys())}")
                         safe_print(f"[LimitesIntercambioFormatter] Valores: {[table_row.get(f'deck_{i+1}') for i in range(len(decks_info))]}")
@@ -2690,7 +2690,7 @@ class LimitesIntercambioComparisonFormatter(ComparisonFormatter):
         pares_afetados = len(set(row["par_key"] for row in comparison_table)) if comparison_table else 0
         
         # Debug: verificar estrutura final da tabela
-        from app.config import safe_print
+        from newave_agent.app.config import safe_print
         if comparison_table:
             first_row = comparison_table[0]
             safe_print(f"[LimitesIntercambioFormatter] ✅ Tabela gerada - Total de linhas: {len(comparison_table)}")
@@ -2758,7 +2758,7 @@ class LimitesIntercambioComparisonFormatter(ComparisonFormatter):
         all_pares = set(dec_indexed.keys()) | set(jan_indexed.keys())
         
         # ETAPA NOVA: Detectar se a query especifica um par específico
-        from app.config import safe_print
+        from newave_agent.app.config import safe_print
         safe_print(f"[FORMATTER] [DEBUG] format_comparison - Query recebida: '{query}'")
         safe_print(f"[FORMATTER] [DEBUG] format_comparison - Total de pares encontrados antes do filtro: {len(all_pares)}")
         for par_key in sorted(all_pares):
@@ -3040,7 +3040,7 @@ class LimitesIntercambioComparisonFormatter(ComparisonFormatter):
         Returns:
             Tupla (sub_de, sub_para) ou (sub_de, sub_para, sentido) ou None
         """
-        from app.config import safe_print
+        from newave_agent.app.config import safe_print
         
         query_lower = query.lower()
         safe_print(f"[FORMATTER] [DEBUG] _extract_par_from_query - Query original: '{query}'")

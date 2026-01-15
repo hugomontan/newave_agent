@@ -6,8 +6,8 @@ Para Single Deck Agent.
 from typing import Dict, Any
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
-from app.config import OPENAI_API_KEY, OPENAI_MODEL, safe_print
-from app.utils.text_utils import clean_response_text
+from newave_agent.app.config import OPENAI_API_KEY, OPENAI_MODEL, safe_print
+from newave_agent.app.utils.text_utils import clean_response_text
 from .base import format_tool_response, format_tool_response_summary
 from .helpers import format_restricao_eletrica_data
 from ..prompts import TOOL_INTERPRETER_SYSTEM_PROMPT, TOOL_INTERPRETER_USER_PROMPT

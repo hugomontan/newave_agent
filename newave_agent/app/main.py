@@ -47,10 +47,10 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from app.config import UPLOADS_DIR
-from app.agents.single_deck.graph import run_query as single_deck_run_query, run_query_stream as single_deck_run_query_stream
-from app.agents.multi_deck.graph import run_query as multi_deck_run_query, run_query_stream as multi_deck_run_query_stream
-from app.rag import index_documentation
+from newave_agent.app.config import UPLOADS_DIR
+from newave_agent.app.agents.single_deck.graph import run_query as single_deck_run_query, run_query_stream as single_deck_run_query_stream
+from newave_agent.app.agents.multi_deck.graph import run_query as multi_deck_run_query, run_query_stream as multi_deck_run_query_stream
+from newave_agent.app.rag import index_documentation
 
 
 app = FastAPI(
@@ -332,7 +332,7 @@ async def reindex_docs():
     """
     Reindexa a documentação do inewave.
     """
-    from app.rag import reindex_documentation
+    from newave_agent.app.rag import reindex_documentation
     
     try:
         count = reindex_documentation()
@@ -384,7 +384,7 @@ async def list_decks():
     Lista todos os decks disponíveis no repositório.
     Retorna ordenados cronologicamente (mais antigo primeiro).
     """
-    from app.utils.deck_loader import list_available_decks
+    from newave_agent.app.utils.deck_loader import list_available_decks
     
     try:
         available_decks = list_available_decks()
@@ -415,7 +415,7 @@ async def load_deck_from_repo(request: LoadDeckRequest):
     Carrega um deck do repositorio (decks/).
     Versao otimizada: usa o deck diretamente sem copiar arquivos.
     """
-    from app.utils.deck_loader import load_deck
+    from newave_agent.app.utils.deck_loader import load_deck
     import uuid
     
     try:
@@ -453,7 +453,7 @@ async def init_comparison_mode(request: InitComparisonRequest = None):
     Args:
         request: Opcional - Lista de nomes dos decks a comparar
     """
-    from app.utils.deck_loader import (
+    from newave_agent.app.utils.deck_loader import (
         list_available_decks, 
         load_multiple_decks, 
         get_deck_display_name

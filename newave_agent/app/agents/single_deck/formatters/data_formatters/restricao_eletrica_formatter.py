@@ -4,9 +4,9 @@ Sem uso de LLM - formatação direta dos dados.
 """
 import math
 from typing import Dict, Any, List, Optional
-from app.agents.single_deck.formatters.base import SingleDeckFormatter
-from app.agents.single_deck.formatters.text_formatters.simple import format_restricao_eletrica_simple
-from app.config import safe_print
+from newave_agent.app.agents.single_deck.formatters.base import SingleDeckFormatter
+from newave_agent.app.agents.single_deck.formatters.text_formatters.simple import format_restricao_eletrica_simple
+from newave_agent.app.config import safe_print
 
 
 class RestricaoEletricaSingleDeckFormatter(SingleDeckFormatter):

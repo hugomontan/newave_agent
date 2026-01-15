@@ -3,7 +3,7 @@ Tool para consultar vazões históricas de postos fluviométricos.
 Acessa o arquivo VAZOES.DAT, propriedade vazoes.
 Inclui mapeamento interno de nome de usina para posto (via CONFHD.DAT).
 """
-from app.tools.base import NEWAVETool
+from newave_agent.app.tools.base import NEWAVETool
 from inewave.newave import Vazoes, Confhd
 import os
 import pandas as pd

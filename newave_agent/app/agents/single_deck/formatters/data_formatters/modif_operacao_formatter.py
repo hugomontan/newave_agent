@@ -3,8 +3,8 @@ Formatter para ModifOperacaoTool no single deck.
 Replica a formatação do LLM mas pré-configurada para ser mais rápida.
 """
 from typing import Dict, Any, List
-from app.agents.single_deck.formatters.base import SingleDeckFormatter
-from app.agents.single_deck.formatters.text_formatters.simple import format_modif_operacao_simple
+from newave_agent.app.agents.single_deck.formatters.base import SingleDeckFormatter
+from newave_agent.app.agents.single_deck.formatters.text_formatters.simple import format_modif_operacao_simple
 
 
 class ModifOperacaoSingleDeckFormatter(SingleDeckFormatter):

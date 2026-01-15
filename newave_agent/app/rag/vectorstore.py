@@ -1,7 +1,7 @@
 from langchain_openai import OpenAIEmbeddings
 from langchain_chroma import Chroma
 from langchain_core.documents import Document
-from app.config import OPENAI_API_KEY, OPENAI_EMBEDDING_MODEL, CHROMA_DIR
+from newave_agent.app.config import OPENAI_API_KEY, OPENAI_EMBEDDING_MODEL, CHROMA_DIR
 
 
 _vectorstore = None

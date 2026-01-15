@@ -6,11 +6,11 @@ Atribui formatter baseado na tool executada usando can_format() e get_priority()
 import os
 import json as json_module
 from typing import Dict, Any, Optional
-from app.agents.single_deck.formatters.base import SingleDeckFormatter
-from app.tools.base import NEWAVETool
+from newave_agent.app.agents.single_deck.formatters.base import SingleDeckFormatter
+from newave_agent.app.tools.base import NEWAVETool
 
 # Formatters específicos do single deck (modularização completa - 1 por tool)
-from app.agents.single_deck.formatters.data_formatters import (
+from newave_agent.app.agents.single_deck.formatters.data_formatters import (
     ClastSingleDeckFormatter,
     CargaMensalSingleDeckFormatter,
     CadicSingleDeckFormatter,
@@ -26,7 +26,7 @@ from app.agents.single_deck.formatters.data_formatters import (
 )
 
 # Formatter genérico (fallback)
-from app.agents.single_deck.formatters.generic_formatter import GenericSingleDeckFormatter
+from newave_agent.app.agents.single_deck.formatters.generic_formatter import GenericSingleDeckFormatter
 
 # Lista de formatters ordenada por prioridade (maior primeiro)
 SINGLE_DECK_FORMATTERS = [
@@ -79,7 +79,7 @@ def get_formatter_for_tool(
     Returns:
         Formatter apropriado
     """
-    from app.config import safe_print
+    from newave_agent.app.config import safe_print
     
     tool_name = tool.get_name()
     

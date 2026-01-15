@@ -4,7 +4,7 @@ Para tools que retornam dados cadastrais de usinas.
 Suporta N decks para comparação dinâmica.
 """
 from typing import Dict, Any, List, Optional
-from app.agents.multi_deck.formatting.base import ComparisonFormatter, DeckData
+from newave_agent.app.agents.multi_deck.formatting.base import ComparisonFormatter, DeckData
 
 
 class CadastroComparisonFormatter(ComparisonFormatter):

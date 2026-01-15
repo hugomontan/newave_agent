@@ -4,7 +4,7 @@ Para tools que retornam dados em formato tabular simples.
 Suporta N decks para comparação dinâmica.
 """
 from typing import Dict, Any, List, Optional
-from app.agents.multi_deck.formatting.base import ComparisonFormatter, DeckData
+from newave_agent.app.agents.multi_deck.formatting.base import ComparisonFormatter, DeckData
 
 
 class TableComparisonFormatter(ComparisonFormatter):

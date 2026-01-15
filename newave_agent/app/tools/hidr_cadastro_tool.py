@@ -2,7 +2,7 @@
 Tool para consultar informações cadastrais das usinas hidrelétricas do HIDR.DAT.
 Acessa dados físicos e operacionais básicos das usinas hidrelétricas.
 """
-from app.tools.base import NEWAVETool
+from newave_agent.app.tools.base import NEWAVETool
 from inewave.newave import Hidr
 import os
 import pandas as pd

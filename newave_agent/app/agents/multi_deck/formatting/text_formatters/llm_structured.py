@@ -7,11 +7,11 @@ from typing import Dict, Any, List, Optional
 import json
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
-from app.config import OPENAI_API_KEY, OPENAI_MODEL, safe_print
-from app.utils.text_utils import clean_response_text
+from newave_agent.app.config import OPENAI_API_KEY, OPENAI_MODEL, safe_print
+from newave_agent.app.utils.text_utils import clean_response_text
 from .summarizers import summarize_deck_data, summarize_multiple_decks
 from .simple import generate_fallback_comparison_response
-from app.agents.multi_deck.nodes.helpers.prompts import (
+from newave_agent.app.agents.multi_deck.nodes.helpers.prompts import (
     COMPARISON_INTERPRETER_SYSTEM_PROMPT,
     COMPARISON_INTERPRETER_USER_PROMPT,
 )

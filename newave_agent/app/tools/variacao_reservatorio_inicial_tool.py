@@ -2,7 +2,7 @@
 Tool para consultar volume inicial percentual (v.inic) do CONFHD.DAT por usina.
 Retorna dados brutos de todas as usinas para comparação entre decks.
 """
-from app.tools.base import NEWAVETool
+from newave_agent.app.tools.base import NEWAVETool
 from inewave.newave import Confhd
 import os
 import pandas as pd

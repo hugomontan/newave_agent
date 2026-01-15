@@ -2,13 +2,13 @@
 Tool para análise de mudanças de vazão mínima (VAZMIN/VAZMINT) entre decks no modo multideck.
 Suporta comparação de N decks para análise histórica de vazão mínima.
 """
-from app.tools.base import NEWAVETool
+from newave_agent.app.tools.base import NEWAVETool
 from inewave.newave import Modif
 import os
 import pandas as pd
 import re
 from typing import Dict, Any, List, Optional
-from app.utils.deck_loader import (
+from newave_agent.app.utils.deck_loader import (
     list_available_decks,
     load_multiple_decks,
     get_deck_display_name,

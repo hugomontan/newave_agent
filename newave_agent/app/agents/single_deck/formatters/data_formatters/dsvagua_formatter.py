@@ -2,9 +2,9 @@
 Formatter para DsvaguaTool no single deck.
 """
 from typing import Dict, Any
-from app.agents.single_deck.formatters.base import SingleDeckFormatter
-from app.agents.shared.formatting.data_processors.vazoes_processor import VazoesDataProcessor
-from app.agents.single_deck.formatters.text_formatters.simple import format_dsvagua_simple
+from newave_agent.app.agents.single_deck.formatters.base import SingleDeckFormatter
+from newave_agent.app.agents.shared.formatting.data_processors.vazoes_processor import VazoesDataProcessor
+from newave_agent.app.agents.single_deck.formatters.text_formatters.simple import format_dsvagua_simple
 
 
 class DsvaguaSingleDeckFormatter(SingleDeckFormatter):

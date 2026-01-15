@@ -2,9 +2,9 @@
 Formatter para ClastValoresTool no single deck.
 """
 from typing import Dict, Any
-from app.agents.single_deck.formatters.base import SingleDeckFormatter
-from app.agents.shared.formatting.data_processors.clast_processor import ClastDataProcessor
-from app.agents.single_deck.formatters.text_formatters.simple import format_clast_simple
+from newave_agent.app.agents.single_deck.formatters.base import SingleDeckFormatter
+from newave_agent.app.agents.shared.formatting.data_processors.clast_processor import ClastDataProcessor
+from newave_agent.app.agents.single_deck.formatters.text_formatters.simple import format_clast_simple
 
 
 class ClastSingleDeckFormatter(SingleDeckFormatter):

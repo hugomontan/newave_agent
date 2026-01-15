@@ -4,12 +4,12 @@ Node que interpreta os resultados e gera a resposta final formatada em Markdown 
 
 import os
 import json as json_module
-from app.agents.single_deck.state import SingleDeckState
-from app.config import safe_print
-from app.utils.text_utils import clean_response_text
-from app.agents.single_deck.nodes.helpers.code_execution.formatter import format_code_execution_response
-from app.agents.single_deck.formatters.registry import get_formatter_for_tool
-from app.agents.single_deck.tools import get_available_tools
+from newave_agent.app.agents.single_deck.state import SingleDeckState
+from newave_agent.app.config import safe_print
+from newave_agent.app.utils.text_utils import clean_response_text
+from newave_agent.app.agents.single_deck.nodes.helpers.code_execution.formatter import format_code_execution_response
+from newave_agent.app.agents.single_deck.formatters.registry import get_formatter_for_tool
+from newave_agent.app.agents.single_deck.tools import get_available_tools
 
 # Função auxiliar para escrever no log de debug de forma segura
 def _write_debug_log(data: dict):
@@ -78,7 +78,7 @@ def interpreter_node(state: SingleDeckState) -> dict:
             
             if tool_instance is None:
                 safe_print(f"[INTERPRETER] ⚠️ Tool instance não encontrada, usando formatter genérico")
-                from app.agents.single_deck.formatters.generic_formatter import GenericSingleDeckFormatter
+                from newave_agent.app.agents.single_deck.formatters.generic_formatter import GenericSingleDeckFormatter
                 formatter = GenericSingleDeckFormatter()
             else:
                 # Obter formatter via registry

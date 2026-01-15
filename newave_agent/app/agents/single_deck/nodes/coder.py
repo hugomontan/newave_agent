@@ -4,8 +4,8 @@ Para Single Deck Agent.
 """
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
-from app.agents.single_deck.state import SingleDeckState
-from app.config import OPENAI_API_KEY, OPENAI_MODEL
+from newave_agent.app.agents.single_deck.state import SingleDeckState
+from newave_agent.app.config import OPENAI_API_KEY, OPENAI_MODEL
 
 
 CODER_SYSTEM_PROMPT = """Você é um especialista em programação Python e na biblioteca inewave para análise de decks NEWAVE.

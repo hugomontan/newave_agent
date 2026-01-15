@@ -5,8 +5,8 @@ Acessa informações sobre restrições elétricas do modelo NEWAVE, incluindo:
 - Períodos de validade
 - Limites por período e patamar
 """
-from app.tools.base import NEWAVETool
-from app.utils.restricao_eletrica import RestricaoEletrica
+from newave_agent.app.tools.base import NEWAVETool
+from newave_agent.app.utils.restricao_eletrica import RestricaoEletrica
 import os
 import pandas as pd
 import re

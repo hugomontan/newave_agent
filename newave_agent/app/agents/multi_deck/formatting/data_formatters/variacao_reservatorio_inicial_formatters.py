@@ -5,7 +5,7 @@ Suporta N decks para comparação dinâmica.
 """
 import math
 from typing import Dict, Any, List, Optional
-from app.agents.multi_deck.formatting.base import ComparisonFormatter, DeckData
+from newave_agent.app.agents.multi_deck.formatting.base import ComparisonFormatter, DeckData
 
 
 class VariacaoReservatorioInicialFormatter(ComparisonFormatter):

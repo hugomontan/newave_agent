@@ -3,7 +3,7 @@ import sys
 import tempfile
 import os
 from pathlib import Path
-from app.config import CODE_EXECUTION_TIMEOUT
+from newave_agent.app.config import CODE_EXECUTION_TIMEOUT
 
 
 ALLOWED_IMPORTS = {

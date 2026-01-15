@@ -2,8 +2,8 @@ import re
 from pathlib import Path
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from app.config import DOCS_DIR, RAG_CHUNK_SIZE, RAG_CHUNK_OVERLAP
-from app.rag.vectorstore import get_vectorstore, add_documents
+from newave_agent.app.config import DOCS_DIR, RAG_CHUNK_SIZE, RAG_CHUNK_OVERLAP
+from newave_agent.app.rag.vectorstore import get_vectorstore, add_documents
 
 
 # Mapeamento de arquivos NEWAVE para seus nomes de arquivo de documentação
@@ -28,7 +28,7 @@ NEWAVE_FILES = {
 
 def get_abstract_path() -> Path:
     """Retorna o caminho do arquivo abstract.md."""
-    from app.config import BASE_DIR
+    from newave_agent.app.config import BASE_DIR
     
     # Tenta primeiro relativo ao BASE_DIR
     abstract_path = BASE_DIR / "docs" / "abstract.md"
@@ -53,7 +53,7 @@ def get_specific_doc_path(file_name: str) -> Path:
     Returns:
         Path para o arquivo de documentação específica
     """
-    from app.config import BASE_DIR
+    from newave_agent.app.config import BASE_DIR
     
     file_name_lower = file_name.lower()
     

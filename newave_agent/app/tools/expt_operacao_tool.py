@@ -2,7 +2,7 @@
 Tool para consultar dados de operação térmica do EXPT.DAT.
 Acessa expansões e modificações temporárias das usinas termoelétricas.
 """
-from app.tools.base import NEWAVETool
+from newave_agent.app.tools.base import NEWAVETool
 from inewave.newave import Expt
 import os
 import pandas as pd

@@ -2,7 +2,7 @@
 Tool para consultar dados de operação hídrica do MODIF.DAT.
 Acessa modificações temporárias das características das usinas hidrelétricas.
 """
-from app.tools.base import NEWAVETool
+from newave_agent.app.tools.base import NEWAVETool
 from inewave.newave import Modif
 import os
 import pandas as pd

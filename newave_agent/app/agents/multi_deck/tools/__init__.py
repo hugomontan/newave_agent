@@ -4,25 +4,25 @@ Suporta N decks para comparação dinâmica.
 """
 
 from typing import List, Optional, Set, Type
-from app.tools.base import NEWAVETool
-from app.tools.carga_mensal_tool import CargaMensalTool
-from app.tools.clast_valores_tool import ClastValoresTool
-from app.tools.expt_operacao_tool import ExptOperacaoTool
-from app.tools.modif_operacao_tool import ModifOperacaoTool
-from app.tools.limites_intercambio_tool import LimitesIntercambioTool
-from app.tools.agrint_tool import AgrintTool
-from app.tools.vazoes_tool import VazoesTool
-from app.tools.cadic_tool import CadicTool
-from app.tools.hidr_cadastro_tool import HidrCadastroTool
-from app.tools.confhd_tool import ConfhdTool
-from app.tools.dsvagua_tool import DsvaguaTool
-from app.tools.usinas_nao_simuladas_tool import UsinasNaoSimuladasTool
-from app.tools.restricao_eletrica_tool import RestricaoEletricaTool
-from app.tools.term_cadastro_tool import TermCadastroTool
-from app.tools.multi_deck_comparison_tool import MultiDeckComparisonTool
-from app.tools.mudancas_geracoes_termicas_tool import MudancasGeracoesTermicasTool
-from app.tools.mudancas_vazao_minima_tool import MudancasVazaoMinimaTool
-from app.tools.variacao_reservatorio_inicial_tool import VariacaoReservatorioInicialTool
+from newave_agent.app.tools.base import NEWAVETool
+from newave_agent.app.tools.carga_mensal_tool import CargaMensalTool
+from newave_agent.app.tools.clast_valores_tool import ClastValoresTool
+from newave_agent.app.tools.expt_operacao_tool import ExptOperacaoTool
+from newave_agent.app.tools.modif_operacao_tool import ModifOperacaoTool
+from newave_agent.app.tools.limites_intercambio_tool import LimitesIntercambioTool
+from newave_agent.app.tools.agrint_tool import AgrintTool
+from newave_agent.app.tools.vazoes_tool import VazoesTool
+from newave_agent.app.tools.cadic_tool import CadicTool
+from newave_agent.app.tools.hidr_cadastro_tool import HidrCadastroTool
+from newave_agent.app.tools.confhd_tool import ConfhdTool
+from newave_agent.app.tools.dsvagua_tool import DsvaguaTool
+from newave_agent.app.tools.usinas_nao_simuladas_tool import UsinasNaoSimuladasTool
+from newave_agent.app.tools.restricao_eletrica_tool import RestricaoEletricaTool
+from newave_agent.app.tools.term_cadastro_tool import TermCadastroTool
+from newave_agent.app.tools.multi_deck_comparison_tool import MultiDeckComparisonTool
+from newave_agent.app.tools.mudancas_geracoes_termicas_tool import MudancasGeracoesTermicasTool
+from newave_agent.app.tools.mudancas_vazao_minima_tool import MudancasVazaoMinimaTool
+from newave_agent.app.tools.variacao_reservatorio_inicial_tool import VariacaoReservatorioInicialTool
 
 
 # Registry de tools para modo comparison (lista completa, independente)

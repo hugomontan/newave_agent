@@ -5,9 +5,9 @@ Suporta comparação dinâmica entre múltiplos decks.
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, Any, List, Optional
 import math
-from app.tools.base import NEWAVETool
-from app.tools.semantic_matcher import find_best_tool_semantic
-from app.utils.deck_loader import (
+from newave_agent.app.tools.base import NEWAVETool
+from newave_agent.app.tools.semantic_matcher import find_best_tool_semantic
+from newave_agent.app.utils.deck_loader import (
     list_available_decks,
     load_multiple_decks,
     get_deck_display_name,
@@ -94,7 +94,7 @@ class MultiDeckComparisonTool(NEWAVETool):
         else:
             # Fazer semantic matching para encontrar a tool
             try:
-                from app.tools import get_available_tools
+                from newave_agent.app.tools import get_available_tools
                 # IMPORTANTE: Usar modo "comparison" para incluir VariacaoReservatorioInicialTool, etc.
                 tools = get_available_tools(first_deck_path, analysis_mode="comparison")
                 print(f"[MULTI-DECK] Tools disponíveis no modo comparison: {len(tools)}")

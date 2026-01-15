@@ -3,12 +3,12 @@ Node que interpreta os resultados de comparação e gera a resposta final format
 """
 
 from typing import Dict, Any, Optional
-from app.agents.multi_deck.state import MultiDeckState
-from app.config import safe_print
-from app.utils.text_utils import clean_response_text
-from app.agents.multi_deck.nodes.helpers.tool_formatting.llm_formatter import format_tool_response_with_llm
-from app.agents.multi_deck.nodes.helpers.code_execution.formatter import format_code_execution_response
-from app.agents.multi_deck.formatting.registry import format_comparison_response
+from newave_agent.app.agents.multi_deck.state import MultiDeckState
+from newave_agent.app.config import safe_print
+from newave_agent.app.utils.text_utils import clean_response_text
+from newave_agent.app.agents.multi_deck.nodes.helpers.tool_formatting.llm_formatter import format_tool_response_with_llm
+from newave_agent.app.agents.multi_deck.nodes.helpers.code_execution.formatter import format_code_execution_response
+from newave_agent.app.agents.multi_deck.formatting.registry import format_comparison_response
 
 
 
