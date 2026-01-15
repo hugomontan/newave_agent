@@ -10,6 +10,9 @@ from .simple import (
     format_gtmin_simple_comparison,
     format_vazao_minima_simple_comparison,
     format_reservatorio_inicial_simple_comparison,
+    format_vazoes_dsvagua_simple_comparison,
+    format_usinas_nao_simuladas_simple_comparison,
+    format_restricao_eletrica_simple_comparison,
     generate_fallback_comparison_response,
 )
 from .llm_structured import format_with_llm_structured
@@ -22,6 +25,9 @@ __all__ = [
     "format_gtmin_simple_comparison",
     "format_vazao_minima_simple_comparison",
     "format_reservatorio_inicial_simple_comparison",
+    "format_vazoes_dsvagua_simple_comparison",
+    "format_usinas_nao_simuladas_simple_comparison",
+    "format_restricao_eletrica_simple_comparison",
     "generate_fallback_comparison_response",
     "format_with_llm_structured",
     "format_with_llm_free",

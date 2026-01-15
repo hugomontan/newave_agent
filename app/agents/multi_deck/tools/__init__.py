@@ -3,7 +3,7 @@ Registry de tools para modo Multi-Deck.
 Suporta N decks para comparação dinâmica.
 """
 
-from typing import List, Optional
+from typing import List, Optional, Set, Type
 from app.tools.base import NEWAVETool
 from app.tools.carga_mensal_tool import CargaMensalTool
 from app.tools.clast_valores_tool import ClastValoresTool
@@ -54,6 +54,19 @@ SINGLE_DECK_TOOLS = [
 
 TOOLS_REGISTRY_COMPARISON = MULTI_DECK_TOOLS + SINGLE_DECK_TOOLS
 
+# Tools que devem ser excluídas do semantic matching e do uso automático via prompt
+# Estas tools não aparecerão no semantic matching, mas podem ser usadas internamente
+# por outras tools (ex: HidrCadastroTool e TermCadastroTool para matching de nomes)
+TOOLS_EXCLUDED_FROM_SEMANTIC_MATCHING: Set[Type[NEWAVETool]] = {
+    ModifOperacaoTool,    # Modif
+    ExptOperacaoTool,     # Expt
+    AgrintTool,           # Agrint
+    VazoesTool,           # Vazoes
+    HidrCadastroTool,     # Hidr (mas continua disponível para matching interno)
+    ConfhdTool,           # Confhd
+    TermCadastroTool,     # Term (mas continua disponível para matching interno)
+}
+
 
 def get_available_tools(
     deck_path: str, 
@@ -62,12 +75,16 @@ def get_available_tools(
     """
     Retorna instâncias de todas as tools disponíveis para modo multi-deck.
     
+    Esta função retorna TODAS as tools, incluindo as que estão excluídas do
+    semantic matching. Use get_tools_for_semantic_matching() para obter apenas
+    as tools que devem aparecer no semantic matching.
+    
     Args:
         deck_path: Caminho do diretório do deck NEWAVE
         selected_decks: Lista de nomes dos decks selecionados para comparação
         
     Returns:
-        Lista de instâncias de tools
+        Lista de instâncias de tools (todas as tools)
     """
     tools = []
     
@@ -86,3 +103,38 @@ def get_available_tools(
         tools.append(tool)
     
     return tools
+
+
+def get_tools_for_semantic_matching(
+    deck_path: str,
+    selected_decks: Optional[List[str]] = None,
+    exclude_from_semantic_matching: Optional[Set[Type[NEWAVETool]]] = None
+) -> List[NEWAVETool]:
+    """
+    Retorna tools disponíveis para semantic matching (excluindo tools desativadas).
+    
+    Esta função retorna todas as tools EXCETO aquelas que devem ser excluídas do
+    semantic matching e do uso automático via prompt. As tools excluídas ainda
+    podem ser usadas internamente por outras tools (ex: HidrCadastroTool e 
+    TermCadastroTool para matching de nomes de usinas).
+    
+    Args:
+        deck_path: Caminho do diretório do deck NEWAVE
+        selected_decks: Lista de nomes dos decks selecionados para comparação
+        exclude_from_semantic_matching: Set opcional de classes de tools a excluir.
+                                       Se None, usa TOOLS_EXCLUDED_FROM_SEMANTIC_MATCHING padrão.
+        
+    Returns:
+        Lista de instâncias de tools (filtradas para semantic matching)
+    """
+    tools_to_exclude = exclude_from_semantic_matching if exclude_from_semantic_matching is not None else TOOLS_EXCLUDED_FROM_SEMANTIC_MATCHING
+    
+    all_tools = get_available_tools(deck_path, selected_decks)
+    
+    # Filtrar tools excluídas do semantic matching
+    filtered_tools = [
+        tool for tool in all_tools 
+        if tool.__class__ not in tools_to_exclude
+    ]
+    
+    return filtered_tools

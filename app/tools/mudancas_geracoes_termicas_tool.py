@@ -133,7 +133,12 @@ class MudancasGeracoesTermicasTool(NEWAVETool):
                     "tool": self.get_name()
                 }
             
-            # Para compatibilidade, usar primeiro e último deck
+            # Verificar se há mais de 2 decks - usar matriz de comparação
+            if len(self.selected_decks) > 2:
+                print(f"[TOOL] ✅ {len(self.selected_decks)} decks detectados - usando matriz de comparação")
+                return self._execute_multi_deck_matrix(query)
+            
+            # Para compatibilidade, usar primeiro e último deck (2 decks)
             deck_december_path = self.deck_paths.get(self.selected_decks[0])
             deck_january_path = self.deck_paths.get(self.selected_decks[-1])
             deck_december_name = self.deck_display_names.get(self.selected_decks[0], "Deck Anterior")
@@ -250,6 +255,183 @@ class MudancasGeracoesTermicasTool(NEWAVETool):
                 "comparison_table": comparison_table,
                 "stats": stats,
                 "description": description
+            }
+            
+        except Exception as e:
+            print(f"[TOOL] ❌ Erro ao processar: {type(e).__name__}: {e}")
+            import traceback
+            traceback.print_exc()
+            return {
+                "success": False,
+                "error": f"Erro ao processar análise de GTMIN: {str(e)}",
+                "error_type": type(e).__name__,
+                "tool": self.get_name()
+            }
+    
+    def _execute_multi_deck_matrix(self, query: str) -> Dict[str, Any]:
+        """
+        Executa análise de GTMIN para múltiplos decks (mais de 2) usando matriz de comparação.
+        
+        Args:
+            query: Query do usuário
+            
+        Returns:
+            Dicionário com dados formatados para matriz de comparação
+        """
+        print("[TOOL] Executando análise de matriz para múltiplos decks...")
+        
+        try:
+            # ETAPA 1: Ler EXPT.DAT de todos os decks
+            print("[TOOL] ETAPA 1: Lendo arquivos EXPT.DAT de todos os decks...")
+            decks_expt = {}
+            decks_gtmin = {}
+            deck_names = []
+            
+            for deck_name in self.selected_decks:
+                deck_path = self.deck_paths.get(deck_name)
+                deck_display_name = self.deck_display_names.get(deck_name, deck_name)
+                deck_names.append(deck_display_name)
+                
+                expt = self._read_expt_file(deck_path)
+                if expt is None:
+                    print(f"[TOOL] ⚠️ Arquivo EXPT.DAT não encontrado em {deck_path}")
+                    continue
+                
+                decks_expt[deck_display_name] = expt
+                gtmin = self._extract_gtmin_records(expt)
+                decks_gtmin[deck_display_name] = gtmin
+                print(f"[TOOL] ✅ Deck {deck_display_name}: {len(gtmin)} registros GTMIN")
+            
+            if len(decks_expt) < 2:
+                return {
+                    "success": False,
+                    "error": "São necessários pelo menos 2 decks válidos para comparação",
+                    "tool": self.get_name()
+                }
+            
+            # ETAPA 2: Criar mapeamento código -> nome das usinas (usar primeiro deck como base)
+            print("[TOOL] ETAPA 2: Criando mapeamento código -> nome das usinas...")
+            first_expt = list(decks_expt.values())[0]
+            last_expt = list(decks_expt.values())[-1]
+            mapeamento_codigo_nome = self._create_codigo_nome_mapping(first_expt, last_expt)
+            print(f"[TOOL] ✅ Mapeamento criado: {len(mapeamento_codigo_nome)} usinas mapeadas")
+            
+            # ETAPA 3: Extrair usina da query (opcional)
+            print("[TOOL] ETAPA 3: Verificando se há filtro por usina na query...")
+            codigo_usina_filtro = self._extract_usina_from_query(query, first_expt, last_expt, mapeamento_codigo_nome)
+            if codigo_usina_filtro is not None:
+                nome_usina_filtro = mapeamento_codigo_nome.get(codigo_usina_filtro, f"Usina {codigo_usina_filtro}")
+                print(f"[TOOL] ✅ Filtro por usina detectado: {codigo_usina_filtro} - {nome_usina_filtro}")
+                # Aplicar filtro
+                for deck_name in decks_gtmin:
+                    decks_gtmin[deck_name] = decks_gtmin[deck_name][
+                        decks_gtmin[deck_name]['codigo_usina'] == codigo_usina_filtro
+                    ]
+            
+            # ETAPA 4: Criar estrutura de dados para matriz
+            print("[TOOL] ETAPA 4: Criando estrutura de matriz de comparação...")
+            
+            # Coletar todas as chaves únicas (codigo_usina, periodo_inicio, periodo_fim)
+            def create_key(row):
+                codigo = int(row['codigo_usina'])
+                inicio = self._format_date(row.get('data_inicio'))
+                fim = self._format_date(row.get('data_fim'))
+                return (codigo, inicio, fim)
+            
+            all_keys = set()
+            for gtmin_df in decks_gtmin.values():
+                for _, row in gtmin_df.iterrows():
+                    all_keys.add(create_key(row))
+            
+            print(f"[TOOL] ✅ Total de chaves únicas: {len(all_keys)}")
+            
+            # ETAPA 5: Construir matriz de comparação
+            matrix_data = []
+            
+            for key in all_keys:
+                codigo_usina, periodo_inicio, periodo_fim = key
+                nome_usina = mapeamento_codigo_nome.get(codigo_usina, f"Usina {codigo_usina}")
+                
+                # Coletar valores de GTMIN de cada deck
+                gtmin_values = {}
+                for deck_display_name in deck_names:
+                    if deck_display_name not in decks_gtmin:
+                        gtmin_values[deck_display_name] = None
+                        continue
+                    
+                    gtmin_df = decks_gtmin[deck_display_name]
+                    matching_rows = gtmin_df[
+                        (gtmin_df['codigo_usina'] == codigo_usina) &
+                        (gtmin_df['data_inicio'].apply(self._format_date) == periodo_inicio) &
+                        (gtmin_df['data_fim'].apply(self._format_date) == periodo_fim)
+                    ]
+                    
+                    if not matching_rows.empty:
+                        gtmin_val = self._sanitize_number(matching_rows.iloc[0].get('modificacao'))
+                        gtmin_values[deck_display_name] = round(gtmin_val, 2) if gtmin_val is not None else None
+                    else:
+                        gtmin_values[deck_display_name] = None
+                
+                # Verificar se há alguma mudança (não todos None ou todos iguais)
+                valores_nao_nulos = [v for v in gtmin_values.values() if v is not None]
+                if len(valores_nao_nulos) == 0:
+                    continue  # Pular se não há valores
+                
+                # Verificar se há variação
+                valores_unicos = set(valores_nao_nulos)
+                if len(valores_unicos) <= 1:
+                    continue  # Pular se todos os valores são iguais
+                
+                # Calcular diferenças entre todos os pares de decks
+                matrix_row = {
+                    "nome_usina": nome_usina,
+                    "codigo_usina": codigo_usina,
+                    "periodo_inicio": periodo_inicio,
+                    "periodo_fim": periodo_fim,
+                    "gtmin_values": gtmin_values,  # Dict[deck_name, value]
+                    "matrix": {}  # Dict[(deck_from, deck_to), difference]
+                }
+                
+                # Preencher matriz de diferenças
+                # Usar string como chave para compatibilidade com JSON
+                for i, deck_from in enumerate(deck_names):
+                    for j, deck_to in enumerate(deck_names):
+                        if i == j:
+                            matrix_row["matrix"][f"{deck_from},{deck_to}"] = 0.0
+                        else:
+                            val_from = gtmin_values.get(deck_from)
+                            val_to = gtmin_values.get(deck_to)
+                            
+                            if val_from is not None and val_to is not None:
+                                diff = round(val_to - val_from, 2)
+                                matrix_row["matrix"][f"{deck_from},{deck_to}"] = diff
+                            elif val_from is None and val_to is not None:
+                                matrix_row["matrix"][f"{deck_from},{deck_to}"] = val_to  # Novo
+                            elif val_from is not None and val_to is None:
+                                matrix_row["matrix"][f"{deck_from},{deck_to}"] = -val_from  # Removido
+                            else:
+                                matrix_row["matrix"][f"{deck_from},{deck_to}"] = None
+                
+                matrix_data.append(matrix_row)
+            
+            print(f"[TOOL] ✅ Matriz criada: {len(matrix_data)} registros com variações")
+            
+            # ETAPA 6: Calcular estatísticas
+            stats = {
+                "total_registros": len(matrix_data),
+                "total_decks": len(deck_names),
+                "usinas_unicas": len(set(row["codigo_usina"] for row in matrix_data))
+            }
+            
+            return {
+                "success": True,
+                "is_comparison": True,
+                "tool": self.get_name(),
+                "matrix_data": matrix_data,
+                "deck_names": deck_names,
+                "stats": stats,
+                "visualization_type": "gtmin_matrix",
+                "description": f"Matriz de comparação de GTMIN entre {len(deck_names)} decks, com {len(matrix_data)} registros com variações."
             }
             
         except Exception as e:

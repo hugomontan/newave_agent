@@ -367,6 +367,78 @@ def format_gtmin_simple_comparison(
     return "## Mudanças em Gerações Térmicas\n"
 
 
+def format_vazoes_dsvagua_simple_comparison(
+    comparison_table: List[Dict[str, Any]],
+    deck_1_name: str,
+    deck_2_name: str,
+    tool_name: str = "VazoesTool",
+    deck_names: Optional[List[str]] = None
+) -> str:
+    """
+    Formata resposta simples para VazoesTool e DsvaguaTool: apenas título.
+    A tabela e o gráfico são renderizados pelo componente ComparisonView no frontend.
+    Suporta N decks para comparação dinâmica.
+    
+    Args:
+        comparison_table: Lista de dicionários com dados da comparação
+        deck_1_name: Nome do deck 1 (fallback)
+        deck_2_name: Nome do deck 2 (fallback)
+        tool_name: Nome da tool ("VazoesTool" ou "DsvaguaTool")
+        deck_names: Lista de nomes de decks (para N decks)
+        
+    Returns:
+        String markdown com título (sem tabela, pois será renderizada pelo componente)
+    """
+    if not comparison_table:
+        tool_label = "Vazões Históricas" if tool_name == "VazoesTool" else "Desvios de Água"
+        return f"## Comparação de {tool_label}\n\nNenhum dado disponível para comparação."
+    
+    # Gerar título com informação de decks
+    deck_summary = _get_deck_names_summary(deck_names, deck_1_name, deck_2_name)
+    n_decks = len(deck_names) if deck_names else 2
+    
+    if tool_name == "DsvaguaTool":
+        tool_label = "Desvios de Água"
+    else:
+        tool_label = "Vazões Históricas"
+    
+    if n_decks > 2:
+        return f"## Comparação de {tool_label} ({deck_summary})\n"
+    return f"## Comparação de {tool_label}\n"
+
+
+def format_usinas_nao_simuladas_simple_comparison(
+    comparison_table: List[Dict[str, Any]],
+    deck_1_name: str,
+    deck_2_name: str,
+    deck_names: Optional[List[str]] = None
+) -> str:
+    """
+    Formata resposta simples para UsinasNaoSimuladasTool: apenas título.
+    A tabela e o gráfico são renderizados pelo componente ComparisonView no frontend.
+    Suporta N decks para comparação dinâmica.
+    
+    Args:
+        comparison_table: Lista de dicionários com dados da comparação
+        deck_1_name: Nome do deck 1 (fallback)
+        deck_2_name: Nome do deck 2 (fallback)
+        deck_names: Lista de nomes de decks (para N decks)
+        
+    Returns:
+        String markdown com apenas o título
+    """
+    if not comparison_table:
+        return "## Comparação de Geração de Usinas Não Simuladas\n\nNenhum dado disponível para comparação."
+    
+    # Gerar título com informação de decks
+    deck_summary = _get_deck_names_summary(deck_names, deck_1_name, deck_2_name)
+    n_decks = len(deck_names) if deck_names else 2
+    
+    if n_decks > 2:
+        return f"## Comparação de Geração de Usinas Não Simuladas ({deck_summary})\n"
+    return "## Comparação de Geração de Usinas Não Simuladas\n"
+
+
 def format_reservatorio_inicial_simple_comparison(
     comparison_table: List[Dict[str, Any]],
     deck_1_name: str,
@@ -396,6 +468,50 @@ def format_reservatorio_inicial_simple_comparison(
     if n_decks > 2:
         return f"## Evolução do Volume Inicial Percentual por Usina ({deck_summary})"
     return "## Volume Inicial Percentual por Usina"
+
+
+def format_restricao_eletrica_simple_comparison(
+    comparison_table: List[Dict[str, Any]],
+    deck_1_name: str,
+    deck_2_name: str,
+    deck_names: Optional[List[str]] = None
+) -> str:
+    """
+    Formata resposta para RestricaoEletricaTool: apenas título.
+    A tabela e os gráficos são renderizados pelo componente ComparisonView no frontend.
+    Suporta N decks para comparação dinâmica.
+    
+    Args:
+        comparison_table: Lista de dicionários com dados da comparação
+        deck_1_name: Nome do deck 1 (fallback)
+        deck_2_name: Nome do deck 2 (fallback)
+        deck_names: Lista de nomes de decks (para N decks)
+        
+    Returns:
+        String markdown com apenas o título
+    """
+    n_decks = len(deck_names) if deck_names else 2
+    deck_summary = _get_deck_names_summary(deck_names, deck_1_name, deck_2_name)
+    
+    if not comparison_table:
+        return "## Restrições Elétricas\n\nNenhum dado disponível."
+    
+    # Detectar se há apenas uma restrição
+    restricoes_unicas = set()
+    for row in comparison_table:
+        restricao = row.get("restricao", "")
+        if restricao:
+            restricoes_unicas.add(restricao)
+    
+    if len(restricoes_unicas) == 1:
+        restricao_nome = list(restricoes_unicas)[0]
+        if n_decks > 2:
+            return f"## Restrições Elétricas - {restricao_nome} ({deck_summary})\n"
+        return f"## Restrições Elétricas - {restricao_nome}\n"
+    
+    if n_decks > 2:
+        return f"## Restrições Elétricas ({deck_summary})\n"
+    return "## Restrições Elétricas\n"
 
 
 def generate_fallback_comparison_response(

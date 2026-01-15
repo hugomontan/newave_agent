@@ -10,7 +10,10 @@ import json as json_module
 from typing import Optional, Dict, Any, List
 from concurrent.futures import ThreadPoolExecutor
 from app.agents.multi_deck.state import MultiDeckState
-from app.agents.multi_deck.tools import get_available_tools as get_multi_deck_tools
+from app.agents.multi_deck.tools import (
+    get_available_tools as get_multi_deck_tools,
+    get_tools_for_semantic_matching
+)
 from app.tools.semantic_matcher import find_best_tool_semantic, find_top_tools_semantic
 from app.tools.base import NEWAVETool
 from app.config import (
@@ -92,16 +95,25 @@ def comparison_tool_router_node(state: MultiDeckState) -> dict:
         return {"tool_route": False}
     
     # Obter todas as tools disponíveis (modo comparison) com selected_decks
+    # Esta lista inclui TODAS as tools, incluindo as desativadas do semantic matching
     safe_print("[TOOL ROUTER] Obtendo tools disponiveis (modo comparison)...")
     try:
-        tools = get_multi_deck_tools(deck_path, selected_decks=selected_decks)
-        safe_print(f"[TOOL ROUTER] [OK] {len(tools)} tools disponiveis")
-        tool_names = [t.get_name() for t in tools]
-        safe_print(f"[TOOL ROUTER]   Tools: {', '.join(tool_names)}")
-        if "MudancasVazaoMinimaTool" in tool_names:
-            safe_print(f"[TOOL ROUTER]   ✅ MudancasVazaoMinimaTool encontrada no registry")
-        else:
-            safe_print(f"[TOOL ROUTER]   ⚠️ MudancasVazaoMinimaTool NÃO encontrada no registry")
+        all_tools = get_multi_deck_tools(deck_path, selected_decks=selected_decks)
+        safe_print(f"[TOOL ROUTER] [OK] {len(all_tools)} tools disponiveis (total)")
+        
+        # Obter tools filtradas para semantic matching (exclui tools desativadas)
+        tools_for_semantic_matching = get_tools_for_semantic_matching(deck_path, selected_decks=selected_decks)
+        safe_print(f"[TOOL ROUTER] [OK] {len(tools_for_semantic_matching)} tools disponiveis para semantic matching")
+        
+        tool_names_all = [t.get_name() for t in all_tools]
+        tool_names_matching = [t.get_name() for t in tools_for_semantic_matching]
+        excluded_tools = [name for name in tool_names_all if name not in tool_names_matching]
+        if excluded_tools:
+            safe_print(f"[TOOL ROUTER]   Tools excluídas do semantic matching: {', '.join(excluded_tools)}")
+        
+        # Usar all_tools para keyword matching e uso direto
+        # Usar tools_for_semantic_matching apenas para semantic matching
+        tools = all_tools  # Manter compatibilidade com código existente
     except Exception as e:
         safe_print(f"[TOOL ROUTER] ❌ Erro ao obter tools: {e}")
         import traceback
@@ -298,9 +310,9 @@ def comparison_tool_router_node(state: MultiDeckState) -> dict:
     if is_from_disambiguation:
         # Executar tool diretamente usando tool_name identificado
         if disambiguation_tool_name:
-            # Buscar tool pelo nome
+            # Buscar tool pelo nome na lista filtrada (evita tools desativadas)
             selected_tool = None
-            for tool in tools:
+            for tool in tools_for_semantic_matching:
                 if tool.get_name() == disambiguation_tool_name:
                     selected_tool = tool
                     break
@@ -339,7 +351,8 @@ def comparison_tool_router_node(state: MultiDeckState) -> dict:
                 context = parts[1].strip() if len(parts) > 1 else ""
                 
                 if context:
-                    selected_tool = _identify_tool_from_context(context, tools)
+                    # Usar lista filtrada para evitar que tools desativadas sejam encontradas
+                    selected_tool = _identify_tool_from_context(context, tools_for_semantic_matching)
                     if selected_tool:
                         tool_name = selected_tool.get_name()
                         safe_print(f"[TOOL ROUTER] ✅ Tool identificada pelo contexto (compatibilidade): {tool_name}")
@@ -443,9 +456,10 @@ def comparison_tool_router_node(state: MultiDeckState) -> dict:
                 safe_print(f"[TOOL ROUTER]   Query veio de disambiguation, usando query original para semantic matching: '{query_for_semantic}'")
             
             safe_print(f"[TOOL ROUTER]   Buscando top {DISAMBIGUATION_MAX_OPTIONS} tools com threshold >= {DISAMBIGUATION_MIN_SCORE:.3f}...")
+            # Usar tools_for_semantic_matching (filtradas) para semantic matching
             semantic_results = find_top_tools_semantic(
                 query_for_semantic, 
-                tools, 
+                tools_for_semantic_matching,  # Usar lista filtrada
                 top_n=DISAMBIGUATION_MAX_OPTIONS,
                 threshold=DISAMBIGUATION_MIN_SCORE
             )
@@ -555,7 +569,7 @@ def comparison_tool_router_node(state: MultiDeckState) -> dict:
                     try:
                         semantic_results = find_top_tools_semantic(
                             query_for_semantic,
-                            tools,
+                            tools_for_semantic_matching,  # Usar lista filtrada
                             top_n=1,
                             threshold=0.0  # Sem threshold mínimo
                         )
@@ -595,9 +609,10 @@ def comparison_tool_router_node(state: MultiDeckState) -> dict:
                 safe_print("[TOOL ROUTER]   → Continuando para keyword matching (fallback após erro)...")
     
     # Fallback para keyword matching
+    # Usar lista filtrada para evitar que tools desativadas sejam selecionadas automaticamente
     if USE_HYBRID_MATCHING or not SEMANTIC_MATCHING_ENABLED:
         safe_print("[TOOL ROUTER] Verificando qual tool pode processar a query (keyword matching)...")
-        for tool in tools:
+        for tool in tools_for_semantic_matching:  # Usar lista filtrada
             tool_name = tool.get_name()
             safe_print(f"[TOOL ROUTER] Testando tool: {tool_name}")
             

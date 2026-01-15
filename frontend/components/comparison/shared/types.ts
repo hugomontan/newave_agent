@@ -46,14 +46,25 @@ export interface ComparisonData {
       y_axis: string;
     };
   }>;
+  charts_by_restricao?: Record<string, Record<string, ChartData>>;
   differences?: Difference[];
   comparison_table?: TableRow[];
+  matrix_data?: MatrixRow[];
   visualization_type?: string;
   comparison_by_type?: Record<string, any>;
   comparison_by_usina?: Record<string, any>;
   comparison_by_ree?: Record<string, any>;
   stats?: Record<string, any>;
   tool_name?: string;
+}
+
+export interface MatrixRow {
+  nome_usina: string;
+  codigo_usina: number;
+  periodo_inicio: string;
+  periodo_fim: string;
+  gtmin_values: Record<string, number | null>;
+  matrix: Record<string, number | null>;
 }
 
 // Helper para verificar se é análise histórica (mais de 2 decks)

@@ -266,7 +266,7 @@ class VariacaoReservatorioInicialTool(NEWAVETool):
         - "reservatório inicial por usina"
         - "volume inicial por usina"
         - "v.inic por usina"
-        - "reservatório inicial de Furnas"
+        - "reservatório inicial"
         - "volume inicial percentual"
         - "v.inic"
         - "volume inicial"

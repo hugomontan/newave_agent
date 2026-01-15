@@ -11,6 +11,7 @@ from .data_formatters.temporal_formatters import (
     VazoesComparisonFormatter,
     UsinasNaoSimuladasFormatter,
     LimitesIntercambioComparisonFormatter,
+    RestricaoEletricaComparisonFormatter,
 )
 from .data_formatters.diff_formatters import (
     DiffComparisonFormatter,
@@ -44,6 +45,7 @@ FORMATTERS = [
     CargaComparisonFormatter(),
     VazoesComparisonFormatter(),
     UsinasNaoSimuladasFormatter(),
+    RestricaoEletricaComparisonFormatter(),  # Restrições elétricas
     LimitesIntercambioComparisonFormatter(),
     DiffComparisonFormatter(),
     CadastroComparisonFormatter(),
@@ -117,6 +119,9 @@ def format_comparison_response(
         format_gtmin_simple_comparison,
         format_vazao_minima_simple_comparison,
         format_reservatorio_inicial_simple_comparison,
+        format_vazoes_dsvagua_simple_comparison,
+        format_usinas_nao_simuladas_simple_comparison,
+        format_restricao_eletrica_simple_comparison,
         generate_fallback_comparison_response
     )
     from .text_formatters.llm_structured import format_with_llm_structured
@@ -339,6 +344,8 @@ def format_comparison_response(
         comparison_data["cards"] = formatted.get("cards")
     if formatted.get("charts_by_par"):
         comparison_data["charts_by_par"] = formatted.get("charts_by_par")
+    if formatted.get("charts_by_restricao"):
+        comparison_data["charts_by_restricao"] = formatted.get("charts_by_restricao")
     if formatted.get("comparison_by_type"):
         comparison_data["comparison_by_type"] = formatted.get("comparison_by_type")
     if formatted.get("comparison_by_usina"):
@@ -347,6 +354,8 @@ def format_comparison_response(
         comparison_data["comparison_by_ree"] = formatted.get("comparison_by_ree")
     if formatted.get("stats"):
         comparison_data["stats"] = formatted.get("stats")
+    if formatted.get("matrix_data"):
+        comparison_data["matrix_data"] = formatted.get("matrix_data")
     
     # Para ClastValoresTool, CargaMensalTool, CadicTool e LimitesIntercambioTool, retornar apenas tabela e gráfico (sem LLM)
     if tool_used == "ClastValoresTool":
@@ -390,7 +399,8 @@ def format_comparison_response(
         final_response = format_gtmin_simple_comparison(
             formatted.get("comparison_table", []),
             deck_1_name,
-            deck_2_name
+            deck_2_name,
+            deck_names=deck_displays
         )
     elif tool_used == "MudancasVazaoMinimaTool":
         safe_print(f"[INTERPRETER] [COMPARISON] MudancasVazaoMinimaTool - formato simplificado (apenas tabela)")
@@ -409,6 +419,42 @@ def format_comparison_response(
             formatted.get("comparison_table", []),
             deck_1_name,
             deck_2_name
+        )
+    elif tool_used in ["VazoesTool", "DsvaguaTool"]:
+        safe_print(f"[INTERPRETER] [COMPARISON] {tool_used} - formato simplificado (apenas tabela e gráfico)")
+        safe_print(f"[INTERPRETER] [COMPARISON] chart_data presente: {formatted.get('chart_data') is not None}")
+        if formatted.get('chart_data'):
+            safe_print(f"[INTERPRETER] [COMPARISON] chart_data labels: {len(formatted.get('chart_data', {}).get('labels', []))}")
+            safe_print(f"[INTERPRETER] [COMPARISON] chart_data datasets: {len(formatted.get('chart_data', {}).get('datasets', []))}")
+        final_response = format_vazoes_dsvagua_simple_comparison(
+            formatted.get("comparison_table", []),
+            deck_1_name,
+            deck_2_name,
+            tool_used,
+            deck_names=deck_displays
+        )
+    elif tool_used == "UsinasNaoSimuladasTool":
+        safe_print(f"[INTERPRETER] [COMPARISON] UsinasNaoSimuladasTool - formato simplificado (apenas tabela e gráfico)")
+        safe_print(f"[INTERPRETER] [COMPARISON] chart_data presente: {formatted.get('chart_data') is not None}")
+        if formatted.get('chart_data'):
+            safe_print(f"[INTERPRETER] [COMPARISON] chart_data labels: {len(formatted.get('chart_data', {}).get('labels', []))}")
+            safe_print(f"[INTERPRETER] [COMPARISON] chart_data datasets: {len(formatted.get('chart_data', {}).get('datasets', []))}")
+        final_response = format_usinas_nao_simuladas_simple_comparison(
+            formatted.get("comparison_table", []),
+            deck_1_name,
+            deck_2_name,
+            deck_names=deck_displays
+        )
+    elif tool_used == "RestricaoEletricaTool":
+        safe_print(f"[INTERPRETER] [COMPARISON] RestricaoEletricaTool - formato simplificado (apenas tabela e gráficos)")
+        safe_print(f"[INTERPRETER] [COMPARISON] charts_by_restricao presente: {formatted.get('charts_by_restricao') is not None}")
+        if formatted.get('charts_by_restricao'):
+            safe_print(f"[INTERPRETER] [COMPARISON] charts_by_restricao: {len(formatted.get('charts_by_restricao', {}))} restrições")
+        final_response = format_restricao_eletrica_simple_comparison(
+            formatted.get("comparison_table", []),
+            deck_1_name,
+            deck_2_name,
+            deck_names=deck_displays
         )
     else:
         # Gerar resposta do LLM baseada no tipo de visualização

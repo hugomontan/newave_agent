@@ -1720,7 +1720,8 @@ class VazoesComparisonFormatter(ComparisonFormatter):
         
         for deck in decks_data:
             result = deck.result
-            data = result.get("data", [])
+            # DsvaguaTool retorna "dados", VazoesTool retorna "data"
+            data = result.get("data", result.get("dados", []))
             
             # Indexar por período
             deck_indexed = {}
@@ -1760,7 +1761,46 @@ class VazoesComparisonFormatter(ComparisonFormatter):
         # Tabela comparativa resumida com N colunas
         comparison_table = []
         for periodo in chart_labels[:20]:  # Limitar a 20 períodos na tabela
-            table_row = {"periodo": periodo}
+            # Obter o primeiro registro disponível para extrair ano e mês
+            first_record = None
+            for deck_info in decks_info:
+                record = deck_info["indexed"].get(periodo, {})
+                if record:
+                    first_record = record
+                    break
+            
+            # Extrair ano e mês do registro ou da chave de período
+            ano = None
+            mes = None
+            if first_record:
+                ano = first_record.get("ano")
+                mes = first_record.get("mes")
+            
+            # Se não encontrou no registro, tentar extrair da chave de período (formato "YYYY-MM")
+            if ano is None and periodo and "-" in str(periodo):
+                try:
+                    parts = str(periodo).split("-")
+                    if len(parts) >= 2:
+                        ano = int(parts[0])
+                        mes = int(parts[1])
+                except (ValueError, IndexError):
+                    pass
+            
+            # Formatar ano no formato YYYY-MM quando ambos estiverem disponíveis
+            ano_formatado = None
+            if ano is not None and mes is not None:
+                ano_formatado = f"{int(ano):04d}-{int(mes):02d}"
+            elif ano is not None:
+                ano_formatado = str(int(ano))
+            elif periodo and "-" in str(periodo):
+                # Usar o período diretamente se já estiver no formato correto
+                ano_formatado = str(periodo)
+            
+            table_row = {
+                "periodo": periodo,
+                "ano": ano_formatado if ano_formatado else ano,
+                "mes": mes
+            }
             
             # Adicionar valores de cada deck
             for deck_idx, deck_info in enumerate(decks_info):
@@ -1804,8 +1844,9 @@ class VazoesComparisonFormatter(ComparisonFormatter):
         Formata comparação de vazões ou desvios de água.
         Gráfico de linha temporal mostrando séries históricas lado a lado.
         """
-        data_dec = result_dec.get("data", [])
-        data_jan = result_jan.get("data", [])
+        # DsvaguaTool retorna "dados", VazoesTool retorna "data"
+        data_dec = result_dec.get("data", result_dec.get("dados", []))
+        data_jan = result_jan.get("data", result_jan.get("dados", []))
         
         # Indexar por período
         dec_indexed = {self._get_period_key(r): r for r in data_dec if self._get_period_key(r)}
@@ -1841,6 +1882,34 @@ class VazoesComparisonFormatter(ComparisonFormatter):
             dec_record = dec_indexed.get(periodo, {})
             jan_record = jan_indexed.get(periodo, {})
             
+            # Extrair ano e mês do primeiro registro disponível
+            first_record = dec_record if dec_record else jan_record
+            ano = None
+            mes = None
+            if first_record:
+                ano = first_record.get("ano")
+                mes = first_record.get("mes")
+            
+            # Se não encontrou no registro, tentar extrair da chave de período (formato "YYYY-MM")
+            if ano is None and periodo and "-" in str(periodo):
+                try:
+                    parts = str(periodo).split("-")
+                    if len(parts) >= 2:
+                        ano = int(parts[0])
+                        mes = int(parts[1])
+                except (ValueError, IndexError):
+                    pass
+            
+            # Formatar ano no formato YYYY-MM quando ambos estiverem disponíveis
+            ano_formatado = None
+            if ano is not None and mes is not None:
+                ano_formatado = f"{int(ano):04d}-{int(mes):02d}"
+            elif ano is not None:
+                ano_formatado = str(int(ano))
+            elif periodo and "-" in str(periodo):
+                # Usar o período diretamente se já estiver no formato correto
+                ano_formatado = str(periodo)
+            
             val_dec = self._extract_value(dec_record)
             val_jan = self._extract_value(jan_record)
             
@@ -1848,6 +1917,8 @@ class VazoesComparisonFormatter(ComparisonFormatter):
                 diff = val_jan - val_dec
                 comparison_table.append({
                     "periodo": periodo,
+                    "ano": ano_formatado if ano_formatado else ano,
+                    "mes": mes,
                     "deck_1_value": round(val_dec, 2),
                     "deck_2_value": round(val_jan, 2),
                     "difference": round(diff, 2),
@@ -1912,10 +1983,11 @@ class UsinasNaoSimuladasFormatter(ComparisonFormatter):
     """
     
     def can_format(self, tool_name: str, result_structure: Dict[str, Any]) -> bool:
-        return tool_name == "UsinasNaoSimuladasTool" and "data" in result_structure
+        # UsinasNaoSimuladasTool retorna "dados", não "data"
+        return tool_name == "UsinasNaoSimuladasTool" and ("data" in result_structure or "dados" in result_structure)
     
     def get_priority(self) -> int:
-        return 75
+        return 85  # Prioridade maior que VazoesComparisonFormatter (80) para garantir seleção correta
     
     def format_multi_deck_comparison(
         self,
@@ -1925,7 +1997,19 @@ class UsinasNaoSimuladasFormatter(ComparisonFormatter):
     ) -> Dict[str, Any]:
         """Formata comparação de usinas não simuladas para N decks."""
         if len(decks_data) < 2:
-            return {"comparison_table": [], "chart_data": None, "visualization_type": "contextual_line_chart"}
+            return {
+                "comparison_table": [], 
+                "chart_data": None, 
+                "visualization_type": "line_chart",
+                "chart_config": {
+                    "type": "line",
+                    "title": "Geração de Usinas Não Simuladas",
+                    "x_axis": "Período",
+                    "y_axis": "Geração (MWméd)",
+                    "tool_name": "UsinasNaoSimuladasTool"  # Incluir tool_name no chart_config também
+                },
+                "tool_name": "UsinasNaoSimuladasTool"
+            }
         
         # Analisar query para identificar filtros
         query_lower = query.lower()
@@ -1969,8 +2053,9 @@ class UsinasNaoSimuladasFormatter(ComparisonFormatter):
         Formata comparação de usinas não simuladas.
         Gera gráfico contextual baseado em filtros da query (tipo, região).
         """
-        data_dec = result_dec.get("data", [])
-        data_jan = result_jan.get("data", [])
+        # UsinasNaoSimuladasTool retorna "dados", não "data"
+        data_dec = result_dec.get("data", result_dec.get("dados", []))
+        data_jan = result_jan.get("data", result_jan.get("dados", []))
         
         # Analisar query para identificar filtros
         query_lower = query.lower()
@@ -2086,13 +2171,15 @@ class UsinasNaoSimuladasFormatter(ComparisonFormatter):
         return {
             "comparison_table": [],
             "chart_data": chart_data,
-            "visualization_type": "contextual_line_chart",
+            "visualization_type": "line_chart",  # Usar line_chart padrão
             "chart_config": {
                 "type": "line",
-                "title": "Geração de Usinas Não Simuladas",
+                "title": "Geração de Usinas Não Simuladas",  # Título explícito e correto
                 "x_axis": "Período",
-                "y_axis": "Geração (MWméd)"
-            }
+                "y_axis": "Geração (MWméd)",
+                "tool_name": "UsinasNaoSimuladasTool"  # Incluir tool_name no chart_config também
+            },
+            "tool_name": "UsinasNaoSimuladasTool"  # Garantir que tool_name está presente
         }
     
     def _format_single_series(self, data_dec, data_jan, filtros, query):
@@ -2135,13 +2222,15 @@ class UsinasNaoSimuladasFormatter(ComparisonFormatter):
         return {
             "comparison_table": [],
             "chart_data": chart_data,
-            "visualization_type": "contextual_line_chart",
+            "visualization_type": "line_chart",  # Usar line_chart padrão
             "chart_config": {
                 "type": "line",
-                "title": titulo,
+                "title": titulo if titulo else "Geração de Usinas Não Simuladas",  # Título explícito e correto
                 "x_axis": "Período",
-                "y_axis": "Geração (MWméd)"
-            }
+                "y_axis": "Geração (MWméd)",
+                "tool_name": "UsinasNaoSimuladasTool"  # Incluir tool_name no chart_config também
+            },
+            "tool_name": "UsinasNaoSimuladasTool"  # Garantir que tool_name está presente
         }
     
     def _format_by_fonte_multi(self, decks_data: List[DeckData], query: str):
@@ -2152,7 +2241,8 @@ class UsinasNaoSimuladasFormatter(ComparisonFormatter):
         
         for deck in decks_data:
             result = deck.result
-            data = result.get("data", [])
+            # UsinasNaoSimuladasTool retorna "dados", não "data"
+            data = result.get("data", result.get("dados", []))
             
             # Agrupar por fonte
             deck_by_fonte = {}
@@ -2213,18 +2303,60 @@ class UsinasNaoSimuladasFormatter(ComparisonFormatter):
             "datasets": chart_datasets
         } if chart_labels else None
         
+        # Criar tabela de comparação (agrupada por fonte)
+        comparison_table = []
+        for periodo in chart_labels[:20]:  # Limitar a 20 períodos na tabela
+            # Extrair ano e mês do período
+            ano = None
+            mes = None
+            if periodo and "-" in str(periodo):
+                try:
+                    parts = str(periodo).split("-")
+                    if len(parts) >= 2:
+                        ano = int(parts[0])
+                        mes = int(parts[1])
+                except (ValueError, IndexError):
+                    pass
+            
+            # Formatar ano no formato YYYY-MM
+            ano_formatado = None
+            if ano is not None and mes is not None:
+                ano_formatado = f"{int(ano):04d}-{int(mes):02d}"
+            elif periodo and "-" in str(periodo):
+                ano_formatado = str(periodo)
+            
+            table_row = {
+                "periodo": periodo,
+                "ano": ano_formatado if ano_formatado else ano,
+                "mes": mes
+            }
+            
+            # Adicionar valores de cada fonte para cada deck
+            for fonte in sorted(all_fontes):
+                for deck_idx, deck_info in enumerate(decks_info):
+                    fonte_indexed = deck_info["indexed"].get(fonte, {})
+                    record = fonte_indexed.get(periodo, {})
+                    val = self._sanitize_number(record.get("valor"))
+                    # Criar coluna combinada: fonte_deck_idx
+                    col_key = f"{fonte}_deck_{deck_idx + 1}"
+                    table_row[col_key] = round(val, 2) if val is not None else None
+            
+            comparison_table.append(table_row)
+        
         return {
-            "comparison_table": [],
+            "comparison_table": comparison_table,
             "chart_data": chart_data,
-            "visualization_type": "contextual_line_chart",
+            "visualization_type": "line_chart",  # Usar line_chart padrão para garantir que não use componente CVU
             "chart_config": {
                 "type": "line",
-                "title": "Geração de Usinas Não Simuladas",
+                "title": "Geração de Usinas Não Simuladas",  # Título explícito e correto
                 "x_axis": "Período",
-                "y_axis": "Geração (MWméd)"
+                "y_axis": "Geração (MWméd)",
+                "tool_name": "UsinasNaoSimuladasTool"  # Incluir tool_name no chart_config também
             },
             "deck_names": self.get_deck_names(decks_data),
-            "is_multi_deck": len(decks_data) > 2
+            "is_multi_deck": len(decks_data) > 2,
+            "tool_name": "UsinasNaoSimuladasTool"  # Garantir que tool_name está presente
         }
     
     def _format_single_series_multi(self, decks_data: List[DeckData], filtros: Dict, query: str):
@@ -2235,7 +2367,8 @@ class UsinasNaoSimuladasFormatter(ComparisonFormatter):
         
         for deck in decks_data:
             result = deck.result
-            data = result.get("data", [])
+            # UsinasNaoSimuladasTool retorna "dados", não "data"
+            data = result.get("data", result.get("dados", []))
             
             # Filtrar dados conforme filtros
             filtered_data = data
@@ -2279,6 +2412,66 @@ class UsinasNaoSimuladasFormatter(ComparisonFormatter):
             "datasets": chart_datasets
         } if chart_labels else None
         
+        # Criar tabela de comparação
+        comparison_table = []
+        for periodo in chart_labels[:20]:  # Limitar a 20 períodos na tabela
+            # Obter o primeiro registro disponível para extrair ano e mês
+            first_record = None
+            for deck_info in decks_info:
+                record = deck_info["indexed"].get(periodo, {})
+                if record:
+                    first_record = record
+                    break
+            
+            # Extrair ano e mês do registro ou da chave de período
+            ano = None
+            mes = None
+            if first_record:
+                ano = first_record.get("ano")
+                mes = first_record.get("mes")
+            
+            # Se não encontrou no registro, tentar extrair da chave de período (formato "YYYY-MM")
+            if ano is None and periodo and "-" in str(periodo):
+                try:
+                    parts = str(periodo).split("-")
+                    if len(parts) >= 2:
+                        ano = int(parts[0])
+                        mes = int(parts[1])
+                except (ValueError, IndexError):
+                    pass
+            
+            # Formatar ano no formato YYYY-MM quando ambos estiverem disponíveis
+            ano_formatado = None
+            if ano is not None and mes is not None:
+                ano_formatado = f"{int(ano):04d}-{int(mes):02d}"
+            elif ano is not None:
+                ano_formatado = str(int(ano))
+            elif periodo and "-" in str(periodo):
+                ano_formatado = str(periodo)
+            
+            table_row = {
+                "periodo": periodo,
+                "ano": ano_formatado if ano_formatado else ano,
+                "mes": mes
+            }
+            
+            # Adicionar valores de cada deck
+            for deck_idx, deck_info in enumerate(decks_info):
+                record = deck_info["indexed"].get(periodo, {})
+                val = self._sanitize_number(record.get("valor"))
+                table_row[f"deck_{deck_idx + 1}"] = round(val, 2) if val is not None else None
+            
+            # Calcular diferença entre primeiro e último deck (se ambos tiverem valores)
+            if len(decks_info) >= 2:
+                val_first = self._sanitize_number(decks_info[0]["indexed"].get(periodo, {}).get("valor"))
+                val_last = self._sanitize_number(decks_info[-1]["indexed"].get(periodo, {}).get("valor"))
+                if val_first is not None and val_last is not None:
+                    diff = val_last - val_first
+                    table_row["difference"] = round(diff, 2)
+                    table_row["difference_percent"] = round((diff / val_first * 100) if val_first != 0 else 0, 4)
+            
+            comparison_table.append(table_row)
+        
         # Criar título baseado nos filtros
         titulo_parts = []
         if filtros["fonte"]:
@@ -2289,17 +2482,19 @@ class UsinasNaoSimuladasFormatter(ComparisonFormatter):
         titulo = " - ".join(titulo_parts) if titulo_parts else "Geração de Usinas Não Simuladas"
         
         return {
-            "comparison_table": [],
+            "comparison_table": comparison_table,
             "chart_data": chart_data,
-            "visualization_type": "contextual_line_chart",
+            "visualization_type": "line_chart",  # Usar line_chart padrão para garantir que não use componente CVU
             "chart_config": {
                 "type": "line",
-                "title": titulo,
+                "title": titulo if titulo else "Geração de Usinas Não Simuladas",  # Título explícito e correto
                 "x_axis": "Período",
-                "y_axis": "Geração (MWméd)"
+                "y_axis": "Geração (MWméd)",
+                "tool_name": "UsinasNaoSimuladasTool"  # Incluir tool_name no chart_config também
             },
             "deck_names": self.get_deck_names(decks_data),
-            "is_multi_deck": len(decks_data) > 2
+            "is_multi_deck": len(decks_data) > 2,
+            "tool_name": "UsinasNaoSimuladasTool"  # Garantir que tool_name está presente
         }
     
     def _get_period_key(self, record: Dict) -> Optional[str]:
@@ -3048,4 +3243,269 @@ class LimitesIntercambioComparisonFormatter(ComparisonFormatter):
         
         safe_print(f"[FORMATTER] [DEBUG] ❌ Nenhum par detectado, retornando None")
         return None
+
+
+class RestricaoEletricaComparisonFormatter(ComparisonFormatter):
+    """
+    Formatador para RestricaoEletricaTool no modo multi-deck.
+    Compara restrições elétricas entre múltiplos decks.
+    Visualização: Tabela comparativa + Gráficos por restrição
+    """
+    
+    def can_format(self, tool_name: str, result_structure: Dict[str, Any]) -> bool:
+        """Verifica se pode formatar RestricaoEletricaTool."""
+        return tool_name == "RestricaoEletricaTool" and ("dados" in result_structure or "data" in result_structure)
+    
+    def get_priority(self) -> int:
+        """Prioridade alta."""
+        return 85
+    
+    def format_multi_deck_comparison(
+        self,
+        decks_data: List[DeckData],
+        tool_name: str,
+        query: str
+    ) -> Dict[str, Any]:
+        """Formata comparação de restrições elétricas para N decks."""
+        if len(decks_data) < 2:
+            return {
+                "comparison_table": [],
+                "charts_by_restricao": {},
+                "visualization_type": "restricao_eletrica",
+                "chart_config": {
+                    "type": "line",
+                    "title": "Limites Superiores por Restrição e Patamar",
+                    "x_axis": "Período",
+                    "y_axis": "Limite Superior (MW)",
+                    "tool_name": "RestricaoEletricaTool"
+                },
+                "tool_name": "RestricaoEletricaTool"
+            }
+        
+        # Extrair dados de todos os decks
+        all_restricoes = set()
+        decks_info = []
+        
+        for deck in decks_data:
+            result = deck.result
+            dados = result.get("dados", result.get("data", []))
+            
+            # Filtrar apenas limites (tipo 'limite')
+            limites = [d for d in dados if d.get('tipo') == 'limite']
+            
+            # Indexar por (nome_restricao, patamar, período)
+            indexed = self._index_by_restricao_patamar_periodo(limites)
+            
+            for nome_restricao in indexed.keys():
+                all_restricoes.add(nome_restricao)
+            
+            decks_info.append({
+                "deck": deck,
+                "display_name": deck.display_name,
+                "indexed": indexed
+            })
+        
+        # Construir tabela de comparação e gráficos
+        comparison_table = []
+        charts_by_restricao = {}
+        
+        for nome_restricao in sorted(all_restricoes):
+            # Coletar todos os patamares e períodos únicos para esta restrição
+            all_patamares = set()
+            all_periodos = set()
+            
+            for deck_info in decks_info:
+                restricao_data = deck_info["indexed"].get(nome_restricao, {})
+                for patamar_num in restricao_data.keys():
+                    all_patamares.add(patamar_num)
+                    patamar_data = restricao_data[patamar_num]
+                    for periodo_key in patamar_data.get('periodos', {}).keys():
+                        all_periodos.add(periodo_key)
+            
+            # Processar cada patamar
+            for patamar_num in sorted(all_patamares):
+                # Obter nome do patamar do primeiro deck que tiver
+                nome_patamar = None
+                for deck_info in decks_info:
+                    restricao_data = deck_info["indexed"].get(nome_restricao, {})
+                    patamar_data = restricao_data.get(patamar_num, {})
+                    if patamar_data:
+                        nome_patamar = patamar_data.get('nome_patamar', f'Patamar {patamar_num}')
+                        break
+                
+                if not nome_patamar:
+                    nome_patamar = f'Patamar {patamar_num}'
+                
+                # Processar cada período
+                for periodo_key in sorted(all_periodos):
+                    # Obter primeiro registro para extrair informações do período
+                    first_record = None
+                    for deck_info in decks_info:
+                        restricao_data = deck_info["indexed"].get(nome_restricao, {})
+                        patamar_data = restricao_data.get(patamar_num, {})
+                        record = patamar_data.get('periodos', {}).get(periodo_key)
+                        if record:
+                            first_record = record
+                            break
+                    
+                    if not first_record:
+                        continue
+                    
+                    # Formatar período
+                    periodo_formatted = self._format_period_label(
+                        first_record.get('per_ini'),
+                        first_record.get('per_fin')
+                    )
+                    
+                    # Criar linha da tabela
+                    table_row = {
+                        "restricao": nome_restricao or f"Restrição {first_record.get('cod_rest', 'N/A')}",
+                        "patamar": nome_patamar,
+                        "patamar_num": patamar_num,
+                        "periodo": periodo_formatted,
+                        "cod_rest": first_record.get('cod_rest')
+                    }
+                    
+                    # Adicionar valores de cada deck
+                    for deck_idx, deck_info in enumerate(decks_info):
+                        restricao_data = deck_info["indexed"].get(nome_restricao, {})
+                        patamar_data = restricao_data.get(patamar_num, {})
+                        record = patamar_data.get('periodos', {}).get(periodo_key, {})
+                        lim_sup = self._safe_round(record.get('lim_sup'))
+                        table_row[f"deck_{deck_idx + 1}"] = lim_sup
+                    
+                    comparison_table.append(table_row)
+                
+                # Preparar dados do gráfico para esta restrição e patamar
+                if nome_restricao not in charts_by_restricao:
+                    charts_by_restricao[nome_restricao] = {}
+                
+                # Coletar todos os períodos únicos para este patamar
+                periodo_labels = []
+                for periodo_key in sorted(all_periodos):
+                    for deck_info in decks_info:
+                        restricao_data = deck_info["indexed"].get(nome_restricao, {})
+                        patamar_data = restricao_data.get(patamar_num, {})
+                        record = patamar_data.get('periodos', {}).get(periodo_key)
+                        if record:
+                            periodo_labels.append(self._format_period_label(
+                                record.get('per_ini'),
+                                record.get('per_fin')
+                            ))
+                            break
+                
+                # Criar datasets para cada deck
+                datasets = []
+                for deck_idx, deck_info in enumerate(decks_info):
+                    values = []
+                    restricao_data = deck_info["indexed"].get(nome_restricao, {})
+                    patamar_data = restricao_data.get(patamar_num, {})
+                    
+                    for periodo_key in sorted(all_periodos):
+                        record = patamar_data.get('periodos', {}).get(periodo_key, {})
+                        lim_sup = self._safe_round(record.get('lim_sup'))
+                        values.append(lim_sup)
+                    
+                    datasets.append({
+                        "label": deck_info["display_name"],
+                        "data": values
+                    })
+                
+                if periodo_labels and datasets:
+                    charts_by_restricao[nome_restricao][nome_patamar] = {
+                        "labels": periodo_labels,
+                        "datasets": datasets,
+                        "patamar_num": patamar_num
+                    }
+        
+        return {
+            "comparison_table": comparison_table,
+            "charts_by_restricao": charts_by_restricao,
+            "visualization_type": "restricao_eletrica",
+            "chart_config": {
+                "type": "line",
+                "title": "Limites Superiores por Restrição e Patamar",
+                "x_axis": "Período",
+                "y_axis": "Limite Superior (MW)",
+                "tool_name": "RestricaoEletricaTool"
+            },
+            "deck_names": self.get_deck_names(decks_data),
+            "is_multi_deck": len(decks_data) > 2,
+            "tool_name": "RestricaoEletricaTool"
+        }
+    
+    def format_comparison(
+        self,
+        result_dec: Dict[str, Any],
+        result_jan: Dict[str, Any],
+        tool_name: str,
+        query: str
+    ) -> Dict[str, Any]:
+        """Formata comparação de restrições elétricas (método legado para 2 decks)."""
+        # Converter para formato de lista de decks
+        decks_data = [
+            DeckData(name="deck_1", display_name="Deck 1", result=result_dec, success=True),
+            DeckData(name="deck_2", display_name="Deck 2", result=result_jan, success=True)
+        ]
+        return self.format_multi_deck_comparison(decks_data, tool_name, query)
+    
+    def _index_by_restricao_patamar_periodo(self, limites: List[Dict]) -> Dict[str, Dict[int, Dict]]:
+        """
+        Indexa limites por (nome_restricao, patamar, período).
+        Retorna: {nome_restricao: {patamar: {nome_patamar: str, periodos: {periodo_key: record}}}}
+        """
+        indexed = {}
+        
+        for record in limites:
+            nome_restricao = record.get('nome_restricao')
+            if not nome_restricao:
+                nome_restricao = f"Restrição {record.get('cod_rest', 'N/A')}"
+            
+            patamar = record.get('patamar')
+            if patamar is None:
+                continue
+            
+            # Criar chave de período
+            per_ini = record.get('per_ini')
+            per_fin = record.get('per_fin')
+            periodo_key = f"{per_ini}_{per_fin}" if per_ini and per_fin else str(per_ini or per_fin or 'N/A')
+            
+            if nome_restricao not in indexed:
+                indexed[nome_restricao] = {}
+            
+            if patamar not in indexed[nome_restricao]:
+                indexed[nome_restricao][patamar] = {
+                    'nome_patamar': record.get('nome_patamar', f'Patamar {patamar}'),
+                    'periodos': {}
+                }
+            
+            indexed[nome_restricao][patamar]['periodos'][periodo_key] = record
+        
+        return indexed
+    
+    def _format_period_label(self, per_ini: Optional[str], per_fin: Optional[str]) -> str:
+        """Formata período para label legível."""
+        if per_ini and per_fin:
+            if per_ini == per_fin:
+                return per_ini.replace('/', '-')  # "2025/12" -> "2025-12"
+            return f"{per_ini.replace('/', '-')} a {per_fin.replace('/', '-')}"
+        elif per_ini:
+            return per_ini.replace('/', '-')
+        elif per_fin:
+            return per_fin.replace('/', '-')
+        return "N/A"
+    
+    def _safe_round(self, value) -> Optional[float]:
+        """Arredonda valor com tratamento de NaN/None."""
+        if value is None:
+            return None
+        try:
+            rounded = round(float(value), 2)
+            if math.isnan(rounded) or math.isinf(rounded):
+                return None
+            if rounded == int(rounded):
+                return int(rounded)
+            return rounded
+        except (ValueError, TypeError):
+            return None
 

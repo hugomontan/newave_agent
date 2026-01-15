@@ -110,6 +110,12 @@ class MudancasGeracoesTermicasFormatter(ComparisonFormatter):
         if len(decks_data) < 2:
             return {"comparison_table": [], "visualization_type": "gtmin_table"}
         
+        # Verificar se o primeiro deck tem matrix_data (indica que foi usado método de matriz)
+        first_result = decks_data[0].result if decks_data else {}
+        if "matrix_data" in first_result:
+            # Usar formatação de matriz
+            return self._format_matrix_comparison(decks_data, tool_name, query)
+        
         # Se há apenas 2 decks, usar método legado
         if len(decks_data) == 2:
             result = self._format_comparison_internal(
@@ -120,9 +126,10 @@ class MudancasGeracoesTermicasFormatter(ComparisonFormatter):
             )
             result["deck_names"] = self.get_deck_names(decks_data)
             result["is_multi_deck"] = False
+            result["visualization_type"] = "gtmin_changes_table"
             return result
         
-        # Para N decks, comparar cada par consecutivo e agregar
+        # Para N decks (sem matrix_data), comparar cada par consecutivo e agregar
         all_comparisons = []
         transitions = []  # Lista de transições: [(deck_0 -> deck_1), (deck_1 -> deck_2), ...]
         
@@ -151,6 +158,7 @@ class MudancasGeracoesTermicasFormatter(ComparisonFormatter):
         aggregated = self._aggregate_transitions(transitions, tool_name, query)
         aggregated["deck_names"] = self.get_deck_names(decks_data)
         aggregated["is_multi_deck"] = len(decks_data) > 2
+        aggregated["visualization_type"] = "gtmin_changes_table"
         return aggregated
     
     def _format_comparison_internal(
@@ -482,5 +490,61 @@ class MudancasGeracoesTermicasFormatter(ComparisonFormatter):
             "visualization_type": "gtmin_changes_table",
             "llm_context": {
                 "note": "Dados não formatados corretamente. A MudancasGeracoesTermicasTool deve retornar dados comparativos diretamente."
+            }
+        }
+    
+    def _format_matrix_comparison(
+        self,
+        decks_data: List[DeckData],
+        tool_name: str,
+        query: str
+    ) -> Dict[str, Any]:
+        """
+        Formata comparação usando matriz para múltiplos decks.
+        
+        Args:
+            decks_data: Lista de dados dos decks
+            tool_name: Nome da tool
+            query: Query do usuário
+            
+        Returns:
+            Dicionário formatado com dados da matriz
+        """
+        # Extrair matrix_data do primeiro deck (todos devem ter a mesma estrutura)
+        first_result = decks_data[0].result if decks_data else {}
+        matrix_data = first_result.get("matrix_data", [])
+        deck_names = first_result.get("deck_names", self.get_deck_names(decks_data))
+        stats = first_result.get("stats", {})
+        
+        # Formatar dados da matriz para o frontend
+        formatted_matrix = []
+        
+        for row in matrix_data:
+            formatted_row = {
+                "nome_usina": row.get("nome_usina", "N/A"),
+                "codigo_usina": row.get("codigo_usina"),
+                "periodo_inicio": row.get("periodo_inicio", "N/A"),
+                "periodo_fim": row.get("periodo_fim", "N/A"),
+                "gtmin_values": row.get("gtmin_values", {}),  # Dict[deck_name, value]
+                "matrix": row.get("matrix", {})  # Dict[(deck_from, deck_to), difference]
+            }
+            formatted_matrix.append(formatted_row)
+        
+        return {
+            "comparison_table": formatted_matrix,
+            "matrix_data": formatted_matrix,  # Manter para compatibilidade
+            "deck_names": deck_names,
+            "visualization_type": "gtmin_matrix",
+            "is_multi_deck": True,
+            "stats": stats,
+            "chart_config": {
+                "type": "matrix",
+                "title": f"Matriz de Comparação GTMIN - {len(deck_names)} Decks",
+                "tool_name": tool_name
+            },
+            "llm_context": {
+                "total_registros": len(formatted_matrix),
+                "total_decks": len(deck_names),
+                "description": f"Matriz de comparação de GTMIN entre {len(deck_names)} decks, com {len(formatted_matrix)} registros com variações."
             }
         }
