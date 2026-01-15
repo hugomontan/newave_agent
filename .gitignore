@@ -1,8 +1,37 @@
-__pycache__
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+env/
 .env
+.ENV
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Projeto específico
 data/
 uploads/
-.DS_Store
-.next
-.vscode
-node_modules
+*.log
+
+# Frontend
+node_modules/
+.next/
+dist/
+build/
+
+# Backup
+*.backup
+.git.backup/

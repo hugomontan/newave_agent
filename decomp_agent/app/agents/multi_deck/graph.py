@@ -1,0 +1,447 @@
+"""
+Graph para Multi-Deck Agent DECOMP - especializado para comparações entre decks.
+Suporta N decks para comparação dinâmica.
+"""
+
+import json
+import math
+import os
+import json as json_module
+from typing import Generator, Any, Optional, List, Dict
+from langgraph.graph import StateGraph, END
+from decomp_agent.app.agents.multi_deck.state import MultiDeckState
+from decomp_agent.app.agents.multi_deck.nodes.rag_nodes import (
+    rag_simple_node,
+    rag_enhanced_node,
+)
+from decomp_agent.app.agents.multi_deck.nodes.llm_nodes import (
+    llm_planner_node,
+)
+from shared.utils.observability import get_langfuse_handler
+from decomp_agent.app.config import safe_print
+from decomp_agent.app.utils.deck_loader import (
+    load_multiple_decks,
+    get_deck_display_names_dict,
+    list_available_decks,
+)
+
+# Função auxiliar para escrever no log de debug de forma segura
+def _write_debug_log(data: dict):
+    """Escreve no arquivo de debug, criando o diretório se necessário."""
+    try:
+        log_path = r'c:\Users\Inteli\OneDrive\Desktop\nw_multi\.cursor\debug.log'
+        log_dir = os.path.dirname(log_path)
+        os.makedirs(log_dir, exist_ok=True)
+        with open(log_path, 'a', encoding='utf-8') as f:
+            f.write(json_module.dumps(data) + '\n')
+    except Exception:
+        pass
+
+
+# Constantes
+MAX_RETRIES = 3
+
+
+def _clean_nan_for_json(obj: Any) -> Any:
+    """Limpa valores NaN e Inf de um objeto antes de serializar para JSON."""
+    if isinstance(obj, float):
+        if math.isnan(obj) or math.isinf(obj):
+            return None
+        return obj
+    elif isinstance(obj, dict):
+        return {key: _clean_nan_for_json(value) for key, value in obj.items()}
+    elif isinstance(obj, list):
+        return [_clean_nan_for_json(item) for item in obj]
+    else:
+        return obj
+
+
+# Descrições dos nodes para streaming
+NODE_DESCRIPTIONS = {
+    "rag_simple": {
+        "name": "RAG Simplificado",
+        "icon": "[DOC]",
+        "description": "Buscando documentacao no abstract..."
+    },
+    "rag_enhanced": {
+        "name": "RAG Enhanced",
+        "icon": "[DOCS+]",
+        "description": "Buscando em toda documentacao + tools_context.md..."
+    },
+    "llm_planner": {
+        "name": "LLM Planner",
+        "icon": "[PLAN]",
+        "description": "Gerando instrucoes detalhadas baseadas no contexto..."
+    },
+    "comparison_tool_router": {
+        "name": "Comparison Tool Router",
+        "icon": "[TOOL]",
+        "description": "Verificando se ha tool de comparacao disponivel..."
+    },
+    "comparison_coder": {
+        "name": "Code Generator", 
+        "icon": "[CODE]",
+        "description": "Gerando codigo Python para comparar os decks DECOMP..."
+    },
+    "comparison_executor": {
+        "name": "Code Executor",
+        "icon": "[EXEC]",
+        "description": "Executando o codigo gerado nos decks selecionados..."
+    },
+    "comparison_interpreter": {
+        "name": "Comparison Interpreter",
+        "icon": "[AI]",
+        "description": "Analisando resultados e gerando comparacao..."
+    },
+    "retry_check": {
+        "name": "Retry Check",
+        "icon": "[RETRY]",
+        "description": "Verificando se precisa tentar novamente..."
+    }
+}
+
+
+def should_use_llm_mode(state: MultiDeckState) -> str:
+    """Verifica se deve usar modo LLM."""
+    llm_instructions = state.get("llm_instructions")
+    if llm_instructions:
+        return "llm"
+    return "normal"
+
+
+def should_continue_after_tool_router(state: MultiDeckState) -> str:
+    """Decide o próximo passo após Comparison Tool Router."""
+    tool_route = state.get("tool_route", False)
+    disambiguation = state.get("disambiguation")
+    
+    if disambiguation:
+        return END
+    elif tool_route:
+        return "comparison_interpreter"
+    else:
+        return "rag_simple"
+
+
+def should_retry(state: MultiDeckState) -> str:
+    """Decide se deve tentar novamente após erro de execução."""
+    execution_result = state.get("execution_result") or {}
+    success = execution_result.get("success", False)
+    retry_count = state.get("retry_count", 0)
+    max_retries = state.get("max_retries", MAX_RETRIES)
+    
+    if success or retry_count >= max_retries:
+        return "comparison_interpreter"
+    
+    return "comparison_coder"
+
+
+def retry_check_node(state: MultiDeckState) -> dict:
+    """Node que atualiza o estado para retry."""
+    execution_result = state.get("execution_result") or {}
+    success = execution_result.get("success", False)
+    
+    if not success:
+        retry_count = state.get("retry_count", 0) + 1
+        error_history = list(state.get("error_history", []))
+        error_msg = execution_result.get("stderr", "Erro desconhecido")
+        error_history.append(error_msg)
+        
+        return {
+            "retry_count": retry_count,
+            "error_history": error_history
+        }
+    
+    return {}
+
+
+def create_multi_deck_agent() -> StateGraph:
+    """
+    Cria o grafo do Multi-Deck Agent DECOMP especializado para comparações.
+    
+    Fluxo:
+    1. Comparison Tool Router: Verifica se há tool de comparação disponível
+       - Se tool executou: vai direto para Comparison Interpreter
+       - Se tool não executou: continua para RAG Simplificado
+    2. RAG Simplificado: Busca no abstract.md
+    3. Comparison Coder: Gera código que processa os decks selecionados
+    4. Comparison Executor: Executa código em paralelo nos N decks
+    5. Retry Check: Verifica se precisa retry
+    6. Comparison Interpreter: Interpreta e formata comparação
+    """
+    # Importar nodes específicos do multi-deck
+    from decomp_agent.app.agents.multi_deck.nodes import (
+        comparison_tool_router_node,
+        comparison_coder_node,
+        comparison_executor_node,
+        comparison_interpreter_node,
+    )
+    
+    workflow = StateGraph(MultiDeckState)
+    
+    # Nodes disponíveis
+    workflow.add_node("rag_simple", rag_simple_node)
+    workflow.add_node("rag_enhanced", rag_enhanced_node)
+    workflow.add_node("llm_planner", llm_planner_node)
+    workflow.add_node("comparison_tool_router", comparison_tool_router_node)
+    workflow.add_node("comparison_coder", comparison_coder_node)
+    workflow.add_node("comparison_executor", comparison_executor_node)
+    workflow.add_node("retry_check", retry_check_node)
+    workflow.add_node("comparison_interpreter", comparison_interpreter_node)
+    
+    # Entry point condicional: LLM Mode ou Normal
+    workflow.set_conditional_entry_point(
+        should_use_llm_mode,
+        {
+            "llm": "rag_enhanced",
+            "normal": "comparison_tool_router"
+        }
+    )
+    
+    # Fluxo LLM Mode: rag_enhanced → llm_planner → comparison_coder → comparison_executor → retry_check → comparison_interpreter
+    workflow.add_edge("rag_enhanced", "llm_planner")
+    workflow.add_edge("llm_planner", "comparison_coder")
+    
+    # Fluxo modo normal: comparison_tool_router → (comparison_interpreter ou rag_simple → comparison_coder)
+    workflow.add_conditional_edges(
+        "comparison_tool_router",
+        should_continue_after_tool_router,
+        {
+            END: END,
+            "comparison_interpreter": "comparison_interpreter",
+            "rag_simple": "rag_simple"
+        }
+    )
+    
+    # RAG simplificado sempre vai para Comparison Coder
+    workflow.add_edge("rag_simple", "comparison_coder")
+    
+    # Comparison Coder → Comparison Executor
+    workflow.add_edge("comparison_coder", "comparison_executor")
+    workflow.add_edge("comparison_executor", "retry_check")
+    
+    # Decisão condicional: retry ou comparison_interpreter
+    workflow.add_conditional_edges(
+        "retry_check",
+        should_retry,
+        {
+            "comparison_coder": "comparison_coder",
+            "comparison_interpreter": "comparison_interpreter"
+        }
+    )
+    
+    workflow.add_edge("comparison_interpreter", END)
+    
+    return workflow.compile()
+
+
+_agent = None
+
+
+def get_multi_deck_agent():
+    """Retorna a instância do Multi-Deck Agent (singleton)."""
+    global _agent
+    if _agent is None:
+        _agent = create_multi_deck_agent()
+    return _agent
+
+
+def reset_multi_deck_agent():
+    """Força recriação do agent."""
+    global _agent
+    _agent = None
+
+
+def get_initial_state(
+    query: str, 
+    deck_path: str, 
+    selected_decks: Optional[List[str]] = None,
+    llm_mode: bool = False
+) -> dict:
+    """
+    Retorna o estado inicial para uma query multi-deck DECOMP.
+    
+    Args:
+        query: A pergunta do usuário
+        deck_path: Caminho do deck principal (para compatibilidade)
+        selected_decks: Lista de nomes dos decks selecionados
+        llm_mode: Se True, usa modo LLM
+        
+    Returns:
+        Estado inicial do agent
+    """
+    # Se não foram especificados decks, usar os dois mais recentes disponíveis
+    if not selected_decks:
+        available = list_available_decks()
+        if len(available) >= 2:
+            selected_decks = [d["name"] for d in available[-2:]]
+        elif len(available) == 1:
+            selected_decks = [available[0]["name"]]
+        else:
+            selected_decks = []
+    
+    # Carregar os decks e obter caminhos
+    deck_paths: Dict[str, str] = {}
+    deck_display_names: Dict[str, str] = {}
+    
+    if selected_decks:
+        try:
+            paths = load_multiple_decks(selected_decks)
+            deck_paths = {name: str(path) for name, path in paths.items()}
+            deck_display_names = get_deck_display_names_dict(selected_decks)
+            
+            # Usar o primeiro deck como deck_path para compatibilidade
+            if not deck_path and selected_decks:
+                deck_path = deck_paths.get(selected_decks[0], "")
+        except Exception as e:
+            safe_print(f"[MULTI-DECK DECOMP] Erro ao carregar decks: {e}")
+    
+    return {
+        "query": query,
+        "deck_path": deck_path,
+        "selected_decks": selected_decks,
+        "deck_paths": deck_paths,
+        "deck_display_names": deck_display_names,
+        "relevant_docs": [],
+        "generated_code": "",
+        "execution_result": {},
+        "final_response": "",
+        "error": None,
+        "messages": [],
+        "retry_count": 0,
+        "max_retries": MAX_RETRIES,
+        "code_history": [],
+        "error_history": [],
+        "selected_files": [],
+        "validation_result": None,
+        "rag_status": "success",
+        "fallback_response": None,
+        "tried_files": [],
+        "rejection_reasons": [],
+        "tool_route": False,
+        "tool_result": None,
+        "tool_used": None,
+        "disambiguation": None,
+        "comparison_data": None,
+        "llm_instructions": None if not llm_mode else "",
+        "requires_user_choice": None,
+        "alternative_type": None
+    }
+
+
+def run_query(
+    query: str, 
+    deck_path: str, 
+    session_id: Optional[str] = None, 
+    selected_decks: Optional[List[str]] = None,
+    llm_mode: bool = False
+) -> dict:
+    """Executa uma query no Multi-Deck Agent DECOMP."""
+    agent = get_multi_deck_agent()
+    initial_state = get_initial_state(query, deck_path, selected_decks, llm_mode)
+    
+    langfuse_handler = get_langfuse_handler(
+        session_id=session_id or deck_path,
+        trace_name="decomp-multi-deck-query",
+        metadata={"query": query[:100], "selected_decks": selected_decks}
+    )
+    
+    config = {"callbacks": [langfuse_handler]} if langfuse_handler else {}
+    
+    result = agent.invoke(initial_state, config=config)
+    
+    if langfuse_handler:
+        try:
+            if hasattr(langfuse_handler, 'flush'):
+                langfuse_handler.flush()
+            from shared.utils.observability import flush_langfuse
+            flush_langfuse()
+        except Exception:
+            pass
+    
+    return result
+
+
+def run_query_stream(
+    query: str, 
+    deck_path: str, 
+    session_id: Optional[str] = None, 
+    selected_decks: Optional[List[str]] = None,
+    llm_mode: bool = False
+) -> Generator[str, None, None]:
+    """Executa uma query no Multi-Deck Agent DECOMP com streaming de eventos."""
+    agent = get_multi_deck_agent()
+    initial_state = get_initial_state(query, deck_path, selected_decks, llm_mode)
+    
+    langfuse_handler = get_langfuse_handler(
+        session_id=session_id or deck_path,
+        trace_name="decomp-multi-deck-query-stream",
+        metadata={"query": query[:100], "streaming": True, "selected_decks": selected_decks}
+    )
+    
+    config = {"callbacks": [langfuse_handler]} if langfuse_handler else {}
+    
+    decks_info = [
+        {"name": name, "display_name": initial_state["deck_display_names"].get(name, name)}
+        for name in initial_state.get("selected_decks", [])
+    ]
+    yield f"data: {json.dumps({'type': 'start', 'message': 'Iniciando processamento...', 'selected_decks': decks_info})}\n\n"
+    
+    current_retry = 0
+    is_fallback = False
+    has_disambiguation = False
+    
+    try:
+        for event in agent.stream(initial_state, stream_mode="updates", config=config):
+            for node_name, node_output in event.items():
+                if node_output is None:
+                    node_output = {}
+                
+                node_info = NODE_DESCRIPTIONS.get(node_name, {
+                    "name": node_name,
+                    "icon": "[🔄]",
+                    "description": f"Executando {node_name}..."
+                })
+                
+                if node_name == "comparison_coder" and current_retry > 0:
+                    node_info = {
+                        **node_info,
+                        "name": f"Code Generator (Tentativa {current_retry + 1})",
+                        "description": f"Corrigindo código... (tentativa {current_retry + 1}/{MAX_RETRIES})"
+                    }
+                
+                if not (node_name == "comparison_tool_router" and node_output.get("disambiguation")):
+                    yield f"data: {json.dumps({'type': 'node_start', 'node': node_name, 'info': node_info, 'retry': current_retry})}\n\n"
+                
+                # Detalhes específicos de cada node (simplificado por enquanto)
+                if node_name == "comparison_interpreter":
+                    response = node_output.get("final_response") if node_output else None
+                    comparison_data = node_output.get("comparison_data") if node_output else None
+                    
+                    if response and response.strip():
+                        yield f"data: {json.dumps({'type': 'response_start', 'is_fallback': is_fallback})}\n\n"
+                        chunk_size = 50
+                        for i in range(0, len(response), chunk_size):
+                            yield f"data: {json.dumps({'type': 'response_chunk', 'chunk': response[i:i + chunk_size]})}\n\n"
+                        
+                        cleaned_comparison_data = _clean_nan_for_json(comparison_data) if comparison_data else None
+                        yield f"data: {json.dumps({'type': 'response_complete', 'response': response, 'comparison_data': cleaned_comparison_data}, allow_nan=False)}\n\n"
+                
+                if not (node_name == "comparison_tool_router" and node_output.get("disambiguation")):
+                    yield f"data: {json.dumps({'type': 'node_complete', 'node': node_name})}\n\n"
+        
+        if not has_disambiguation:
+            yield f"data: {json.dumps({'type': 'complete', 'message': 'Processamento concluído!', 'total_retries': current_retry, 'was_fallback': is_fallback})}\n\n"
+        else:
+            yield f"data: {json.dumps({'type': 'complete', 'message': '', 'total_retries': current_retry, 'was_fallback': is_fallback})}\n\n"
+        
+        if langfuse_handler:
+            try:
+                if hasattr(langfuse_handler, 'flush'):
+                    langfuse_handler.flush()
+                from shared.utils.observability import flush_langfuse
+                flush_langfuse()
+            except Exception:
+                pass
+        
+    except Exception as e:
+        yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
