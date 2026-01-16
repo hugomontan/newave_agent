@@ -300,13 +300,16 @@ class MudancasVazaoMinimaTool(NEWAVETool):
     def _execute_multi_deck_matrix(self, query: str) -> Dict[str, Any]:
         """
         Executa análise de vazão mínima para múltiplos decks (mais de 2) usando matriz de comparação.
-        Retorna formato idêntico ao GTMIN, mas com separação de VAZMIN/VAZMINT.
+        
+        IMPORTANTE: Para VAZMINT, aplica forward fill por mês dentro de cada linha (Usina + Deck).
+        Cada linha representa uma combinação Usina + Deck, e as colunas são os meses.
+        O forward fill preenche meses sem valor com o último valor conhecido anteriormente.
         
         Args:
             query: Query do usuário
             
         Returns:
-            Dicionário com dados formatados para matriz de comparação
+            Dicionário com dados formatados para matriz de comparação expandida por mês
         """
         print("[TOOL] Executando análise de matriz para múltiplos decks...")
         
@@ -359,158 +362,178 @@ class MudancasVazaoMinimaTool(NEWAVETool):
                         if r.get('codigo_usina') == codigo_usina_filtro
                     ]
             
-            # ETAPA 4: Criar estrutura de dados para matriz
-            print("[TOOL] ETAPA 4: Criando estrutura de matriz de comparação...")
-            
-            # Separar VAZMINT e VAZMIN para processamento diferente
-            # VAZMINT: chave (codigo_usina, tipo_vazao, periodo_inicio)
-            # VAZMIN: chave (codigo_usina, tipo_vazao, vazao_value) - incluir valor na chave
-            
-            def create_vazmint_key(record):
-                """Cria chave para VAZMINT baseada em código, tipo e período."""
-                codigo = int(record.get('codigo_usina', 0))
-                tipo_vazao = record.get('tipo_vazao', 'VAZMINT')
-                periodo = record.get('periodo_inicio', 'N/A')
-                return (codigo, tipo_vazao, periodo)
-            
-            def create_vazmin_key(record):
-                """Cria chave para VAZMIN baseada em código, tipo e valor."""
-                codigo = int(record.get('codigo_usina', 0))
-                tipo_vazao = record.get('tipo_vazao', 'VAZMIN')
-                vazao_val = self._sanitize_number(record.get('vazao'))
-                # Arredondar para evitar problemas de precisão float
-                vazao_rounded = round(vazao_val, 2) if vazao_val is not None else None
-                return (codigo, tipo_vazao, vazao_rounded)
-            
-            # Coletar todas as chaves únicas
-            all_keys = set()
-            
-            # Coletar chaves VAZMINT
+            # ETAPA 4: Coletar todos os meses únicos (períodos) de todos os registros VAZMINT
+            print("[TOOL] ETAPA 4: Coletando todos os meses do horizonte...")
+            all_months = set()
             for vazmin_list in decks_vazmin.values():
                 for record in vazmin_list:
                     if record.get('tipo_vazao') == 'VAZMINT':
-                        key = create_vazmint_key(record)
-                        all_keys.add(key)
+                        periodo = record.get('periodo_inicio')
+                        if periodo and periodo != 'N/A':
+                            all_months.add(periodo)
             
-            # Coletar chaves VAZMIN (incluir valor na chave)
+            # Ordenar meses cronologicamente
+            all_months_sorted = sorted(list(all_months))
+            print(f"[TOOL] ✅ Meses encontrados: {all_months_sorted}")
+            
+            # ETAPA 5: Coletar todas as usinas únicas com VAZMINT
+            print("[TOOL] ETAPA 5: Coletando usinas com VAZMINT...")
+            usinas_com_vazmint = set()
+            for vazmin_list in decks_vazmin.values():
+                for record in vazmin_list:
+                    if record.get('tipo_vazao') == 'VAZMINT':
+                        usinas_com_vazmint.add(record.get('codigo_usina'))
+            
+            print(f"[TOOL] ✅ Usinas com VAZMINT: {len(usinas_com_vazmint)}")
+            
+            # ETAPA 6: Construir dados expandidos (Usina x Deck x Mês) - PRIMEIRO SEM FORWARD FILL
+            print("[TOOL] ETAPA 6: Construindo matriz expandida (dados brutos)...")
+            expanded_data = []
+            
+            for codigo_usina in usinas_com_vazmint:
+                nome_usina = mapeamento_codigo_nome.get(codigo_usina, f"Usina {codigo_usina}")
+                
+                for deck_display_name in deck_names:
+                    if deck_display_name not in decks_vazmin:
+                        continue
+                    
+                    vazmin_list = decks_vazmin[deck_display_name]
+                    
+                    # Coletar registros VAZMINT desta usina neste deck
+                    registros_usina = [
+                        r for r in vazmin_list 
+                        if r.get('codigo_usina') == codigo_usina and r.get('tipo_vazao') == 'VAZMINT'
+                    ]
+                    
+                    if not registros_usina:
+                        continue
+                    
+                    # Criar dicionário período -> valor (dados brutos)
+                    periodo_valor = {}
+                    for record in registros_usina:
+                        periodo = record.get('periodo_inicio')
+                        vazao = self._sanitize_number(record.get('vazao'))
+                        if periodo and periodo != 'N/A' and vazao is not None:
+                            periodo_valor[periodo] = round(vazao, 2)
+                    
+                    if not periodo_valor:
+                        continue
+                    
+                    # Criar monthly_values com todos os meses (SEM forward fill ainda)
+                    monthly_values = {}
+                    for mes in all_months_sorted:
+                        if mes in periodo_valor:
+                            monthly_values[mes] = periodo_valor[mes]
+                        else:
+                            monthly_values[mes] = None  # Será preenchido depois
+                    
+                    # Adicionar linha expandida
+                    expanded_row = {
+                        "nome_usina": nome_usina,
+                        "codigo_usina": codigo_usina,
+                        "deck_name": deck_display_name,
+                        "tipo_vazao": "VAZMINT",
+                        "monthly_values": monthly_values,
+                        "original_periods": list(periodo_valor.keys())  # Períodos com valores originais
+                    }
+                    expanded_data.append(expanded_row)
+                    
+                    print(f"[TOOL] [DEBUG] {nome_usina} - {deck_display_name}: {len(periodo_valor)} valores originais em {list(periodo_valor.keys())}")
+            
+            print(f"[TOOL] ✅ Dados brutos coletados: {len(expanded_data)} linhas (Usina x Deck)")
+            
+            # ETAPA 6.5: APLICAR FORWARD FILL NA MATRIZ JÁ FORMADA
+            print("[TOOL] ETAPA 6.5: Aplicando forward fill na matriz...")
+            expanded_data = self._apply_forward_fill_to_matrix(expanded_data, all_months_sorted)
+            print(f"[TOOL] ✅ Forward fill aplicado em {len(expanded_data)} linhas")
+            
+            # ETAPA 7: Também processar VAZMIN (sem período) - mantém estrutura antiga
+            print("[TOOL] ETAPA 7: Processando VAZMIN (sem período)...")
+            matrix_data_vazmin = []
+            
+            # Coletar chaves VAZMIN únicas
+            vazmin_keys = set()
             for vazmin_list in decks_vazmin.values():
                 for record in vazmin_list:
                     if record.get('tipo_vazao') == 'VAZMIN':
                         vazao_val = self._sanitize_number(record.get('vazao'))
                         if vazao_val is not None:
-                            key = create_vazmin_key(record)
-                            all_keys.add(key)
+                            codigo = int(record.get('codigo_usina', 0))
+                            vazao_rounded = round(vazao_val, 2)
+                            vazmin_keys.add((codigo, vazao_rounded))
             
-            print(f"[TOOL] ✅ Total de chaves únicas: {len(all_keys)}")
-            
-            # ETAPA 5: Construir matriz de comparação
-            matrix_data = []
-            
-            for key in all_keys:
-                if len(key) == 3:
-                    codigo_usina, tipo_vazao, third_component = key
-                else:
-                    continue
-                
+            for codigo_usina, vazao_rounded in vazmin_keys:
                 nome_usina = mapeamento_codigo_nome.get(codigo_usina, f"Usina {codigo_usina}")
                 
-                # Coletar valores de vazão de cada deck
+                # Coletar presença em cada deck
                 vazao_values = {}
-                
                 for deck_display_name in deck_names:
                     if deck_display_name not in decks_vazmin:
                         vazao_values[deck_display_name] = None
                         continue
                     
                     vazmin_list = decks_vazmin[deck_display_name]
-                    matching_record = None
-                    
-                    # Buscar registro correspondente
+                    found = False
                     for record in vazmin_list:
-                        if tipo_vazao == 'VAZMINT':
-                            # VAZMINT: comparar por código e período
-                            if (record.get('codigo_usina') == codigo_usina and
-                                record.get('tipo_vazao') == 'VAZMINT' and
-                                record.get('periodo_inicio') == third_component):
-                                matching_record = record
-                                break
-                        elif tipo_vazao == 'VAZMIN':
-                            # VAZMIN: comparar por código e valor (arredondado)
+                        if record.get('tipo_vazao') == 'VAZMIN' and record.get('codigo_usina') == codigo_usina:
                             record_vazao = self._sanitize_number(record.get('vazao'))
-                            record_vazao_rounded = round(record_vazao, 2) if record_vazao is not None else None
-                            if (record.get('codigo_usina') == codigo_usina and
-                                record.get('tipo_vazao') == 'VAZMIN' and
-                                record_vazao_rounded == third_component):
-                                matching_record = record
+                            if record_vazao is not None and round(record_vazao, 2) == vazao_rounded:
+                                vazao_values[deck_display_name] = vazao_rounded
+                                found = True
                                 break
-                    
-                    if matching_record:
-                        vazao_val = self._sanitize_number(matching_record.get('vazao'))
-                        vazao_values[deck_display_name] = round(vazao_val, 2) if vazao_val is not None else None
-                    else:
+                    if not found:
                         vazao_values[deck_display_name] = None
                 
-                # Verificar se há alguma mudança (não todos None ou todos iguais)
+                # Verificar se há variação entre decks
                 valores_nao_nulos = [v for v in vazao_values.values() if v is not None]
                 if len(valores_nao_nulos) == 0:
-                    continue  # Pular se não há valores
+                    continue
                 
-                # Verificar se há variação
-                valores_unicos = set(valores_nao_nulos)
-                if len(valores_unicos) <= 1:
-                    continue  # Pular se todos os valores são iguais
-                
-                # Determinar período para o registro
-                if tipo_vazao == 'VAZMINT':
-                    periodo_inicio = third_component  # third_component é o período
-                    periodo_fim = None
-                else:  # VAZMIN
-                    periodo_inicio = "N/A"
-                    periodo_fim = None
-                
-                # Calcular diferenças entre todos os pares de decks
-                matrix_row = {
-                    "nome_usina": nome_usina,
-                    "codigo_usina": codigo_usina,
-                    "tipo_vazao": tipo_vazao,  # IMPORTANTE: incluir tipo_vazao
-                    "periodo_inicio": periodo_inicio,
-                    "periodo_fim": periodo_fim,
-                    "vazao_values": vazao_values,  # Dict[deck_name, value] - similar a gtmin_values
-                    "matrix": {}  # Dict[(deck_from, deck_to), difference]
-                }
-                
-                # Preencher matriz de diferenças
-                # Usar string como chave para compatibilidade com JSON
-                for i, deck_from in enumerate(deck_names):
-                    for j, deck_to in enumerate(deck_names):
-                        if i == j:
-                            matrix_row["matrix"][f"{deck_from},{deck_to}"] = 0.0
-                        else:
-                            val_from = vazao_values.get(deck_from)
-                            val_to = vazao_values.get(deck_to)
-                            
-                            if val_from is not None and val_to is not None:
-                                diff = round(val_to - val_from, 2)
-                                matrix_row["matrix"][f"{deck_from},{deck_to}"] = diff
-                            elif val_from is None and val_to is not None:
-                                matrix_row["matrix"][f"{deck_from},{deck_to}"] = val_to  # Novo
-                            elif val_from is not None and val_to is None:
-                                matrix_row["matrix"][f"{deck_from},{deck_to}"] = -val_from  # Removido
+                # Para VAZMIN, verificar se o valor aparece/desaparece entre decks
+                if len(valores_nao_nulos) < len(deck_names):
+                    matrix_row = {
+                        "nome_usina": nome_usina,
+                        "codigo_usina": codigo_usina,
+                        "tipo_vazao": "VAZMIN",
+                        "periodo_inicio": "N/A",
+                        "periodo_fim": None,
+                        "vazao_values": vazao_values,
+                        "matrix": {}
+                    }
+                    
+                    # Preencher matriz de diferenças
+                    for i, deck_from in enumerate(deck_names):
+                        for j, deck_to in enumerate(deck_names):
+                            if i == j:
+                                matrix_row["matrix"][f"{deck_from},{deck_to}"] = 0.0
                             else:
-                                matrix_row["matrix"][f"{deck_from},{deck_to}"] = None
-                
-                matrix_data.append(matrix_row)
+                                val_from = vazao_values.get(deck_from)
+                                val_to = vazao_values.get(deck_to)
+                                
+                                if val_from is not None and val_to is not None:
+                                    diff = round(val_to - val_from, 2)
+                                    matrix_row["matrix"][f"{deck_from},{deck_to}"] = diff
+                                elif val_from is None and val_to is not None:
+                                    matrix_row["matrix"][f"{deck_from},{deck_to}"] = val_to
+                                elif val_from is not None and val_to is None:
+                                    matrix_row["matrix"][f"{deck_from},{deck_to}"] = -val_from
+                                else:
+                                    matrix_row["matrix"][f"{deck_from},{deck_to}"] = None
+                    
+                    matrix_data_vazmin.append(matrix_row)
             
-            print(f"[TOOL] ✅ Matriz criada: {len(matrix_data)} registros com variações")
+            print(f"[TOOL] ✅ VAZMIN: {len(matrix_data_vazmin)} registros com variações")
             
-            # ETAPA 6: Calcular estatísticas
+            # ETAPA 8: Calcular estatísticas
             stats = {
-                "total_registros": len(matrix_data),
+                "total_linhas_expandidas": len(expanded_data),
+                "total_registros_vazmin": len(matrix_data_vazmin),
                 "total_decks": len(deck_names),
-                "usinas_unicas": len(set(row["codigo_usina"] for row in matrix_data)),
+                "total_meses": len(all_months_sorted),
+                "usinas_com_vazmint": len(usinas_com_vazmint),
                 "tipos_vazao": {
-                    "VAZMIN": len([r for r in matrix_data if r["tipo_vazao"] == "VAZMIN"]),
-                    "VAZMINT": len([r for r in matrix_data if r["tipo_vazao"] == "VAZMINT"])
+                    "VAZMIN": len(matrix_data_vazmin),
+                    "VAZMINT": len(expanded_data)
                 }
             }
             
@@ -518,11 +541,13 @@ class MudancasVazaoMinimaTool(NEWAVETool):
                 "success": True,
                 "is_comparison": True,
                 "tool": self.get_name(),
-                "matrix_data": matrix_data,
+                "expanded_data": expanded_data,  # NOVO: dados expandidos com forward fill (Usina x Deck x Mês)
+                "matrix_data": matrix_data_vazmin,  # VAZMIN sem período (formato antigo)
                 "deck_names": deck_names,
+                "all_months": all_months_sorted,  # NOVO: lista de todos os meses
                 "stats": stats,
                 "visualization_type": "vazao_minima_matrix",
-                "description": f"Matriz de comparação de vazão mínima entre {len(deck_names)} decks, com {len(matrix_data)} registros com variações. Separado por VAZMIN (sem período) e VAZMINT (com período)."
+                "description": f"Matriz de vazão mínima com forward fill. {len(expanded_data)} linhas VAZMINT (Usina x Deck) expandidas para {len(all_months_sorted)} meses. {len(matrix_data_vazmin)} registros VAZMIN."
             }
             
         except Exception as e:
@@ -1206,6 +1231,70 @@ class MudancasVazaoMinimaTool(NEWAVETool):
             return float_val
         except (ValueError, TypeError):
             return None
+    
+    def _apply_forward_fill_to_matrix(self, expanded_data: List[Dict[str, Any]], all_months: List[str]) -> List[Dict[str, Any]]:
+        """
+        Aplica forward fill na matriz já formada.
+        
+        IMPORTANTE: Cada linha (Usina + Deck) é processada independentemente.
+        O forward fill ocorre apenas dentro da mesma linha.
+        
+        Conceito:
+        - Percorrer os meses em ordem cronológica para cada linha.
+        - Quando encontrar um valor, guardá-lo como "último valor conhecido".
+        - Para meses sem valor, usar o "último valor conhecido".
+        - Se não houver valor inicial, os meses anteriores permanecem vazios.
+        
+        Exemplo:
+        - Registros originais: 2025-12=4600, 2026-01=3900, 2026-11=4600
+        - Resultado: 2025-12=4600, 2026-01=3900, 2026-02=3900, ..., 2026-10=3900, 2026-11=4600
+        
+        Args:
+            expanded_data: Lista de linhas (cada linha é Usina + Deck com monthly_values)
+            all_months: Lista de meses em ordem cronológica
+            
+        Returns:
+            Lista de linhas com forward fill aplicado
+        """
+        print(f"[TOOL] [FORWARD FILL] Processando {len(expanded_data)} linhas...")
+        
+        for row in expanded_data:
+            monthly_values = row.get("monthly_values", {})
+            original_periods = row.get("original_periods", [])
+            
+            # Debug: mostrar estado antes
+            valores_antes = {k: v for k, v in monthly_values.items() if v is not None}
+            
+            # Aplicar forward fill
+            ultimo_valor_conhecido = None
+            for mes in all_months:
+                valor_atual = monthly_values.get(mes)
+                
+                if valor_atual is not None:
+                    # Mês tem valor original - guardar como último conhecido
+                    ultimo_valor_conhecido = valor_atual
+                elif ultimo_valor_conhecido is not None:
+                    # Mês sem valor - preencher com último valor conhecido
+                    monthly_values[mes] = ultimo_valor_conhecido
+                # else: Nenhum valor conhecido ainda - mantém None
+            
+            # Debug: mostrar estado depois
+            valores_depois = {k: v for k, v in monthly_values.items() if v is not None}
+            
+            # Atualizar monthly_values na linha
+            row["monthly_values"] = monthly_values
+            
+            # Log de debug
+            nome_usina = row.get("nome_usina", "?")
+            deck_name = row.get("deck_name", "?")
+            print(f"[TOOL] [FORWARD FILL] {nome_usina} - {deck_name}:")
+            print(f"[TOOL]   Originais: {original_periods}")
+            print(f"[TOOL]   Antes: {len(valores_antes)} valores -> Depois: {len(valores_depois)} valores")
+            if len(valores_depois) > len(valores_antes):
+                preenchidos = len(valores_depois) - len(valores_antes)
+                print(f"[TOOL]   ✅ {preenchidos} meses preenchidos via forward fill")
+        
+        return expanded_data
     
     def _calculate_stats(
         self,

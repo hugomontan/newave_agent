@@ -333,6 +333,46 @@ class MudancasVazaoMinimaFormatter(ComparisonFormatter):
             }
         }
     
+    def _apply_forward_fill(self, valores_por_mes: Dict[str, any], meses_ordenados: List[str]) -> Dict[str, any]:
+        """
+        Aplica forward fill nos valores por mês.
+        
+        Conceito:
+        - Percorrer os meses em ordem cronológica.
+        - Quando encontrar um valor, guardá-lo como "último valor conhecido".
+        - Para meses sem valor, usar o "último valor conhecido".
+        - Se não houver valor inicial, os meses anteriores permanecem vazios.
+        
+        Exemplo:
+        - Registros originais: 2025-12=4600, 2026-01=3900, 2026-11=4600
+        - Resultado: 2025-12=4600, 2026-01=3900, 2026-02=3900, ..., 2026-10=3900, 2026-11=4600
+        
+        Args:
+            valores_por_mes: Dicionário {mes: valor} (pode ter valores None)
+            meses_ordenados: Lista de meses em ordem cronológica
+            
+        Returns:
+            Dicionário com valores preenchidos via forward fill
+        """
+        resultado = {}
+        ultimo_valor_conhecido = None
+        
+        for mes in meses_ordenados:
+            valor_atual = valores_por_mes.get(mes)
+            
+            if valor_atual is not None:
+                # Mês tem valor - guardar como último conhecido
+                ultimo_valor_conhecido = valor_atual
+                resultado[mes] = valor_atual
+            elif ultimo_valor_conhecido is not None:
+                # Mês sem valor - usar forward fill
+                resultado[mes] = ultimo_valor_conhecido
+            else:
+                # Nenhum valor conhecido ainda - manter None
+                resultado[mes] = None
+        
+        return resultado
+    
     def _expand_period_vazmint(self, periodo_inicio: str, periodo_fim: str) -> List[str]:
         """
         Expande um período (ex: "2030-07 a 2030-10") em meses individuais.
@@ -802,15 +842,18 @@ class MudancasVazaoMinimaFormatter(ComparisonFormatter):
                 for nome_usina in usinas_ordenadas:
                     # Verificar se há valores para esta combinação (deck, usina) em VAZMINT
                     tem_valores = False
-                    valores_por_mes = {}
+                    valores_por_mes_raw = {}
                     
                     # Coletar valores para TODOS os meses consecutivos (mesmo que None)
                     for periodo in meses_ordenados:
                         key = (nome_usina, periodo)
                         value = usina_mes_values.get(key, {}).get(deck_name)
-                        valores_por_mes[periodo] = value
+                        valores_por_mes_raw[periodo] = value
                         if value is not None:
                             tem_valores = True
+                    
+                    # Aplicar forward fill para preencher meses sem valor
+                    valores_por_mes = self._apply_forward_fill(valores_por_mes_raw, meses_ordenados)
                     
                     # Só criar linha se houver pelo menos um valor
                     if tem_valores:
@@ -1077,15 +1120,18 @@ class MudancasVazaoMinimaFormatter(ComparisonFormatter):
                 for nome_usina in usinas_ordenadas:
                     # Verificar se há valores para esta combinação (deck, usina)
                     tem_valores = False
-                    valores_por_mes = {}
+                    valores_por_mes_raw = {}
                     
                     # Coletar valores para TODOS os meses consecutivos
                     for mes in meses_ordenados:
                         key = (nome_usina, mes)
                         value = usina_mes_values.get(key, {}).get(deck_name)
-                        valores_por_mes[mes] = value
+                        valores_por_mes_raw[mes] = value
                         if value is not None:
                             tem_valores = True
+                    
+                    # Aplicar forward fill para preencher meses sem valor
+                    valores_por_mes = self._apply_forward_fill(valores_por_mes_raw, meses_ordenados)
                     
                     # Só criar linha se houver pelo menos um valor
                     if tem_valores:
