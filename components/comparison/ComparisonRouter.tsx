@@ -9,6 +9,7 @@ import { CVUView } from "./cvu";
 import { ReservatorioInicialView } from "./reservatorio-inicial";
 import { UsinasNaoSimuladasView } from "./usinas-nao-simuladas";
 import { RestricaoEletricaView } from "./restricao-eletrica";
+import { DisponibilidadeComparisonView } from "./disponibilidade";
 import type { ComparisonData } from "./shared/types";
 
 interface ComparisonRouterProps {
@@ -51,6 +52,18 @@ export function ComparisonRouter({ comparison }: ComparisonRouterProps) {
     return <UsinasNaoSimuladasView comparison={comparison} />;
   }
   
+  // Verificar DisponibilidadeUsinaTool ou DisponibilidadeMultiDeckTool
+  if (
+    normalizedToolName.toLowerCase() === "disponibilidadeusinatool" ||
+    normalizedToolName.toLowerCase() === "disponibilidademultidecktool" ||
+    normalizedToolName.toLowerCase().includes("disponibilidade")
+  ) {
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[ComparisonRouter] ✅ Usando DisponibilidadeComparisonView para DisponibilidadeTool');
+    }
+    return <DisponibilidadeComparisonView comparison={comparison} />;
+  }
+  
   // Verificação adicional: se chart_config indica UsinasNaoSimuladasTool mas tool_name não está presente
   const chartConfigToolName = (chart_config as any)?.tool_name?.toString().trim() || "";
   if (chartConfigToolName.toLowerCase() === "usinasnaosimuladastool") {
@@ -63,12 +76,18 @@ export function ComparisonRouter({ comparison }: ComparisonRouterProps) {
   switch (normalizedVizType) {
     case "table_with_line_chart":
       // Tools que compartilham table_with_line_chart
-      // IMPORTANTE: UsinasNaoSimuladasTool já foi tratado acima, não deve chegar aqui
+      // IMPORTANTE: UsinasNaoSimuladasTool e DisponibilidadeTool já foram tratados acima, não devem chegar aqui
       if (normalizedToolName === "CargaMensalTool" || normalizedToolName === "CadicTool") {
         return <CargaMensalView comparison={comparison} />;
       }
       if (normalizedToolName === "ClastValoresTool") {
         return <CVUView comparison={comparison} />;
+      }
+      // Verificar DisponibilidadeTool novamente (caso não tenha sido capturado acima)
+      if (
+        normalizedToolName.toLowerCase().includes("disponibilidade")
+      ) {
+        return <DisponibilidadeComparisonView comparison={comparison} />;
       }
       // Fallback: tentar renderizar com CVUView se houver dados (mas não para UsinasNaoSimuladasTool)
       if (hasTableData || hasChartData) {

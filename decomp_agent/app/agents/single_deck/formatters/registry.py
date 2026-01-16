@@ -10,6 +10,9 @@ from decomp_agent.app.tools.base import DECOMPTool
 # Formatters específicos do single deck
 from decomp_agent.app.agents.single_deck.formatters.data_formatters import (
     UHSingleDeckFormatter,
+    CTSingleDeckFormatter,
+    DPSingleDeckFormatter,
+    DisponibilidadeUsinaFormatter,
 )
 
 # Formatter genérico (fallback)
@@ -18,6 +21,9 @@ from decomp_agent.app.agents.single_deck.formatters.generic_formatter import Gen
 # Lista de formatters ordenada por prioridade (maior primeiro)
 SINGLE_DECK_FORMATTERS = [
     UHSingleDeckFormatter(),
+    CTSingleDeckFormatter(),
+    DPSingleDeckFormatter(),
+    DisponibilidadeUsinaFormatter(),
 ]
 
 

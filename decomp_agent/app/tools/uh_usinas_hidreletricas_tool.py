@@ -97,27 +97,15 @@ class UHUsinasHidrelétricasTool(DECOMPTool):
             Dict com dados das usinas hidrelétricas
         """
         try:
-            # Localizar arquivo dadger (pode ser .rvx, .rv0 ou .rv2)
-            dadger_paths = [
-                os.path.join(self.deck_path, "dadger.rvx"),
-                os.path.join(self.deck_path, "dadger.rv0"),
-                os.path.join(self.deck_path, "dadger.rv2"),
-            ]
+            # ⚡ OTIMIZAÇÃO: Usar cache global do Dadger
+            from decomp_agent.app.utils.dadger_cache import get_cached_dadger
+            dadger = get_cached_dadger(self.deck_path)
             
-            dadger_path = None
-            for path in dadger_paths:
-                if os.path.exists(path):
-                    dadger_path = path
-                    break
-            
-            if not dadger_path:
+            if dadger is None:
                 return {
                     "success": False,
-                    "error": "Arquivo dadger não encontrado (.rvx, .rv0 ou .rv2)"
+                    "error": "Arquivo dadger não encontrado (nenhum arquivo dadger.rv* encontrado)"
                 }
-            
-            # Ler arquivo dadger
-            dadger = Dadger.read(dadger_path)
             
             # Extrair filtros da query (códigos numéricos)
             codigo_usina = self._extract_codigo_usina(query)

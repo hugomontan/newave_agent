@@ -15,6 +15,9 @@ import { UsinasNaoSimuladasView } from "./usinas-nao-simuladas";
 import { ModifOperacaoView } from "./modif-operacao";
 import { RestricaoEletricaView } from "./restricao-eletrica";
 import { UHView } from "./uh";
+import { CTView } from "./ct";
+import { DPView } from "./dp";
+import { DisponibilidadeUsinaView } from "./disponibilidade-usina";
 
 interface SingleDeckRouterProps {
   visualizationData: SingleDeckVisualizationData;
@@ -67,6 +70,15 @@ export function SingleDeckRouter({ visualizationData }: SingleDeckRouterProps) {
     
     case "UHUsinasHidrelétricasTool":
       return <UHView visualizationData={visualizationData} />;
+    
+    case "CTUsinasTermelétricasTool":
+      return <CTView visualizationData={visualizationData} />;
+    
+    case "DPCargaSubsistemasTool":
+      return <DPView visualizationData={visualizationData} />;
+    
+    case "DisponibilidadeUsinaTool":
+      return <DisponibilidadeUsinaView visualizationData={visualizationData} />;
     
     default:
       return null;

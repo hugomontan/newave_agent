@@ -10,10 +10,12 @@ from .base import ComparisonFormatter, DeckData
 # Importar formatadores
 from decomp_agent.app.agents.multi_deck.formatting.data_formatters import (
     UHComparisonFormatter,
+    DisponibilidadeComparisonFormatter,
 )
 
 # Lista de formatadores (em ordem de prioridade - mais específicos primeiro)
 FORMATTERS: List[ComparisonFormatter] = [
+    DisponibilidadeComparisonFormatter(),
     UHComparisonFormatter(),
 ]
 
@@ -135,10 +137,18 @@ def format_comparison_response(
         }
     
     # Obter formatter apropriado
-    formatter = get_formatter_for_tool(tool_used, decks_data[0].result if decks_data else {})
+    # Tentar usar tool_name do resultado se tool_used não estiver disponível ou não corresponder
+    tool_name_to_use = tool_used
+    if "tool_name" in tool_result:
+        tool_name_to_use = tool_result.get("tool_name", tool_used)
+    
+    formatter = get_formatter_for_tool(tool_name_to_use, decks_data[0].result if decks_data else {})
     
     if formatter is None:
         # Fallback: formatação básica
+        from decomp_agent.app.config import safe_print
+        safe_print(f"[FORMATTER REGISTRY] Nenhum formatter encontrado para tool: {tool_name_to_use} (tool_used: {tool_used})")
+        safe_print(f"[FORMATTER REGISTRY] Result structure keys: {list(decks_data[0].result.keys()) if decks_data else []}")
         return {
             "final_response": f"## Comparação Multi-Deck\n\n{len(decks_data)} decks comparados.",
             "comparison_data": tool_result

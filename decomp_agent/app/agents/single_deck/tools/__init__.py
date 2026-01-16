@@ -5,10 +5,16 @@ Registry de tools para modo Single Deck DECOMP.
 from typing import List
 from decomp_agent.app.tools.base import DECOMPTool
 from decomp_agent.app.tools.uh_usinas_hidreletricas_tool import UHUsinasHidrelétricasTool
+from decomp_agent.app.tools.ct_usinas_termelétricas_tool import CTUsinasTermelétricasTool
+from decomp_agent.app.tools.dp_carga_subsistemas_tool import DPCargaSubsistemasTool
+from decomp_agent.app.tools.disponibilidade_usina_tool import DisponibilidadeUsinaTool
 
 # Registry de tools para modo single deck DECOMP
 TOOLS_REGISTRY_SINGLE = [
     UHUsinasHidrelétricasTool,
+    CTUsinasTermelétricasTool,
+    DPCargaSubsistemasTool,
+    DisponibilidadeUsinaTool,
 ]
 
 

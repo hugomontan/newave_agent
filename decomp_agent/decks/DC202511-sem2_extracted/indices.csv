@@ -1,0 +1,17 @@
+&**************************************************;;
+& Descricao colunas:;;
+&**************************************************;;
+& ID: Id dos cards de indice;;
+& Descricao: Descricao do card índice;;
+& Caminho: Caminho do arquivo com os dados dos cards para o indice;;
+&******************************************************;************************************************************;********************************************************************************
+&    ID                                                ;Descricao                                                   ;Caminho                                                                         
+&                                                      ;                                                            ;                                                                                
+&****SSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSS;SSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSS;SSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSS
+     HIDRELETRICA-CADASTRO-RESERVATORIO-CURVAJUSANTE   ;pol                                                         ;polinjus.csv              
+& Tratamento realizado pela CCEE
+& PARQUE-EOLICO-EQUIVALENTE-CADASTRO                    ;Dados de usinas renovaveis                                     ;renovaveis.csv
+& PARQUE-EOLICO-EQUIVALENTE-CONFIGURACAO                ;Dados de usinas renovaveis                                     ;renovaveis.csv
+& PARQUE-EOLICO-EQUIVALENTE-SUBMERCADO                  ;Dados de usinas renovaveis                                     ;renovaveis.csv
+& PARQUE-EOLICO-EQUIVALENTE-GERACAO-ESTOCASTICO         ;Dados de usinas renovaveis                                     ;renovaveis.csv
+& PARQUE-EOLICO-EQUIVALENTE-POTENCIA-INSTALADA          ;Dados de usinas renovaveis                                     ;renovaveis.csv

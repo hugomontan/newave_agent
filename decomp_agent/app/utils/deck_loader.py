@@ -101,17 +101,18 @@ def is_decomp_deck(deck_path: Path) -> bool:
         deck_path: Caminho do diretório do deck
         
     Returns:
-        True se contém dadger.rvx, dadger.rv0 ou dadger.rv2 (arquivo principal DECOMP)
+        True se contém qualquer arquivo dadger.rv* (arquivo principal DECOMP)
     """
     if not deck_path.is_dir():
         return False
     
-    # Verificar se contém dadger.rvx, dadger.rv0 ou dadger.rv2 (arquivo principal DECOMP)
-    # Alguns decks usam .rvx, outros .rv0, outros .rv2
-    dadger_rvx = deck_path / "dadger.rvx"
-    dadger_rv0 = deck_path / "dadger.rv0"
-    dadger_rv2 = deck_path / "dadger.rv2"
-    return dadger_rvx.exists() or dadger_rv0.exists() or dadger_rv2.exists()
+    # Verificar se contém qualquer arquivo dadger.rv* (rvx, rv0, rv1, rv2, rv3, rv4, etc.)
+    # Todos os tipos de arquivo DECOMP são equivalentes
+    for file in deck_path.glob("dadger.rv*"):
+        if file.is_file():
+            return True
+    
+    return False
 
 
 def find_first_semestre_zip(month_dir: Path) -> Optional[Path]:
@@ -364,7 +365,7 @@ def load_deck(deck_name: str) -> Path:
     
     # Verificar se é um deck DECOMP válido
     if not is_decomp_deck(extract_path):
-        raise ValueError(f"Deck {deck_name} não contém dadger.rvx, dadger.rv0 ou dadger.rv2 (não é um deck DECOMP válido)")
+        raise ValueError(f"Deck {deck_name} não contém arquivo dadger.rv* (não é um deck DECOMP válido)")
     
     return extract_path
 
@@ -454,3 +455,71 @@ def get_deck_display_names_dict(deck_names: List[str]) -> Dict[str, str]:
         Dict mapeando nome do deck para seu nome amigável
     """
     return {name: get_deck_display_name(name) for name in deck_names}
+
+
+def find_dadger_file(deck_path: str) -> Optional[str]:
+    """
+    Encontra o arquivo dadger em um deck DECOMP.
+    Aceita qualquer arquivo dadger.rv* (rvx, rv0, rv1, rv2, rv3, rv4, etc.).
+    
+    Args:
+        deck_path: Caminho do diretório do deck
+        
+    Returns:
+        Caminho completo do arquivo dadger encontrado, ou None se não encontrado
+    """
+    from pathlib import Path
+    
+    deck_path_obj = Path(deck_path)
+    if not deck_path_obj.is_dir():
+        return None
+    
+    # Buscar qualquer arquivo dadger.rv*
+    for file in deck_path_obj.glob("dadger.rv*"):
+        if file.is_file():
+            return str(file)
+    
+    return None
+
+
+def calculate_week_thursday(year: int, month: int, week: int) -> str:
+    """
+    Calcula a data da quinta-feira da semana N do mês.
+    
+    Cada deck DECOMP representa a quinta-feira da semana em questão.
+    Semana 1 = primeira quinta-feira do mês
+    Semana 2 = segunda quinta-feira do mês
+    etc.
+    
+    Args:
+        year: Ano (ex: 2025)
+        month: Mês (1-12)
+        week: Número da semana (1-5)
+    
+    Returns:
+        Data no formato "YYYY-MM-DD"
+    """
+    from datetime import datetime, timedelta
+    
+    # Primeiro dia do mês
+    first_day = datetime(year, month, 1)
+    
+    # weekday() retorna: 0=segunda, 1=terça, 2=quarta, 3=quinta, 4=sexta, 5=sábado, 6=domingo
+    first_day_weekday = first_day.weekday()
+    
+    # Calcular dias até a primeira quinta-feira
+    # Se weekday <= 3 (segunda a quinta), a primeira quinta está na primeira semana
+    # Se weekday > 3 (sexta, sábado, domingo), a primeira quinta está na semana seguinte
+    if first_day_weekday <= 3:
+        # Segunda (0) -> 3 dias, Terça (1) -> 2 dias, Quarta (2) -> 1 dia, Quinta (3) -> 0 dias
+        days_until_thursday = 3 - first_day_weekday
+    else:
+        # Sexta (4) -> 6 dias, Sábado (5) -> 5 dias, Domingo (6) -> 4 dias
+        days_until_thursday = 7 - first_day_weekday + 3
+    
+    first_thursday = first_day + timedelta(days=days_until_thursday)
+    
+    # Adicionar (week - 1) semanas para obter a quinta-feira da semana N
+    target_thursday = first_thursday + timedelta(weeks=(week - 1))
+    
+    return target_thursday.strftime("%Y-%m-%d")

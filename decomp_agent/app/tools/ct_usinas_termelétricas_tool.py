@@ -1,0 +1,613 @@
+"""
+Tool para consultar informações do Bloco CT (Usinas Termelétricas) do DECOMP.
+Acessa dados de cadastro de UTE, patamares de carga, CVU, disponibilidade, inflexibilidade.
+"""
+from decomp_agent.app.tools.base import DECOMPTool
+from decomp_agent.app.config import safe_print
+from idecomp.decomp import Dadger
+import os
+import pandas as pd
+import re
+from typing import Dict, Any, Optional, List
+
+class CTUsinasTermelétricasTool(DECOMPTool):
+    """
+    Tool para consultar informações do Bloco CT (Usinas Termelétricas) do DECOMP.
+    
+    Dados disponíveis:
+    - Código da usina
+    - Código do submercado
+    - Nome da usina
+    - Estágio de operação
+    - Patamares de carga (1=PESADA, 2=MEDIA, 3=LEVE):
+      - Custo Variável Unitário (CVU)
+      - Disponibilidade (DISP)
+      - Inflexibilidade (INFL)
+    """
+    
+    def get_name(self) -> str:
+        return "CTUsinasTermelétricasTool"
+    
+    def can_handle(self, query: str) -> bool:
+        """
+        Verifica se a query é sobre usinas termelétricas do Bloco CT.
+        
+        Args:
+            query: Query do usuário
+            
+        Returns:
+            True se a tool pode processar a query
+        """
+        query_lower = query.lower()
+        keywords = [
+            "usina termelétrica",
+            "usina termeletrica",
+            "usinas termelétricas",
+            "usinas termicas",
+            "ute",
+            "utes",
+            "bloco ct",
+            "registro ct",
+            "ct decomp",
+            "cvu",
+            "custo variável",
+            "custo variavel",
+            "custo variável unitário",
+            "custo variavel unitario",
+            "patamar de carga",
+            "patamar carga",
+            "disponibilidade térmica",
+            "disponibilidade termica",
+            "inflexibilidade térmica",
+            "inflexibilidade termica",
+        ]
+        return any(kw in query_lower for kw in keywords)
+    
+    def get_description(self) -> str:
+        return """
+        Tool para consultar informações do Bloco CT (Usinas Termelétricas) do DECOMP.
+        
+        Acessa dados do registro CT que define:
+        - Cadastro de Usinas Termelétricas (UTE)
+        - Código da usina e submercado
+        - Nome da usina
+        - Estágio de operação
+        - Dados por patamar de carga (1=PESADA, 2=MEDIA, 3=LEVE):
+          * Custo Variável Unitário (CVU)
+          * Disponibilidade (DISP)
+          * Inflexibilidade (INFL)
+        
+        Filtros disponíveis:
+        - Por CVU apenas: mostra apenas custos variáveis unitários (remove disponibilidade e inflexibilidade)
+        - Por estágio: filtra por estágio específico
+        - Por patamar: filtra por patamar específico (pesada, média, leve ou 1, 2, 3)
+        - Combinações: CVU + patamar, CVU + estágio, etc.
+        
+        Exemplos de queries:
+        - "Quais são as usinas termelétricas do deck?"
+        - "Qual o CVU da usina Angra 1?" (mostra apenas CVU, todos os patamares)
+        - "CVU de cubatão" (mostra apenas CVU)
+        - "CVU de cubatão patamar pesada" (mostra apenas CVU do patamar pesada)
+        - "CVU de cubatão estágio 1" (mostra apenas CVU do estágio 1)
+        - "CVU de cubatão estágio 1 patamar pesada" (mostra apenas CVU do estágio 1, patamar pesada)
+        - "Mostre todas as UTE do submercado 1"
+        - "Usinas com maior disponibilidade"
+        - "CVU do patamar pesada"
+        """
+    
+    def execute(self, query: str, **kwargs) -> Dict[str, Any]:
+        """
+        Executa a consulta sobre usinas termelétricas do Bloco CT.
+        
+        Args:
+            query: Query do usuário
+            **kwargs: Argumentos adicionais opcionais
+            
+        Returns:
+            Dict com dados das usinas termelétricas formatados
+        """
+        try:
+            # ⚡ OTIMIZAÇÃO: Usar cache global do Dadger
+            from decomp_agent.app.utils.dadger_cache import get_cached_dadger
+            dadger = get_cached_dadger(self.deck_path)
+            
+            if dadger is None:
+                return {
+                    "success": False,
+                    "error": "Arquivo dadger não encontrado (nenhum arquivo dadger.rv* encontrado)"
+                }
+            
+            # Extrair filtros da query
+            codigo_usina = self._extract_codigo_usina(query)
+            codigo_submercado = self._extract_codigo_submercado(query)
+            estagio = self._extract_estagio(query)
+            patamar = self._extract_patamar(query)  # NOVO: extrair patamar
+            is_cvu_only = self._is_cvu_query(query)  # NOVO: verificar se é query de CVU
+            
+            # NOVO: Se for query de CVU e não especificou estágio, usar estágio 1 por padrão
+            if is_cvu_only and estagio is None:
+                estagio = 1
+                safe_print(f"[CT TOOL] Query de CVU sem estágio especificado - usando estágio 1 por padrão")
+            
+            safe_print(f"[CT TOOL] Query recebida: {query}")
+            safe_print(f"[CT TOOL] Codigo usina extraido: {codigo_usina}")
+            safe_print(f"[CT TOOL] Codigo submercado extraido: {codigo_submercado}")
+            safe_print(f"[CT TOOL] Estagio extraido: {estagio}")
+            safe_print(f"[CT TOOL] Patamar extraido: {patamar}")  # NOVO
+            safe_print(f"[CT TOOL] CVU apenas: {is_cvu_only}")  # NOVO
+            
+            # Obter dados das usinas térmicas
+            ct_data = dadger.ct(
+                codigo_usina=codigo_usina,
+                codigo_submercado=codigo_submercado,
+                estagio=estagio,
+                df=True  # Retornar como DataFrame
+            )
+            
+            if ct_data is None or (isinstance(ct_data, pd.DataFrame) and ct_data.empty):
+                return {
+                    "success": False,
+                    "error": "Nenhuma usina termelétrica encontrada com os filtros especificados"
+                }
+            
+            # Converter para formato padronizado
+            if isinstance(ct_data, pd.DataFrame):
+                data = ct_data.to_dict('records')
+            elif isinstance(ct_data, list):
+                data = [self._ct_to_dict(ct) for ct in ct_data]
+            else:
+                data = [self._ct_to_dict(ct_data)]
+            
+            # Tentar extrair usina da query (código ou nome) - PRIORIDADE MÁXIMA
+            if codigo_usina is None:
+                safe_print(f"[CT TOOL] Tentando extrair usina da query (código ou nome)...")
+                codigo_usina_extraido = self._extract_usina_from_query(query, dadger, data)
+                if codigo_usina_extraido is not None:
+                    safe_print(f"[CT TOOL] [OK] Usina encontrada: codigo {codigo_usina_extraido}")
+                    codigo_usina = codigo_usina_extraido
+                    # Filtrar APENAS essa usina
+                    total_antes = len(data)
+                    data = [d for d in data if d.get('codigo_usina') == codigo_usina]
+                    safe_print(f"[CT TOOL] Filtro aplicado: {total_antes} -> {len(data)} registros (Usina {codigo_usina})")
+            
+            # NOVO: Aplicar filtros por CVU e/ou patamar
+            filtros_aplicados_list = []
+            
+            if is_cvu_only and patamar is not None:
+                # Filtro: CVU apenas + patamar específico
+                safe_print(f"[CT TOOL] Aplicando filtro: CVU apenas do patamar {patamar}")
+                data = self._filter_by_cvu_and_patamar(data, patamar)
+                filtros_aplicados_list.append(f"CVU apenas (patamar {patamar})")
+            elif is_cvu_only:
+                # Filtro: CVU apenas (todos os patamares)
+                safe_print(f"[CT TOOL] Aplicando filtro: CVU apenas (todos os patamares)")
+                data = self._filter_by_cvu_only(data)
+                filtros_aplicados_list.append("CVU apenas")
+            elif patamar is not None:
+                # Filtro: Patamar específico (CVU + disponibilidade + inflexibilidade)
+                safe_print(f"[CT TOOL] Aplicando filtro: Patamar {patamar} (todos os campos)")
+                data = self._filter_by_patamar(data, patamar)
+                filtros_aplicados_list.append(f"Patamar {patamar}")
+            
+            safe_print(f"[CT TOOL] Retornando {len(data)} registros de usinas termelétricas")
+            safe_print(f"[CT TOOL] Filtros aplicados: usina={codigo_usina}, submercado={codigo_submercado}, estagio={estagio}, patamar={patamar}, cvu_apenas={is_cvu_only}")
+            
+            # Preparar filtros
+            filtros_dict = {
+                "codigo_usina": codigo_usina,
+                "codigo_submercado": codigo_submercado,
+                "estagio": estagio,
+                "patamar": patamar,  # NOVO
+                "cvu_apenas": is_cvu_only,  # NOVO
+                "filtros_aplicados": filtros_aplicados_list,  # NOVO
+            }
+            if codigo_usina is not None:
+                # Tentar obter nome da usina
+                nome_usina = None
+                for record in data:
+                    nome_temp = record.get('nome_usina', '').strip()
+                    if nome_temp and nome_temp != 'nan' and nome_temp != '':
+                        nome_usina = nome_temp
+                        break
+                if nome_usina:
+                    filtros_dict["nome_usina"] = nome_usina
+            
+            return {
+                "success": True,
+                "data": data,
+                "total_usinas": len(data),
+                "filtros": filtros_dict,
+                "tool": self.get_name()
+            }
+            
+        except Exception as e:
+            safe_print(f"[CT TOOL] ❌ Erro ao consultar Bloco CT: {e}")
+            import traceback
+            traceback.print_exc()
+            return {
+                "success": False,
+                "error": f"Erro ao consultar Bloco CT: {str(e)}",
+                "tool": self.get_name()
+            }
+    
+    def _extract_codigo_usina(self, query: str) -> Optional[int]:
+        """Extrai código da usina da query."""
+        patterns = [
+            r'usina\s*(\d+)',
+            r'ute\s*(\d+)',
+            r'ct\s*(\d+)',
+            r'código\s*(\d+)',
+            r'codigo\s*(\d+)',
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, query.lower())
+            if match:
+                try:
+                    return int(match.group(1))
+                except ValueError:
+                    continue
+        return None
+    
+    def _extract_codigo_submercado(self, query: str) -> Optional[int]:
+        """Extrai código do submercado da query."""
+        patterns = [
+            r'submercado\s*(\d+)',
+            r'su\s*(\d+)',
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, query.lower())
+            if match:
+                try:
+                    return int(match.group(1))
+                except ValueError:
+                    continue
+        return None
+    
+    def _extract_estagio(self, query: str) -> Optional[int]:
+        """Extrai estágio da query."""
+        patterns = [
+            r'estágio\s*(\d+)',
+            r'estagio\s*(\d+)',
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, query.lower())
+            if match:
+                try:
+                    return int(match.group(1))
+                except ValueError:
+                    continue
+        return None
+    
+    def _extract_patamar(self, query: str) -> Optional[int]:
+        """
+        Extrai patamar da query.
+        Aceita números (1, 2, 3) ou nomes (pesada, média, leve).
+        
+        Args:
+            query: Query do usuário
+            
+        Returns:
+            Número do patamar (1, 2, 3) ou None
+        """
+        query_lower = query.lower()
+        
+        # Mapeamento de nomes para números
+        patamar_map = {
+            'pesada': 1, 'pesado': 1, 'pesad': 1,
+            'média': 2, 'media': 2, 'medio': 2, 'médio': 2,
+            'leve': 3, 'leve': 3
+        }
+        
+        # Buscar por nome do patamar
+        for nome, numero in patamar_map.items():
+            if nome in query_lower:
+                safe_print(f"[CT TOOL] ✅ Patamar encontrado por nome: {nome} -> {numero}")
+                return numero
+        
+        # Buscar por número explícito
+        patterns = [
+            r'patamar\s*(\d+)',
+            r'patamar\s*#?\s*(\d+)',
+            r'patamar\s*(?:de\s*carga\s*)?(\d+)',
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, query_lower)
+            if match:
+                try:
+                    patamar = int(match.group(1))
+                    if 1 <= patamar <= 3:
+                        safe_print(f"[CT TOOL] ✅ Patamar encontrado por número: {patamar}")
+                        return patamar
+                except ValueError:
+                    continue
+        
+        return None
+    
+    def _is_cvu_query(self, query: str) -> bool:
+        """
+        Verifica se a query é especificamente sobre CVU.
+        
+        Args:
+            query: Query do usuário
+            
+        Returns:
+            True se a query é sobre CVU
+        """
+        query_lower = query.lower()
+        cvu_keywords = [
+            "cvu",
+            "custo variável unitário",
+            "custo variavel unitario",
+            "custo variável unitario",
+            "custo variavel unitário",
+        ]
+        return any(kw in query_lower for kw in cvu_keywords)
+    
+    def _filter_by_cvu_only(self, data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Filtra dados para mostrar apenas CVU, removendo disponibilidade e inflexibilidade.
+        
+        Args:
+            data: Lista de registros de usinas
+            
+        Returns:
+            Lista filtrada contendo apenas campos de CVU
+        """
+        filtered = []
+        for record in data:
+            filtered_record = {
+                "codigo_usina": record.get("codigo_usina"),
+                "codigo_submercado": record.get("codigo_submercado"),
+                "nome_usina": record.get("nome_usina"),
+                "estagio": record.get("estagio"),
+            }
+            
+            # Adicionar apenas CVU por patamar
+            for patamar in [1, 2, 3]:
+                cvu_key = f"cvu_{patamar}"
+                if cvu_key in record:
+                    filtered_record[cvu_key] = record[cvu_key]
+            
+            filtered.append(filtered_record)
+        
+        return filtered
+    
+    def _filter_by_patamar(self, data: List[Dict[str, Any]], patamar: int) -> List[Dict[str, Any]]:
+        """
+        Filtra dados para mostrar apenas um patamar específico.
+        
+        Args:
+            data: Lista de registros de usinas
+            patamar: Número do patamar (1, 2, 3)
+            
+        Returns:
+            Lista filtrada contendo apenas dados do patamar especificado
+        """
+        filtered = []
+        for record in data:
+            filtered_record = {
+                "codigo_usina": record.get("codigo_usina"),
+                "codigo_submercado": record.get("codigo_submercado"),
+                "nome_usina": record.get("nome_usina"),
+                "estagio": record.get("estagio"),
+                "patamar": patamar,
+            }
+            
+            # Adicionar apenas campos do patamar especificado
+            cvu_key = f"cvu_{patamar}"
+            disp_key = f"disponibilidade_{patamar}"
+            infl_key = f"inflexibilidade_{patamar}"
+            
+            if cvu_key in record:
+                filtered_record["cvu"] = record[cvu_key]
+            if disp_key in record:
+                filtered_record["disponibilidade"] = record[disp_key]
+            if infl_key in record:
+                filtered_record["inflexibilidade"] = record[infl_key]
+            
+            filtered.append(filtered_record)
+        
+        return filtered
+    
+    def _filter_by_cvu_and_patamar(self, data: List[Dict[str, Any]], patamar: int) -> List[Dict[str, Any]]:
+        """
+        Filtra dados para mostrar apenas CVU de um patamar específico.
+        
+        Args:
+            data: Lista de registros de usinas
+            patamar: Número do patamar (1, 2, 3)
+            
+        Returns:
+            Lista filtrada contendo apenas CVU do patamar especificado
+        """
+        filtered = []
+        for record in data:
+            filtered_record = {
+                "codigo_usina": record.get("codigo_usina"),
+                "codigo_submercado": record.get("codigo_submercado"),
+                "nome_usina": record.get("nome_usina"),
+                "estagio": record.get("estagio"),
+                "patamar": patamar,
+            }
+            
+            # Adicionar apenas CVU do patamar especificado
+            cvu_key = f"cvu_{patamar}"
+            if cvu_key in record:
+                filtered_record["cvu"] = record[cvu_key]
+            
+            filtered.append(filtered_record)
+        
+        return filtered
+    
+    def _extract_usina_from_query(
+        self, 
+        query: str, 
+        dadger: Any, 
+        data_usinas: list
+    ) -> Optional[int]:
+        """
+        Extrai código da usina da query usando o mesmo mecanismo da ModifOperacaoTool do NEWAVE.
+        Baseado em modif_operacao_tool.py do NEWAVE.
+        
+        Args:
+            query: Query do usuário
+            dadger: Instância do Dadger
+            data_usinas: Lista de dados das usinas já carregados
+            
+        Returns:
+            Código da usina ou None
+        """
+        query_lower = query.lower()
+        
+        # ETAPA 1: Tentar extrair número explícito
+        patterns = [
+            r'usina\s*(\d+)',
+            r'usina\s*térmica\s*(\d+)',
+            r'usina\s*termica\s*(\d+)',
+            r'usina\s*#?\s*(\d+)',
+            r'código\s*(\d+)',
+            r'codigo\s*(\d+)',
+            r'térmica\s*(\d+)',
+            r'termica\s*(\d+)',
+            r'ute\s*(\d+)',
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, query_lower)
+            if match:
+                try:
+                    codigo = int(match.group(1))
+                    # Verificar se existe nos dados
+                    if any(d.get('codigo_usina') == codigo for d in data_usinas):
+                        safe_print(f"[CT TOOL] ✅ Código {codigo} encontrado por padrão numérico")
+                        return codigo
+                except ValueError:
+                    continue
+        
+        # ETAPA 2: Buscar por nome da usina
+        # Criar lista de usinas (similar ao modif.usina(df=True))
+        usinas_list = []
+        for record in data_usinas:
+            codigo = record.get('codigo_usina')
+            nome = str(record.get('nome_usina', '')).strip()
+            if codigo and nome and nome != 'nan' and nome != '':
+                usinas_list.append({'codigo': codigo, 'nome': nome})
+        
+        if not usinas_list:
+            safe_print(f"[CT TOOL] ⚠️ Nenhuma usina encontrada nos dados")
+            return None
+        
+        safe_print(f"[CT TOOL] Usinas disponíveis no arquivo:")
+        for usina in usinas_list:
+            safe_print(f"[CT TOOL]   - Código {usina['codigo']}: \"{usina['nome']}\"")
+        
+        # Ordenar por tamanho do nome (maior primeiro) para priorizar matches mais específicos
+        usinas_sorted = sorted(
+            usinas_list,
+            key=lambda x: len(x['nome'].strip()),
+            reverse=True
+        )
+        
+        # ETAPA 2.1: Buscar match exato do nome completo (prioridade máxima)
+        for usina in usinas_sorted:
+            codigo_usina = usina['codigo']
+            nome_usina = usina['nome']
+            nome_usina_lower = nome_usina.lower().strip()
+            
+            if not nome_usina_lower:
+                continue
+            
+            # Match exato do nome completo
+            if nome_usina_lower == query_lower.strip():
+                safe_print(f"[CT TOOL] ✅ Código {codigo_usina} encontrado por match exato '{nome_usina}'")
+                return codigo_usina
+            
+            # Match exato do nome completo dentro da query (com word boundaries)
+            # IMPORTANTE: Verificar word boundaries PRIMEIRO para evitar matches parciais incorretos
+            if len(nome_usina_lower) >= 4:  # Nomes com pelo menos 4 caracteres
+                # Verificar se está como palavra completa (não parte de outra palavra)
+                pattern = r'\b' + re.escape(nome_usina_lower) + r'\b'
+                if re.search(pattern, query_lower):
+                    safe_print(f"[CT TOOL] ✅ Código {codigo_usina} encontrado por nome completo '{nome_usina}' na query")
+                    return codigo_usina
+        
+        # ETAPA 2.2: Buscar por palavras-chave do nome (apenas se match exato não encontrou)
+        # Priorizar palavras mais longas e específicas
+        # IMPORTANTE: Filtrar palavras muito comuns que podem causar matches incorretos
+        palavras_ignorar = {
+            'de', 'da', 'do', 'das', 'dos', 'e', 'a', 'o', 'as', 'os', 'em', 'na', 'no', 'nas', 'nos',
+            'usina', 'usinas', 'ute', 'utes', 'térmica', 'termica', 'termeletrica', 'termelétrica',
+            'decomp', 'bloco', 'registro', 'qual', 'foi', 'para', 'por', 'com', 'sem'
+        }
+        
+        palavras_candidatas = []
+        for usina in usinas_sorted:
+            codigo_usina = usina['codigo']
+            nome_usina = usina['nome']
+            nome_usina_lower = nome_usina.lower().strip()
+            
+            if not nome_usina_lower:
+                continue
+            
+            palavras_nome = nome_usina_lower.split()
+            # Filtrar palavras ignoradas e ordenar por tamanho (maior primeiro)
+            palavras_nome_filtradas = [p for p in palavras_nome if p not in palavras_ignorar and len(p) > 3]
+            palavras_nome_sorted = sorted(palavras_nome_filtradas, key=len, reverse=True)
+            
+            # IMPORTANTE: Exigir pelo menos 2 palavras em comum OU uma palavra longa (>= 6 chars)
+            # para evitar matches muito genéricos
+            palavras_encontradas = []
+            for palavra in palavras_nome_sorted:
+                # Verificar se a palavra está na query como palavra completa
+                pattern = r'\b' + re.escape(palavra) + r'\b'
+                if re.search(pattern, query_lower):
+                    palavras_encontradas.append(palavra)
+            
+            # Só adicionar como candidato se tiver pelo menos 2 palavras OU uma palavra longa
+            if len(palavras_encontradas) >= 2 or (len(palavras_encontradas) >= 1 and any(len(p) >= 6 for p in palavras_encontradas)):
+                melhor_palavra = max(palavras_encontradas, key=len)
+                palavras_candidatas.append({
+                    'codigo': codigo_usina,
+                    'nome': nome_usina,
+                    'palavra': melhor_palavra,
+                    'tamanho': len(melhor_palavra),
+                    'tamanho_nome': len(nome_usina_lower),
+                    'num_palavras': len(palavras_encontradas)
+                })
+        
+        # Se encontrou candidatos, escolher o melhor (número de palavras primeiro, depois tamanho)
+        if palavras_candidatas:
+            # Ordenar por número de palavras (mais palavras = mais específico), depois tamanho da palavra
+            melhor_match = max(
+                palavras_candidatas,
+                key=lambda x: (x.get('num_palavras', 0), x['tamanho'], x['tamanho_nome'])
+            )
+            safe_print(f"[CT TOOL] ✅ Código {melhor_match['codigo']} encontrado por palavra-chave '{melhor_match['palavra']}' do nome '{melhor_match['nome']}'")
+            return melhor_match['codigo']
+        
+        safe_print(f"[CT TOOL] ⚠️ Nenhuma usina específica detectada na query")
+        return None
+    
+    def _ct_to_dict(self, ct_obj) -> Dict[str, Any]:
+        """Converte objeto CT para dict."""
+        if isinstance(ct_obj, dict):
+            return ct_obj
+        if hasattr(ct_obj, '__dict__'):
+            return ct_obj.__dict__
+        # Extrair atributos conhecidos do registro CT
+        return {
+            "codigo_usina": getattr(ct_obj, 'codigo_usina', None),
+            "codigo_submercado": getattr(ct_obj, 'codigo_submercado', None),
+            "nome_usina": getattr(ct_obj, 'nome_usina', None),
+            "estagio": getattr(ct_obj, 'estagio', None),
+            "cvu_1": getattr(ct_obj, 'cvu_1', None),
+            "cvu_2": getattr(ct_obj, 'cvu_2', None),
+            "cvu_3": getattr(ct_obj, 'cvu_3', None),
+            "disponibilidade_1": getattr(ct_obj, 'disponibilidade_1', None),
+            "disponibilidade_2": getattr(ct_obj, 'disponibilidade_2', None),
+            "disponibilidade_3": getattr(ct_obj, 'disponibilidade_3', None),
+            "inflexibilidade_1": getattr(ct_obj, 'inflexibilidade_1', None),
+            "inflexibilidade_2": getattr(ct_obj, 'inflexibilidade_2', None),
+            "inflexibilidade_3": getattr(ct_obj, 'inflexibilidade_3', None),
+        }

@@ -63,4 +63,22 @@ export interface SingleDeckVisualizationData {
   visualization_type?: string;
   chart_config?: ChartConfig;
   tool_name?: string;
+  // Campos específicos para DisponibilidadeUsinaTool
+  disponibilidade_total?: number;
+  detalhes_patamares?: Array<{
+    patamar: string;
+    patamar_numero: number;
+    inflexibilidade: number | null;
+    duracao: number | null;
+  }>;
+  usina?: {
+    codigo: number;
+    nome: string;
+    submercado: number;
+  };
+  calculo?: {
+    numerador: number;
+    denominador: number;
+    resultado: number;
+  };
 }

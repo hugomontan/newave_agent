@@ -340,11 +340,11 @@ export default function ComparisonPage() {
       const deckNames = decks.map(d => d.name);
       console.log("[ComparisonPage] Deck names extraídos:", deckNames);
       
-      console.log("[ComparisonPage] Chamando initComparison API...");
+      console.log("[ComparisonPage] Chamando initDecompComparison API...");
       const startTime = Date.now();
       const data = await initDecompComparison(deckNames);
       const duration = Date.now() - startTime;
-      console.log("[ComparisonPage] initComparison retornou em", duration, "ms:", data);
+      console.log("[ComparisonPage] initDecompComparison retornou em", duration, "ms:", data);
       
       if (!data || !data.session_id) {
         throw new Error("Resposta da API não contém session_id");
@@ -408,8 +408,8 @@ export default function ComparisonPage() {
       try {
         console.log("[ComparisonPage] Inicializando com decks padrão...");
         setIsLoading(true);
-        const data = await initComparison();
-        console.log("[ComparisonPage] initComparison retornou:", data);
+        const data = await initDecompComparison();
+        console.log("[ComparisonPage] initDecompComparison retornou:", data);
         
         setSessionId(data.session_id);
         setSelectedDecks(data.selected_decks);
@@ -862,7 +862,7 @@ export default function ComparisonPage() {
   const handleReindex = async () => {
     setIsReindexing(true);
     try {
-      const result = await reindexDocs();
+      const result = await reindexDecompDocs();
       setMessages((prev) => [
         ...prev,
         {
@@ -937,7 +937,7 @@ export default function ComparisonPage() {
     comparisonDataRef.current = null;
 
     try {
-      for await (const event of sendQueryStream(sessionId, query, "comparison")) {
+      for await (const event of queryDecompStream(sessionId, query, "comparison")) {
         processStreamEvent(event);
       }
 
