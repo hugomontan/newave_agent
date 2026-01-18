@@ -11,11 +11,15 @@ from .base import ComparisonFormatter, DeckData
 from decomp_agent.app.agents.multi_deck.formatting.data_formatters import (
     UHComparisonFormatter,
     DisponibilidadeComparisonFormatter,
+    InflexibilidadeComparisonFormatter,
+    CVUComparisonFormatter,
 )
 
 # Lista de formatadores (em ordem de prioridade - mais específicos primeiro)
 FORMATTERS: List[ComparisonFormatter] = [
     DisponibilidadeComparisonFormatter(),
+    InflexibilidadeComparisonFormatter(),
+    CVUComparisonFormatter(),
     UHComparisonFormatter(),
 ]
 
@@ -64,9 +68,16 @@ def convert_legacy_result_to_decks_data(
     """
     decks_data = []
     
+    # Verificar se há erro sem dados de decks
+    if not tool_result.get("success", True) and "decks" not in tool_result:
+        # Se há erro e não há decks, retornar lista vazia (será tratado no formatador)
+        return []
+    
     # Verificar formato novo (decks lista)
     if "decks" in tool_result:
         decks_list = tool_result["decks"]
+        if not decks_list:  # Lista vazia
+            return []
         for deck_info in decks_list:
             deck_name = deck_info.get("name", "")
             display_name = deck_display_names.get(deck_name, deck_name) if deck_display_names else deck_name
@@ -127,13 +138,31 @@ def format_comparison_response(
     Returns:
         Dict com final_response formatado e comparison_data
     """
+    # Verificar se há erro explícito antes de converter
+    if not tool_result.get("success", True) and "error" in tool_result:
+        error_msg = tool_result.get("error", "Erro desconhecido")
+        return {
+            "final_response": f"## Erro na Comparação\n\n{error_msg}",
+            "comparison_data": {
+                "tool_name": tool_used,
+                "query": query,
+                "error": error_msg
+            }
+        }
+    
     # Converter para formato de List[DeckData]
     decks_data = convert_legacy_result_to_decks_data(tool_result, deck_display_names)
     
     if not decks_data:
+        # Verificar se há mensagem de erro no resultado original
+        error_msg = tool_result.get("error", "Não foi possível obter dados de comparação.")
         return {
-            "final_response": "## Erro na Comparação\n\nNão foi possível obter dados de comparação.",
-            "comparison_data": None
+            "final_response": f"## Erro na Comparação\n\n{error_msg}",
+            "comparison_data": {
+                "tool_name": tool_used,
+                "query": query,
+                "error": error_msg
+            }
         }
     
     # Obter formatter apropriado

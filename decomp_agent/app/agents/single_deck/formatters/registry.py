@@ -13,6 +13,7 @@ from decomp_agent.app.agents.single_deck.formatters.data_formatters import (
     CTSingleDeckFormatter,
     DPSingleDeckFormatter,
     DisponibilidadeUsinaFormatter,
+    InflexibilidadeUsinaFormatter,
 )
 
 # Formatter genérico (fallback)
@@ -24,6 +25,7 @@ SINGLE_DECK_FORMATTERS = [
     CTSingleDeckFormatter(),
     DPSingleDeckFormatter(),
     DisponibilidadeUsinaFormatter(),
+    InflexibilidadeUsinaFormatter(),
 ]
 
 

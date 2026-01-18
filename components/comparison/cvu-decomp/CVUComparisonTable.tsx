@@ -6,15 +6,15 @@ import type { TableRow } from "../shared/types";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-interface DisponibilidadeComparisonTableProps {
+interface CVUComparisonTableProps {
   data: TableRow[];
   deckNames: string[];
 }
 
-export function DisponibilidadeComparisonTable({ 
+export function CVUComparisonTable({ 
   data, 
   deckNames 
-}: DisponibilidadeComparisonTableProps) {
+}: CVUComparisonTableProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   
   if (!data || data.length === 0) {
@@ -29,7 +29,7 @@ export function DisponibilidadeComparisonTable({
     <div className="bg-card border border-border rounded-lg p-3.5 sm:p-4.5 max-w-full">
       <div className="flex items-center justify-between mb-4">
         <h4 className="text-base sm:text-lg font-semibold text-card-foreground">
-          Disponibilidade por Deck
+          CVU por Semana Operativa
         </h4>
         {hasMoreRows && (
           <Button
@@ -55,12 +55,18 @@ export function DisponibilidadeComparisonTable({
       <div className="w-full">
         <table className="w-full border-collapse table-auto">
           <colgroup>
+            <col style={{ minWidth: '80px' }} />
             <col style={{ minWidth: '100px' }} />
             <col style={{ minWidth: '180px' }} />
+            <col style={{ minWidth: '120px' }} />
+            <col style={{ minWidth: '120px' }} />
             <col style={{ minWidth: '120px' }} />
           </colgroup>
           <thead>
             <tr className="border-b border-border bg-background/50">
+              <th className="px-3.5 sm:px-4.5 py-2.5 text-left text-xs font-semibold text-card-foreground uppercase tracking-wider whitespace-nowrap">
+                Semana
+              </th>
               <th className="px-3.5 sm:px-4.5 py-2.5 text-left text-xs font-semibold text-card-foreground uppercase tracking-wider whitespace-nowrap">
                 Data
               </th>
@@ -68,7 +74,13 @@ export function DisponibilidadeComparisonTable({
                 Deck
               </th>
               <th className="px-3.5 sm:px-4.5 py-2.5 text-right text-xs font-semibold text-card-foreground uppercase tracking-wider whitespace-nowrap">
-                Disponibilidade (MW)
+                CVU Pesada (R$/MWh)
+              </th>
+              <th className="px-3.5 sm:px-4.5 py-2.5 text-right text-xs font-semibold text-card-foreground uppercase tracking-wider whitespace-nowrap">
+                CVU Média (R$/MWh)
+              </th>
+              <th className="px-3.5 sm:px-4.5 py-2.5 text-right text-xs font-semibold text-card-foreground uppercase tracking-wider whitespace-nowrap">
+                CVU Leve (R$/MWh)
               </th>
             </tr>
           </thead>
@@ -76,15 +88,21 @@ export function DisponibilidadeComparisonTable({
             {displayedData.map((row, index) => {
               const rowData = row as any;
               // Usar ?? ao invés de || para não tratar 0 como falsy
-              const disponibilidade = rowData.disponibilidade ?? rowData.disponibilidade_total;
+              const semanaOperativa = rowData.semana_operativa ?? "-";
               const dataValue = rowData.data ?? rowData.date ?? "-";
               const deckName = rowData.display_name ?? rowData.deck ?? "-";
+              const cvuPesada = rowData.cvu_pesada;
+              const cvuMedia = rowData.cvu_media;
+              const cvuLeve = rowData.cvu_leve;
               
               return (
                 <tr
-                  key={`${rowData.deck}-${index}`}
+                  key={`${rowData.semana_operativa}-${index}`}
                   className="border-b border-border/50 hover:bg-background/30 transition-colors"
                 >
+                  <td className="px-3.5 sm:px-4.5 py-2 text-sm text-card-foreground whitespace-nowrap font-medium">
+                    {semanaOperativa}
+                  </td>
                   <td className="px-3.5 sm:px-4.5 py-2 text-sm text-card-foreground whitespace-nowrap">
                     {dataValue}
                   </td>
@@ -92,9 +110,19 @@ export function DisponibilidadeComparisonTable({
                     {deckName}
                   </td>
                   <td className="px-3.5 sm:px-4.5 py-2 text-sm text-card-foreground text-right font-mono whitespace-nowrap">
-                    {/* Tratar zero explicitamente - zero é válido quando inflexibilidades são zeradas */}
-                    {disponibilidade !== null && disponibilidade !== undefined
-                      ? formatNumber(Number(disponibilidade)) 
+                    {/* Tratar zero explicitamente */}
+                    {cvuPesada !== null && cvuPesada !== undefined
+                      ? formatNumber(Number(cvuPesada)) 
+                      : "-"}
+                  </td>
+                  <td className="px-3.5 sm:px-4.5 py-2 text-sm text-card-foreground text-right font-mono whitespace-nowrap">
+                    {cvuMedia !== null && cvuMedia !== undefined
+                      ? formatNumber(Number(cvuMedia)) 
+                      : "-"}
+                  </td>
+                  <td className="px-3.5 sm:px-4.5 py-2 text-sm text-card-foreground text-right font-mono whitespace-nowrap">
+                    {cvuLeve !== null && cvuLeve !== undefined
+                      ? formatNumber(Number(cvuLeve)) 
                       : "-"}
                   </td>
                 </tr>
@@ -105,7 +133,7 @@ export function DisponibilidadeComparisonTable({
       </div>
       {hasMoreRows && !isExpanded && (
         <div className="mt-2 text-center text-sm text-muted-foreground">
-          Mostrando {INITIAL_ROWS} de {data.length} decks
+          Mostrando {INITIAL_ROWS} de {data.length} semanas operativas
         </div>
       )}
     </div>

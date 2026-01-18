@@ -1,0 +1,1 @@
+export { InflexibilidadeUsinaView } from "./InflexibilidadeUsinaView";

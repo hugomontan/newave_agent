@@ -196,7 +196,7 @@ export function ChatMessage({ message, onOptionClick }: ChatMessageProps) {
       transition={{ duration: 0.2, ease: "easeOut" }}
       className={`flex ${isUser ? "justify-end" : "justify-start"} mb-8`}
     >
-      <div className={`flex items-start gap-3.5 max-w-[95%] ${isUser ? "flex-row-reverse" : ""}`}>
+      <div className={`flex items-start gap-3.5 max-w-[98%] ${isUser ? "flex-row-reverse" : ""}`}>
         {/* Avatar */}
         <div
           className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
@@ -213,7 +213,7 @@ export function ChatMessage({ message, onOptionClick }: ChatMessageProps) {
         </div>
 
         {/* Message content */}
-        <div className="flex-1 min-w-0">
+        <div className="flex-1">
           {isUser ? (
             <div className="bg-[hsl(210,70%,55%)] text-white rounded-2xl rounded-tr-sm px-4 py-3">
               <p className="whitespace-pre-wrap text-[15px] leading-relaxed">
@@ -600,8 +600,8 @@ export function ChatMessage({ message, onOptionClick }: ChatMessageProps) {
 
               {/* Comparison View - mostrar mesmo durante loading de disambiguation */}
               {message.comparisonData && (
-                <div className="w-full -mx-4 sm:-mx-6 md:-mx-8 px-4 sm:px-6 md:px-8 max-w-full">
-                  <div className="min-w-0 w-full">
+                <div className="w-full px-2 sm:px-4 max-w-full">
+                  <div className="w-full">
                     <ComparisonView comparison={message.comparisonData} />
                   </div>
                 </div>

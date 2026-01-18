@@ -13,7 +13,7 @@ import {
 } from "recharts";
 import type { ChartData } from "../shared/types";
 
-interface DisponibilidadeComparisonChartProps {
+interface InflexibilidadeComparisonChartProps {
   data: ChartData;
   config?: {
     type?: string;
@@ -23,10 +23,10 @@ interface DisponibilidadeComparisonChartProps {
   };
 }
 
-export function DisponibilidadeComparisonChart({ 
+export function InflexibilidadeComparisonChart({ 
   data, 
   config 
-}: DisponibilidadeComparisonChartProps) {
+}: InflexibilidadeComparisonChartProps) {
   if (!data || !data.labels || data.labels.length === 0 || !data.datasets || data.datasets.length === 0) {
     return null;
   }
@@ -55,7 +55,7 @@ export function DisponibilidadeComparisonChart({
   return (
     <div className="bg-card border border-border rounded-lg p-4 sm:p-6">
       <h4 className="text-base sm:text-lg font-semibold text-card-foreground mb-4">
-        {config?.title || "Evolução da Disponibilidade"}
+        {config?.title || "Evolução da Inflexibilidade"}
       </h4>
       <div className="w-full h-[400px]">
         <ResponsiveContainer width="100%" height="100%">
@@ -70,7 +70,7 @@ export function DisponibilidadeComparisonChart({
               className="text-xs"
               tick={{ fill: "currentColor" }}
               label={{ 
-                value: config?.y_axis || "Disponibilidade (MW)", 
+                value: config?.y_axis || "Inflexibilidade (MW)", 
                 angle: -90, 
                 position: "insideLeft",
                 style: { textAnchor: "middle", fill: "currentColor" }

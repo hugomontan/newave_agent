@@ -32,7 +32,7 @@ export function CTView({ visualizationData }: CTViewProps) {
 
       {/* Tabela de usinas termelétricas */}
       {table && table.length > 0 && (
-        <CTTable data={table as any} />
+        <CTTable data={table as any} cvuApenas={filtros?.cvu_apenas ?? false} />
       )}
 
       {(!table || table.length === 0) && (

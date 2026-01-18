@@ -21,6 +21,7 @@ from decomp_agent.app.config import (
     DISAMBIGUATION_MIN_SCORE,
     safe_print
 )
+from decomp_agent.app.tools.semantic_matcher import find_best_tool_semantic
 
 # Função auxiliar para escrever no log de debug de forma segura
 def _write_debug_log(data: dict):
@@ -129,8 +130,56 @@ def tool_router_node(state: SingleDeckState) -> dict:
                 }
             }
     
-    # Por enquanto, apenas verificar keyword matching (semantic matching será adicionado depois)
-    if USE_HYBRID_MATCHING or not SEMANTIC_MATCHING_ENABLED:
+    # Estratégia de matching: Semantic matching (se habilitado) + Keyword matching (fallback)
+    if SEMANTIC_MATCHING_ENABLED or USE_HYBRID_MATCHING:
+        # Tentar semantic matching primeiro
+        safe_print("[TOOL ROUTER DECOMP] Tentando semantic matching...")
+        try:
+            semantic_result = find_best_tool_semantic(query, tools, threshold=SEMANTIC_MATCH_THRESHOLD)
+            if semantic_result:
+                best_tool, score = semantic_result
+                tool_name = best_tool.get_name()
+                safe_print(f"[TOOL ROUTER DECOMP] ✅ Semantic matching encontrou tool: {tool_name} (score: {score:.4f})")
+                return _execute_tool(best_tool, tool_name)
+            else:
+                safe_print("[TOOL ROUTER DECOMP] ⚠️ Semantic matching não encontrou tool acima do threshold")
+                # Se USE_HYBRID_MATCHING, tentar keyword matching como fallback
+                if USE_HYBRID_MATCHING:
+                    safe_print("[TOOL ROUTER DECOMP] Tentando keyword matching como fallback...")
+                    for tool in tools:
+                        tool_name = tool.get_name()
+                        safe_print(f"[TOOL ROUTER DECOMP] Testando tool: {tool_name}")
+                        
+                        try:
+                            if tool.can_handle(query):
+                                safe_print(f"[TOOL ROUTER DECOMP] [OK] Tool {tool_name} pode processar a query!")
+                                return _execute_tool(tool, tool_name)
+                            else:
+                                safe_print(f"[TOOL ROUTER DECOMP] [X] Tool {tool_name} nao pode processar")
+                        except Exception as e:
+                            safe_print(f"[TOOL ROUTER DECOMP] ❌ Erro ao testar/executar tool {tool_name}: {e}")
+                            continue
+        except Exception as e:
+            safe_print(f"[TOOL ROUTER DECOMP] ⚠️ Erro no semantic matching: {e}")
+            import traceback
+            traceback.print_exc()
+            # Em caso de erro, tentar keyword matching como fallback
+            safe_print("[TOOL ROUTER DECOMP] Tentando keyword matching como fallback...")
+            for tool in tools:
+                tool_name = tool.get_name()
+                safe_print(f"[TOOL ROUTER DECOMP] Testando tool: {tool_name}")
+                
+                try:
+                    if tool.can_handle(query):
+                        safe_print(f"[TOOL ROUTER DECOMP] [OK] Tool {tool_name} pode processar a query!")
+                        return _execute_tool(tool, tool_name)
+                    else:
+                        safe_print(f"[TOOL ROUTER DECOMP] [X] Tool {tool_name} nao pode processar")
+                except Exception as e:
+                    safe_print(f"[TOOL ROUTER DECOMP] ❌ Erro ao testar/executar tool {tool_name}: {e}")
+                    continue
+    else:
+        # Apenas keyword matching (comportamento original)
         safe_print("[TOOL ROUTER DECOMP] Verificando qual tool pode processar a query (keyword matching)...")
         for tool in tools:
             tool_name = tool.get_name()

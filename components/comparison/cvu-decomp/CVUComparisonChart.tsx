@@ -13,7 +13,7 @@ import {
 } from "recharts";
 import type { ChartData } from "../shared/types";
 
-interface DisponibilidadeComparisonChartProps {
+interface CVUComparisonChartProps {
   data: ChartData;
   config?: {
     type?: string;
@@ -23,10 +23,10 @@ interface DisponibilidadeComparisonChartProps {
   };
 }
 
-export function DisponibilidadeComparisonChart({ 
+export function CVUComparisonChart({ 
   data, 
   config 
-}: DisponibilidadeComparisonChartProps) {
+}: CVUComparisonChartProps) {
   if (!data || !data.labels || data.labels.length === 0 || !data.datasets || data.datasets.length === 0) {
     return null;
   }
@@ -44,18 +44,20 @@ export function DisponibilidadeComparisonChart({
     return point;
   });
 
+  // Cores das séries (definidas no formatter)
+  // CVU Pesada: rgb(239, 68, 68) - red-500
+  // CVU Média: rgb(234, 179, 8) - yellow-500
+  // CVU Leve: rgb(34, 197, 94) - green-500
   const colors = [
-    "rgb(59, 130, 246)", // blue-500
-    "rgb(34, 197, 94)",  // green-500
-    "rgb(239, 68, 68)",  // red-500
-    "rgb(234, 179, 8)",  // yellow-500
-    "rgb(168, 85, 247)", // purple-500
+    "rgb(239, 68, 68)",  // red-500 - Pesada
+    "rgb(234, 179, 8)",  // yellow-500 - Média
+    "rgb(34, 197, 94)",  // green-500 - Leve
   ];
 
   return (
     <div className="bg-card border border-border rounded-lg p-4 sm:p-6">
       <h4 className="text-base sm:text-lg font-semibold text-card-foreground mb-4">
-        {config?.title || "Evolução da Disponibilidade"}
+        {config?.title || "Evolução do CVU"}
       </h4>
       <div className="w-full h-[400px]">
         <ResponsiveContainer width="100%" height="100%">
@@ -70,7 +72,7 @@ export function DisponibilidadeComparisonChart({
               className="text-xs"
               tick={{ fill: "currentColor" }}
               label={{ 
-                value: config?.y_axis || "Disponibilidade (MW)", 
+                value: config?.y_axis || "CVU (R$/MWh)", 
                 angle: -90, 
                 position: "insideLeft",
                 style: { textAnchor: "middle", fill: "currentColor" }
@@ -89,7 +91,7 @@ export function DisponibilidadeComparisonChart({
                 key={dataset.label}
                 type="monotone"
                 dataKey={dataset.label}
-                stroke={colors[index % colors.length]}
+                stroke={dataset.borderColor || colors[index % colors.length]}
                 strokeWidth={2}
                 dot={false}
                 activeDot={false}

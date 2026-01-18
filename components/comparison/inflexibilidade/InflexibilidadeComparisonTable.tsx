@@ -6,15 +6,15 @@ import type { TableRow } from "../shared/types";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-interface DisponibilidadeComparisonTableProps {
+interface InflexibilidadeComparisonTableProps {
   data: TableRow[];
   deckNames: string[];
 }
 
-export function DisponibilidadeComparisonTable({ 
+export function InflexibilidadeComparisonTable({ 
   data, 
   deckNames 
-}: DisponibilidadeComparisonTableProps) {
+}: InflexibilidadeComparisonTableProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   
   if (!data || data.length === 0) {
@@ -29,7 +29,7 @@ export function DisponibilidadeComparisonTable({
     <div className="bg-card border border-border rounded-lg p-3.5 sm:p-4.5 max-w-full">
       <div className="flex items-center justify-between mb-4">
         <h4 className="text-base sm:text-lg font-semibold text-card-foreground">
-          Disponibilidade por Deck
+          Inflexibilidade por Deck
         </h4>
         {hasMoreRows && (
           <Button
@@ -68,7 +68,7 @@ export function DisponibilidadeComparisonTable({
                 Deck
               </th>
               <th className="px-3.5 sm:px-4.5 py-2.5 text-right text-xs font-semibold text-card-foreground uppercase tracking-wider whitespace-nowrap">
-                Disponibilidade (MW)
+                Inflexibilidade (MW)
               </th>
             </tr>
           </thead>
@@ -76,7 +76,7 @@ export function DisponibilidadeComparisonTable({
             {displayedData.map((row, index) => {
               const rowData = row as any;
               // Usar ?? ao invés de || para não tratar 0 como falsy
-              const disponibilidade = rowData.disponibilidade ?? rowData.disponibilidade_total;
+              const inflexibilidade = rowData.inflexibilidade ?? rowData.inflexibilidade_total;
               const dataValue = rowData.data ?? rowData.date ?? "-";
               const deckName = rowData.display_name ?? rowData.deck ?? "-";
               
@@ -93,8 +93,8 @@ export function DisponibilidadeComparisonTable({
                   </td>
                   <td className="px-3.5 sm:px-4.5 py-2 text-sm text-card-foreground text-right font-mono whitespace-nowrap">
                     {/* Tratar zero explicitamente - zero é válido quando inflexibilidades são zeradas */}
-                    {disponibilidade !== null && disponibilidade !== undefined
-                      ? formatNumber(Number(disponibilidade)) 
+                    {inflexibilidade !== null && inflexibilidade !== undefined
+                      ? formatNumber(Number(inflexibilidade)) 
                       : "-"}
                   </td>
                 </tr>

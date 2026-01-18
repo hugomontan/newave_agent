@@ -8,7 +8,13 @@ from idecomp.decomp import Dadger
 import os
 import pandas as pd
 import re
+import sys
+from pathlib import Path
 from typing import Dict, Any, Optional, List
+
+# Adicionar shared ao path para importar o matcher
+sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent / "shared"))
+from shared.utils.usina_name_matcher import find_usina_match, normalize_usina_name
 
 class CTUsinasTermelétricasTool(DECOMPTool):
     """
@@ -123,11 +129,18 @@ class CTUsinasTermelétricasTool(DECOMPTool):
             estagio = self._extract_estagio(query)
             patamar = self._extract_patamar(query)  # NOVO: extrair patamar
             is_cvu_only = self._is_cvu_query(query)  # NOVO: verificar se é query de CVU
+            is_cvu_inflexibilidade_disponibilidade_query = self._is_cvu_inflexibilidade_disponibilidade_query(query)
             
-            # NOVO: Se for query de CVU e não especificou estágio, usar estágio 1 por padrão
-            if is_cvu_only and estagio is None:
+            # MUDANÇA: Se é query de CVU, SEMPRE usar estágio 1, ignorando qualquer especificação
+            if is_cvu_only:
                 estagio = 1
-                safe_print(f"[CT TOOL] Query de CVU sem estágio especificado - usando estágio 1 por padrão")
+                safe_print(f"[CT TOOL] Query de CVU detectada - FORÇANDO estágio 1 (ignorando qualquer especificação de estágio)")
+            elif is_cvu_inflexibilidade_disponibilidade_query and estagio is None:
+                estagio = 1
+                safe_print(f"[CT TOOL] Query específica sobre CVU/inflexibilidade/disponibilidade sem estágio especificado - usando estágio 1 por padrão")
+            elif estagio is None:
+                # Query geral do bloco CT - não aplicar filtro de estágio (mostrar todos)
+                safe_print(f"[CT TOOL] Query geral do bloco CT - mostrando todos os estágios")
             
             safe_print(f"[CT TOOL] Query recebida: {query}")
             safe_print(f"[CT TOOL] Codigo usina extraido: {codigo_usina}")
@@ -157,6 +170,14 @@ class CTUsinasTermelétricasTool(DECOMPTool):
                 data = [self._ct_to_dict(ct) for ct in ct_data]
             else:
                 data = [self._ct_to_dict(ct_data)]
+            
+            # SEMPRE filtrar por codigo_usina se foi especificado (extraído da query ou passado)
+            # IMPORTANTE: Garantir que apenas registros da usina especificada sejam retornados
+            if codigo_usina is not None:
+                total_antes = len(data)
+                data = [d for d in data if d.get('codigo_usina') == codigo_usina]
+                if total_antes != len(data):
+                    safe_print(f"[CT TOOL] Filtro por código aplicado: {total_antes} -> {len(data)} registros (Usina {codigo_usina})")
             
             # Tentar extrair usina da query (código ou nome) - PRIORIDADE MÁXIMA
             if codigo_usina is None:
@@ -341,8 +362,105 @@ class CTUsinasTermelétricasTool(DECOMPTool):
             "custo variavel unitario",
             "custo variável unitario",
             "custo variavel unitário",
+            "custo variável",
+            "custo variavel",
         ]
-        return any(kw in query_lower for kw in cvu_keywords)
+        
+        # Verificar se há palavras que indicam que NÃO é sobre CVU
+        exclude_keywords = [
+            "disponibilidade",
+            "inflexibilidade",
+            "patamar",
+        ]
+        
+        # Se contém CVU e não contém palavras de exclusão, é query de CVU
+        has_cvu = any(kw in query_lower for kw in cvu_keywords)
+        has_exclude = any(kw in query_lower for kw in exclude_keywords if kw not in ["patamar"])
+        
+        # Se menciona CVU explicitamente, é query de CVU (mesmo que mencione patamar)
+        if has_cvu:
+            return True
+        
+        return False
+    
+    def _is_cvu_inflexibilidade_disponibilidade_query(self, query: str) -> bool:
+        """
+        Verifica se a query é ESPECIFICAMENTE sobre CVU, inflexibilidade ou disponibilidade.
+        Essas queries sempre devem usar estágio 1 por padrão.
+        
+        Queries gerais do bloco CT (ex: "mostre todas as usinas termelétricas") não devem
+        ser consideradas como queries específicas, permitindo mostrar todos os estágios.
+        
+        Args:
+            query: Query do usuário
+            
+        Returns:
+            True se a query é especificamente sobre CVU, inflexibilidade ou disponibilidade
+        """
+        query_lower = query.lower()
+        
+        # Palavras-chave que indicam query geral (não específica)
+        general_keywords = [
+            "todas as usinas",
+            "todas usinas",
+            "listar usinas",
+            "mostrar usinas",
+            "usinas termelétricas",
+            "usinas termicas",
+            "bloco ct",
+            "registro ct",
+            "ct decomp",
+        ]
+        
+        # Se a query contém palavras-chave gerais, não é query específica
+        if any(kw in query_lower for kw in general_keywords):
+            # Verificar se também menciona CVU/inflexibilidade/disponibilidade especificamente
+            # Se sim, ainda é query específica
+            specific_mentions = [
+                "cvu de",
+                "cvu da",
+                "cvu do",
+                "inflexibilidade de",
+                "inflexibilidade da",
+                "inflexibilidade do",
+                "disponibilidade de",
+                "disponibilidade da",
+                "disponibilidade do",
+            ]
+            if not any(kw in query_lower for kw in specific_mentions):
+                return False
+        
+        # Palavras-chave para CVU
+        cvu_keywords = [
+            "cvu",
+            "custo variável unitário",
+            "custo variavel unitario",
+            "custo variável unitario",
+            "custo variavel unitário",
+            "custo variável",
+            "custo variavel",
+        ]
+        
+        # Palavras-chave para inflexibilidade
+        inflexibilidade_keywords = [
+            "inflexibilidade",
+            "inflexibilidade térmica",
+            "inflexibilidade termica",
+        ]
+        
+        # Palavras-chave para disponibilidade
+        disponibilidade_keywords = [
+            "disponibilidade",
+            "disponibilidade térmica",
+            "disponibilidade termica",
+        ]
+        
+        # Verificar se a query menciona qualquer um desses campos
+        has_cvu = any(kw in query_lower for kw in cvu_keywords)
+        has_inflexibilidade = any(kw in query_lower for kw in inflexibilidade_keywords)
+        has_disponibilidade = any(kw in query_lower for kw in disponibilidade_keywords)
+        
+        return has_cvu or has_inflexibilidade or has_disponibilidade
     
     def _filter_by_cvu_only(self, data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
@@ -485,23 +603,40 @@ class CTUsinasTermelétricasTool(DECOMPTool):
                 except ValueError:
                     continue
         
-        # ETAPA 2: Buscar por nome da usina
+        # ETAPA 2: Buscar por nome da usina usando matcher centralizado
         # Criar lista de usinas (similar ao modif.usina(df=True))
         usinas_list = []
+        codigo_to_nome = {}
         for record in data_usinas:
             codigo = record.get('codigo_usina')
             nome = str(record.get('nome_usina', '')).strip()
             if codigo and nome and nome != 'nan' and nome != '':
                 usinas_list.append({'codigo': codigo, 'nome': nome})
+                codigo_to_nome[codigo] = nome
         
         if not usinas_list:
             safe_print(f"[CT TOOL] ⚠️ Nenhuma usina encontrada nos dados")
             return None
         
         safe_print(f"[CT TOOL] Usinas disponíveis no arquivo:")
-        for usina in usinas_list:
+        for usina in usinas_list[:10]:  # Mostrar apenas primeiras 10 para não poluir log
             safe_print(f"[CT TOOL]   - Código {usina['codigo']}: \"{usina['nome']}\"")
+        if len(usinas_list) > 10:
+            safe_print(f"[CT TOOL]   ... e mais {len(usinas_list) - 10} usinas")
         
+        # Usar matcher centralizado que normaliza nomes entre NEWAVE e DECOMP
+        available_names = [u['nome'] for u in usinas_list]
+        match_result = find_usina_match(query, available_names, threshold=0.5)
+        
+        if match_result:
+            matched_name, score = match_result
+            # Encontrar código correspondente ao nome encontrado
+            for codigo, nome in codigo_to_nome.items():
+                if normalize_usina_name(nome) == normalize_usina_name(matched_name):
+                    safe_print(f"[CT TOOL] ✅ Código {codigo} encontrado via matcher centralizado: '{nome}' → '{normalize_usina_name(nome)}' (score: {score:.2f})")
+                    return codigo
+        
+        # Fallback: busca original se matcher não encontrou nada
         # Ordenar por tamanho do nome (maior primeiro) para priorizar matches mais específicos
         usinas_sorted = sorted(
             usinas_list,
@@ -524,17 +659,13 @@ class CTUsinasTermelétricasTool(DECOMPTool):
                 return codigo_usina
             
             # Match exato do nome completo dentro da query (com word boundaries)
-            # IMPORTANTE: Verificar word boundaries PRIMEIRO para evitar matches parciais incorretos
             if len(nome_usina_lower) >= 4:  # Nomes com pelo menos 4 caracteres
-                # Verificar se está como palavra completa (não parte de outra palavra)
                 pattern = r'\b' + re.escape(nome_usina_lower) + r'\b'
                 if re.search(pattern, query_lower):
                     safe_print(f"[CT TOOL] ✅ Código {codigo_usina} encontrado por nome completo '{nome_usina}' na query")
                     return codigo_usina
         
         # ETAPA 2.2: Buscar por palavras-chave do nome (apenas se match exato não encontrou)
-        # Priorizar palavras mais longas e específicas
-        # IMPORTANTE: Filtrar palavras muito comuns que podem causar matches incorretos
         palavras_ignorar = {
             'de', 'da', 'do', 'das', 'dos', 'e', 'a', 'o', 'as', 'os', 'em', 'na', 'no', 'nas', 'nos',
             'usina', 'usinas', 'ute', 'utes', 'térmica', 'termica', 'termeletrica', 'termelétrica',
@@ -551,20 +682,15 @@ class CTUsinasTermelétricasTool(DECOMPTool):
                 continue
             
             palavras_nome = nome_usina_lower.split()
-            # Filtrar palavras ignoradas e ordenar por tamanho (maior primeiro)
             palavras_nome_filtradas = [p for p in palavras_nome if p not in palavras_ignorar and len(p) > 3]
             palavras_nome_sorted = sorted(palavras_nome_filtradas, key=len, reverse=True)
             
-            # IMPORTANTE: Exigir pelo menos 2 palavras em comum OU uma palavra longa (>= 6 chars)
-            # para evitar matches muito genéricos
             palavras_encontradas = []
             for palavra in palavras_nome_sorted:
-                # Verificar se a palavra está na query como palavra completa
                 pattern = r'\b' + re.escape(palavra) + r'\b'
                 if re.search(pattern, query_lower):
                     palavras_encontradas.append(palavra)
             
-            # Só adicionar como candidato se tiver pelo menos 2 palavras OU uma palavra longa
             if len(palavras_encontradas) >= 2 or (len(palavras_encontradas) >= 1 and any(len(p) >= 6 for p in palavras_encontradas)):
                 melhor_palavra = max(palavras_encontradas, key=len)
                 palavras_candidatas.append({
@@ -576,9 +702,7 @@ class CTUsinasTermelétricasTool(DECOMPTool):
                     'num_palavras': len(palavras_encontradas)
                 })
         
-        # Se encontrou candidatos, escolher o melhor (número de palavras primeiro, depois tamanho)
         if palavras_candidatas:
-            # Ordenar por número de palavras (mais palavras = mais específico), depois tamanho da palavra
             melhor_match = max(
                 palavras_candidatas,
                 key=lambda x: (x.get('num_palavras', 0), x['tamanho'], x['tamanho_nome'])

@@ -8,6 +8,7 @@ from decomp_agent.app.tools.uh_usinas_hidreletricas_tool import UHUsinasHidrelé
 from decomp_agent.app.tools.ct_usinas_termelétricas_tool import CTUsinasTermelétricasTool
 from decomp_agent.app.tools.dp_carga_subsistemas_tool import DPCargaSubsistemasTool
 from decomp_agent.app.tools.disponibilidade_usina_tool import DisponibilidadeUsinaTool
+from decomp_agent.app.tools.inflexibilidade_usina_tool import InflexibilidadeUsinaTool
 
 # Registry de tools para modo single deck DECOMP
 TOOLS_REGISTRY_SINGLE = [
@@ -15,6 +16,7 @@ TOOLS_REGISTRY_SINGLE = [
     CTUsinasTermelétricasTool,
     DPCargaSubsistemasTool,
     DisponibilidadeUsinaTool,
+    InflexibilidadeUsinaTool,
 ]
 
 

@@ -5,20 +5,20 @@ import { motion } from "framer-motion";
 import { formatNumber } from "../shared/formatters";
 import type { SingleDeckVisualizationData } from "../shared/types";
 
-interface DisponibilidadeUsinaViewProps {
+interface InflexibilidadeUsinaViewProps {
   visualizationData: SingleDeckVisualizationData;
 }
 
-export function DisponibilidadeUsinaView({ visualizationData }: DisponibilidadeUsinaViewProps) {
-  const { disponibilidade_total, detalhes_patamares, usina } = visualizationData;
+export function InflexibilidadeUsinaView({ visualizationData }: InflexibilidadeUsinaViewProps) {
+  const { inflexibilidade_total, detalhes_patamares, usina } = visualizationData;
 
-  // Verificar se disponibilidade_total é null ou undefined (não apenas falsy)
+  // Verificar se inflexibilidade_total é null ou undefined (não apenas falsy)
   // 0 é um valor válido quando inflexibilidades são zeradas
-  if (disponibilidade_total === null || disponibilidade_total === undefined) {
+  if (inflexibilidade_total === null || inflexibilidade_total === undefined) {
     return (
       <div className="bg-card border border-border rounded-lg p-4 sm:p-6">
         <p className="text-sm text-muted-foreground">
-          Dados de disponibilidade não disponíveis.
+          Dados de inflexibilidade não disponíveis.
         </p>
       </div>
     );
@@ -50,7 +50,7 @@ export function DisponibilidadeUsinaView({ visualizationData }: DisponibilidadeU
       {/* Header com informações da usina */}
       <div className="bg-card border border-border rounded-lg p-4 sm:p-6">
         <h3 className="text-base sm:text-lg font-semibold text-card-foreground mb-2">
-          Disponibilidade Total - {nomeUsina}
+          Inflexibilidade Total - {nomeUsina}
         </h3>
         <p className="text-sm text-muted-foreground">
           Código: {codigoUsina} | Submercado: {usina?.submercado}
@@ -101,12 +101,12 @@ export function DisponibilidadeUsinaView({ visualizationData }: DisponibilidadeU
         </div>
       )}
 
-      {/* Card de Disponibilidade Total */}
+      {/* Card de Inflexibilidade Total */}
       <div className="bg-card border border-border rounded-lg p-4 sm:p-6">
         <div>
-          <p className="text-sm text-muted-foreground mb-1">Disponibilidade Total</p>
+          <p className="text-sm text-muted-foreground mb-1">Inflexibilidade Total</p>
           <p className="text-3xl sm:text-4xl font-bold text-card-foreground">
-            {formatNumber(disponibilidade_total)} <span className="text-lg font-normal text-muted-foreground">MW</span>
+            {formatNumber(inflexibilidade_total)} <span className="text-lg font-normal text-muted-foreground">MW</span>
           </p>
         </div>
       </div>

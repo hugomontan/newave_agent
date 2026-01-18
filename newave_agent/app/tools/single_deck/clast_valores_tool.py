@@ -464,7 +464,8 @@ class ClastValoresTool(NEWAVETool):
                 "stats_estrutural": stats_estrutural,
                 "stats_conjuntural": stats_conjuntural,
                 "description": "Valores estruturais (custos base) e conjunturais (modificações sazonais) do CLAST.DAT",
-                "tool": self.get_name()
+                "tool": self.get_name(),
+                "deck_path": self.deck_path  # IMPORTANTE: Necessário para extrair ano do deck corretamente
             }
             
         except FileNotFoundError as e:

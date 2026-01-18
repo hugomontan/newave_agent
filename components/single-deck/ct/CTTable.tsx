@@ -7,9 +7,10 @@ import type { TableRow } from "../shared/types";
 
 interface CTTableProps {
   data: TableRow[];
+  cvuApenas?: boolean;
 }
 
-export function CTTable({ data }: CTTableProps) {
+export function CTTable({ data, cvuApenas = false }: CTTableProps) {
   if (!data || data.length === 0) {
     return (
       <div className="bg-card border border-border rounded-lg p-4 sm:p-6">
@@ -35,6 +36,15 @@ export function CTTable({ data }: CTTableProps) {
     }
     return String(value);
   };
+
+  // Verificar se deve mostrar disponibilidade e inflexibilidade
+  // Se cvuApenas for true OU se nenhum registro tiver esses campos, não mostrar
+  const hasDisponibilidade = !cvuApenas && data.some(row => 
+    row.disponibilidade !== null && row.disponibilidade !== undefined
+  );
+  const hasInflexibilidade = !cvuApenas && data.some(row => 
+    row.inflexibilidade !== null && row.inflexibilidade !== undefined
+  );
 
   return (
     <div className="bg-card border border-border rounded-lg p-4 sm:p-6">
@@ -73,12 +83,16 @@ export function CTTable({ data }: CTTableProps) {
               <th className="px-4 py-3 text-left text-xs font-semibold text-card-foreground uppercase">
                 CVU (R$/MWh)
               </th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-card-foreground uppercase">
-                Disponibilidade (MW)
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-card-foreground uppercase">
-                Inflexibilidade (MW)
-              </th>
+              {hasDisponibilidade && (
+                <th className="px-4 py-3 text-left text-xs font-semibold text-card-foreground uppercase">
+                  Disponibilidade (MW)
+                </th>
+              )}
+              {hasInflexibilidade && (
+                <th className="px-4 py-3 text-left text-xs font-semibold text-card-foreground uppercase">
+                  Inflexibilidade (MW)
+                </th>
+              )}
             </tr>
           </thead>
           <tbody>
@@ -105,12 +119,16 @@ export function CTTable({ data }: CTTableProps) {
                 <td className="px-4 py-2.5 text-sm text-card-foreground">
                   {formatValue(row.cvu)}
                 </td>
-                <td className="px-4 py-2.5 text-sm text-card-foreground">
-                  {formatValue(row.disponibilidade)}
-                </td>
-                <td className="px-4 py-2.5 text-sm text-card-foreground">
-                  {formatValue(row.inflexibilidade)}
-                </td>
+                {hasDisponibilidade && (
+                  <td className="px-4 py-2.5 text-sm text-card-foreground">
+                    {formatValue(row.disponibilidade)}
+                  </td>
+                )}
+                {hasInflexibilidade && (
+                  <td className="px-4 py-2.5 text-sm text-card-foreground">
+                    {formatValue(row.inflexibilidade)}
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>

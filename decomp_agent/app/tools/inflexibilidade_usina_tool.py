@@ -1,8 +1,9 @@
 """
-Tool para calcular disponibilidade total de uma usina termelétrica.
+Tool para calcular inflexibilidade total de uma usina termelétrica.
 Combina dados dos blocos CT (inflexibilidades) e DP (durações dos patamares).
 
 OTIMIZADO: Herda de PatamarCalculationBase, reutiliza toda a lógica comum.
+Mesmo formato e cálculo da DisponibilidadeUsinaTool.
 """
 from decomp_agent.app.tools.patamar_calculation_base import PatamarCalculationBase
 from decomp_agent.app.config import safe_print
@@ -10,16 +11,16 @@ from typing import Dict, Any, Optional
 import pandas as pd
 
 
-class DisponibilidadeUsinaTool(PatamarCalculationBase):
+class InflexibilidadeUsinaTool(PatamarCalculationBase):
     """
-    Tool para calcular disponibilidade total de uma usina termelétrica.
+    Tool para calcular inflexibilidade total de uma usina termelétrica.
     
     Combina dados de:
     - Bloco CT: Inflexibilidades por patamar (PESADA, MEDIA, LEVE)
     - Bloco DP: Durações dos patamares em horas
     
-    Fórmula:
-    Disponibilidade Total = 
+    Fórmula (mesma da disponibilidade):
+    Inflexibilidade Total = 
       (Inflexibilidade_Leve × Duração_Leve + 
        Inflexibilidade_Médio × Duração_Médio + 
        Inflexibilidade_Pesada × Duração_Pesada) 
@@ -28,17 +29,17 @@ class DisponibilidadeUsinaTool(PatamarCalculationBase):
     """
     
     def get_name(self) -> str:
-        return "DisponibilidadeUsinaTool"
+        return "InflexibilidadeUsinaTool"
     
     def get_calculation_type(self) -> str:
-        return "disponibilidade"
+        return "inflexibilidade"
     
     def get_result_key(self) -> str:
-        return "disponibilidade_total"
+        return "inflexibilidade_total"
     
     def can_handle(self, query: str) -> bool:
         """
-        Verifica se a query é sobre cálculo de disponibilidade de usina.
+        Verifica se a query é sobre cálculo de inflexibilidade de usina.
         
         Args:
             query: Query do usuário
@@ -48,27 +49,27 @@ class DisponibilidadeUsinaTool(PatamarCalculationBase):
         """
         query_lower = query.lower()
         keywords = [
-            "disponibilidade",
-            "disponibilidade usina",
-            "disponibilidade da usina",
-            "calcular disponibilidade",
-            "disponibilidade total",
-            "disponibilidade de",
-            "disponibilidade cubatao",
-            "disponibilidade angra",
+            "inflexibilidade",
+            "inflexibilidade usina",
+            "inflexibilidade da usina",
+            "calcular inflexibilidade",
+            "inflexibilidade total",
+            "inflexibilidade de",
+            "inflexibilidade cubatao",
+            "inflexibilidade angra",
         ]
         return any(kw in query_lower for kw in keywords)
     
     def get_description(self) -> str:
         return """
-        Tool para calcular disponibilidade total de uma usina termelétrica.
+        Tool para calcular inflexibilidade total de uma usina termelétrica.
         
         Combina dados dos blocos CT e DP do DECOMP:
         - Bloco CT: Inflexibilidades por patamar (PESADA, MEDIA, LEVE) no estágio 1
         - Bloco DP: Durações dos patamares em horas no estágio 1
         
-        Fórmula de cálculo:
-        Disponibilidade Total = 
+        Fórmula de cálculo (mesma da disponibilidade):
+        Inflexibilidade Total = 
           (Inflexibilidade_Leve × Duração_Leve + 
            Inflexibilidade_Médio × Duração_Médio + 
            Inflexibilidade_Pesada × Duração_Pesada) 
@@ -76,9 +77,9 @@ class DisponibilidadeUsinaTool(PatamarCalculationBase):
           (Duração_Leve + Duração_Médio + Duração_Pesada)
         
         Exemplos de queries:
-        - "Qual a disponibilidade de Cubatao?"
-        - "Calcular disponibilidade da usina 97"
-        - "Disponibilidade total de Angra 1"
+        - "Qual a inflexibilidade de Cubatao?"
+        - "Calcular inflexibilidade da usina 97"
+        - "Inflexibilidade total de Angra 1"
         """
     
     def _format_result(
@@ -91,7 +92,7 @@ class DisponibilidadeUsinaTool(PatamarCalculationBase):
         resultado: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
-        Formata resultado para disponibilidade.
+        Formata resultado para inflexibilidade - MESMO FORMATO da disponibilidade.
         
         Args:
             codigo_usina: Código da usina
@@ -102,11 +103,11 @@ class DisponibilidadeUsinaTool(PatamarCalculationBase):
             resultado: Dict com resultado do cálculo (contém "total" e "calculo")
             
         Returns:
-            Dict formatado com resultado de disponibilidade
+            Dict formatado com resultado de inflexibilidade (mesmo formato da disponibilidade)
         """
         return {
             "success": True,
-            "disponibilidade_total": resultado["total"],
+            "inflexibilidade_total": resultado["total"],  # Única diferença: nome do campo
             "usina": {
                 "codigo": codigo_usina,
                 "nome": nome_usina,
@@ -138,10 +139,10 @@ class DisponibilidadeUsinaTool(PatamarCalculationBase):
         verbose: bool = True
     ) -> Dict[str, Any]:
         """
-        Executa o cálculo de disponibilidade para uma usina (versão otimizada).
+        Executa o cálculo de inflexibilidade para uma usina (versão otimizada).
         Pula leitura de arquivo e extração de usina da query.
         
-        Mantido para compatibilidade com DisponibilidadeMultiDeckTool.
+        Mantido para compatibilidade com InflexibilidadeMultiDeckTool.
         
         Args:
             codigo_usina: Código da usina já identificado
@@ -196,8 +197,6 @@ class DisponibilidadeUsinaTool(PatamarCalculationBase):
             inflexibilidades = self._extract_inflexibilidades(ct_record)
             
             # Verificar se todas as inflexibilidades são None (0 é um valor válido!)
-            # Se todas forem None, significa que não encontrou os dados
-            # Se alguma for 0, isso é válido e deve prosseguir com o cálculo
             if not inflexibilidades or all(v is None for v in inflexibilidades.values()):
                 return {
                     "success": False,
@@ -292,7 +291,7 @@ class DisponibilidadeUsinaTool(PatamarCalculationBase):
             if resultado is None:
                 return {
                     "success": False,
-                    "error": "Erro ao calcular disponibilidade. Verifique se todos os dados necessários estão disponíveis."
+                    "error": "Erro ao calcular inflexibilidade. Verifique se todos os dados necessários estão disponíveis."
                 }
             
             # Formatar resultado
@@ -306,11 +305,11 @@ class DisponibilidadeUsinaTool(PatamarCalculationBase):
             )
             
         except Exception as e:
-            safe_print(f"[DISPONIBILIDADE TOOL] ❌ Erro ao calcular disponibilidade: {e}")
+            safe_print(f"[INFLEXIBILIDADE TOOL] ❌ Erro ao calcular inflexibilidade: {e}")
             import traceback
             traceback.print_exc()
             return {
                 "success": False,
-                "error": f"Erro ao calcular disponibilidade: {str(e)}",
+                "error": f"Erro ao calcular inflexibilidade: {str(e)}",
                 "tool": self.get_name()
             }

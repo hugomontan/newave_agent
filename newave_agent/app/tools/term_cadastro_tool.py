@@ -8,6 +8,12 @@ import pandas as pd
 import re
 from typing import Dict, Any, Optional
 from difflib import SequenceMatcher
+import sys
+from pathlib import Path
+
+# Adicionar shared ao path para importar o matcher
+sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent / "shared"))
+from shared.utils.usina_name_matcher import find_usina_match, normalize_usina_name
 
 
 class TermCadastroTool(NEWAVETool):
@@ -117,8 +123,31 @@ class TermCadastroTool(NEWAVETool):
                 except ValueError:
                     continue
         
-        # ETAPA 2: Buscar por nome da usina
+        # ETAPA 2: Buscar por nome da usina usando matcher centralizado
         if 'nome_usina' in term_data.columns:
+            # Obter lista de nomes disponíveis
+            available_names = []
+            codigo_to_nome = {}
+            for _, row in term_data.iterrows():
+                codigo = row.get('codigo_usina')
+                nome = str(row.get('nome_usina', '')).strip()
+                if nome and nome.lower() != 'nan':
+                    available_names.append(nome)
+                    codigo_to_nome[codigo] = nome
+            
+            if available_names:
+                # Usar matcher centralizado que normaliza nomes
+                match_result = find_usina_match(query, available_names, threshold=0.5)
+                
+                if match_result:
+                    matched_name, score = match_result
+                    # Encontrar código correspondente ao nome encontrado
+                    for codigo, nome in codigo_to_nome.items():
+                        if normalize_usina_name(nome) == normalize_usina_name(matched_name):
+                            print(f"[TOOL] ✅ Código {codigo} encontrado via matcher centralizado: '{nome}' → '{normalize_usina_name(nome)}' (score: {score:.2f})")
+                            return codigo
+            
+            # Fallback: busca original se matcher não encontrou nada
             palavras_ignorar = {
                 'de', 'da', 'do', 'das', 'dos', 'e', 'a', 'o', 'as', 'os',
                 'em', 'na', 'no', 'nas', 'nos', 'a', 'à', 'ao', 'aos',
@@ -129,39 +158,37 @@ class TermCadastroTool(NEWAVETool):
             palavras_query = [p for p in query_lower.split() 
                             if len(p) > 2 and p not in palavras_ignorar]
             
-            if not palavras_query:
-                return None
-            
-            candidatos = []
-            for _, row in term_data.iterrows():
-                codigo = row.get('codigo_usina')
-                nome = str(row.get('nome_usina', '')).strip().lower()
+            if palavras_query:
+                candidatos = []
+                for _, row in term_data.iterrows():
+                    codigo = row.get('codigo_usina')
+                    nome = str(row.get('nome_usina', '')).strip().lower()
+                    
+                    if not nome:
+                        continue
+                    
+                    palavras_nome = [p for p in nome.split() 
+                                   if len(p) > 2 and p not in palavras_ignorar]
+                    
+                    palavras_comuns = set(palavras_query) & set(palavras_nome)
+                    score = len(palavras_comuns)
+                    
+                    # Bonus se todas as palavras significativas da query estão no nome
+                    if palavras_query and all(p in palavras_nome for p in palavras_query):
+                        score += 10
+                    
+                    # Bonus por similaridade de strings
+                    similarity = SequenceMatcher(None, query_lower, nome).ratio()
+                    score += similarity * 5
+                    
+                    if score > 0:
+                        candidatos.append((codigo, nome, score))
                 
-                if not nome:
-                    continue
-                
-                palavras_nome = [p for p in nome.split() 
-                               if len(p) > 2 and p not in palavras_ignorar]
-                
-                palavras_comuns = set(palavras_query) & set(palavras_nome)
-                score = len(palavras_comuns)
-                
-                # Bonus se todas as palavras significativas da query estão no nome
-                if palavras_query and all(p in palavras_nome for p in palavras_query):
-                    score += 10
-                
-                # Bonus por similaridade de strings
-                similarity = SequenceMatcher(None, query_lower, nome).ratio()
-                score += similarity * 5
-                
-                if score > 0:
-                    candidatos.append((codigo, nome, score))
-            
-            if candidatos:
-                candidatos.sort(key=lambda x: x[2], reverse=True)
-                melhor_codigo, melhor_nome, melhor_score = candidatos[0]
-                print(f"[TOOL] ✅ Código {melhor_codigo} encontrado: '{melhor_nome}' (score: {melhor_score:.2f})")
-                return melhor_codigo
+                if candidatos:
+                    candidatos.sort(key=lambda x: x[2], reverse=True)
+                    melhor_codigo, melhor_nome, melhor_score = candidatos[0]
+                    print(f"[TOOL] ✅ Código {melhor_codigo} encontrado (fallback): '{melhor_nome}' (score: {melhor_score:.2f})")
+                    return melhor_codigo
         
         return None
     

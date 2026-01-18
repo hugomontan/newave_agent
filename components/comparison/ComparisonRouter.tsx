@@ -10,6 +10,8 @@ import { ReservatorioInicialView } from "./reservatorio-inicial";
 import { UsinasNaoSimuladasView } from "./usinas-nao-simuladas";
 import { RestricaoEletricaView } from "./restricao-eletrica";
 import { DisponibilidadeComparisonView } from "./disponibilidade";
+import { InflexibilidadeComparisonView } from "./inflexibilidade";
+import { CVUComparisonView } from "./cvu-decomp";
 import type { ComparisonData } from "./shared/types";
 
 interface ComparisonRouterProps {
@@ -64,6 +66,30 @@ export function ComparisonRouter({ comparison }: ComparisonRouterProps) {
     return <DisponibilidadeComparisonView comparison={comparison} />;
   }
   
+  // Verificar InflexibilidadeUsinaTool ou InflexibilidadeMultiDeckTool
+  if (
+    normalizedToolName.toLowerCase() === "inflexibilidadeusinatool" ||
+    normalizedToolName.toLowerCase() === "inflexibilidademultidecktool" ||
+    normalizedToolName.toLowerCase().includes("inflexibilidade")
+  ) {
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[ComparisonRouter] ✅ Usando InflexibilidadeComparisonView para InflexibilidadeTool');
+    }
+    return <InflexibilidadeComparisonView comparison={comparison} />;
+  }
+  
+  // Verificar CVUMultiDeckTool ou CTUsinasTermelétricasTool (em contexto multi-deck)
+  if (
+    normalizedToolName.toLowerCase() === "cvumultidecktool" ||
+    normalizedToolName.toLowerCase() === "ctusinastermelétricastool" ||
+    (normalizedToolName.toLowerCase().includes("cvu") && comparison.is_multi_deck)
+  ) {
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[ComparisonRouter] ✅ Usando CVUComparisonView para CVUMultiDeckTool');
+    }
+    return <CVUComparisonView comparison={comparison} />;
+  }
+  
   // Verificação adicional: se chart_config indica UsinasNaoSimuladasTool mas tool_name não está presente
   const chartConfigToolName = (chart_config as any)?.tool_name?.toString().trim() || "";
   if (chartConfigToolName.toLowerCase() === "usinasnaosimuladastool") {
@@ -88,6 +114,18 @@ export function ComparisonRouter({ comparison }: ComparisonRouterProps) {
         normalizedToolName.toLowerCase().includes("disponibilidade")
       ) {
         return <DisponibilidadeComparisonView comparison={comparison} />;
+      }
+      // Verificar InflexibilidadeTool
+      if (
+        normalizedToolName.toLowerCase().includes("inflexibilidade")
+      ) {
+        return <InflexibilidadeComparisonView comparison={comparison} />;
+      }
+      // Verificar CVU (multi-deck)
+      if (
+        normalizedToolName.toLowerCase().includes("cvu") && comparison.is_multi_deck
+      ) {
+        return <CVUComparisonView comparison={comparison} />;
       }
       // Fallback: tentar renderizar com CVUView se houver dados (mas não para UsinasNaoSimuladasTool)
       if (hasTableData || hasChartData) {

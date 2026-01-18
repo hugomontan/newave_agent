@@ -18,6 +18,7 @@ import { UHView } from "./uh";
 import { CTView } from "./ct";
 import { DPView } from "./dp";
 import { DisponibilidadeUsinaView } from "./disponibilidade-usina";
+import { InflexibilidadeUsinaView } from "./inflexibilidade-usina";
 
 interface SingleDeckRouterProps {
   visualizationData: SingleDeckVisualizationData;
@@ -79,6 +80,9 @@ export function SingleDeckRouter({ visualizationData }: SingleDeckRouterProps) {
     
     case "DisponibilidadeUsinaTool":
       return <DisponibilidadeUsinaView visualizationData={visualizationData} />;
+    
+    case "InflexibilidadeUsinaTool":
+      return <InflexibilidadeUsinaView visualizationData={visualizationData} />;
     
     default:
       return null;

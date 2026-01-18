@@ -49,6 +49,7 @@ class CTSingleDeckFormatter(SingleDeckFormatter):
         data = tool_result.get("data", [])
         total_usinas = tool_result.get("total_usinas", len(data))
         filtros = tool_result.get("filtros", {})
+        cvu_apenas = filtros.get("cvu_apenas", False)
         
         if not data:
             return {
@@ -57,7 +58,8 @@ class CTSingleDeckFormatter(SingleDeckFormatter):
             }
         
         # Normalizar dados para formato padronizado
-        normalized_data = self._normalize_data(data)
+        # Passar flag cvu_apenas para o normalizador respeitar o filtro
+        normalized_data = self._normalize_data(data, cvu_apenas=cvu_apenas)
         
         # Construir resposta em Markdown
         response_parts = []
@@ -89,6 +91,7 @@ class CTSingleDeckFormatter(SingleDeckFormatter):
                 "submercado": filtros.get("codigo_submercado"),
                 "estagio": filtros.get("estagio"),
                 "nome_usina": filtros.get("nome_usina"),
+                "cvu_apenas": cvu_apenas,  # NOVO: passar flag para frontend
             } if filtros else None,
         }
         
@@ -97,7 +100,7 @@ class CTSingleDeckFormatter(SingleDeckFormatter):
             "visualization_data": visualization_data
         }
     
-    def _normalize_data(self, data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _normalize_data(self, data: List[Dict[str, Any]], cvu_apenas: bool = False) -> List[Dict[str, Any]]:
         """
         Normaliza os dados das usinas termelétricas para um formato consistente.
         Expande patamares em linhas separadas para melhor visualização.
@@ -108,6 +111,7 @@ class CTSingleDeckFormatter(SingleDeckFormatter):
         
         Args:
             data: Lista de dicionários com dados das usinas
+            cvu_apenas: Se True, inclui apenas CVU (remove disponibilidade e inflexibilidade)
             
         Returns:
             Lista de dicionários normalizados (expandidos por patamar ou já filtrados)
@@ -141,14 +145,17 @@ class CTSingleDeckFormatter(SingleDeckFormatter):
                     "patamar": patamar_nome,
                     "patamar_numero": patamar_num,
                     "cvu": usina.get("cvu"),
-                    "disponibilidade": usina.get("disponibilidade"),
-                    "inflexibilidade": usina.get("inflexibilidade"),
                 }
+                
+                # Adicionar disponibilidade e inflexibilidade apenas se não for CVU apenas
+                if not cvu_apenas:
+                    normalized_record["disponibilidade"] = usina.get("disponibilidade")
+                    normalized_record["inflexibilidade"] = usina.get("inflexibilidade")
                 
                 # Adicionar se houver pelo menos um campo com valor
                 if normalized_record.get("cvu") is not None or \
-                   normalized_record.get("disponibilidade") is not None or \
-                   normalized_record.get("inflexibilidade") is not None:
+                   (not cvu_apenas and (normalized_record.get("disponibilidade") is not None or \
+                                        normalized_record.get("inflexibilidade") is not None)):
                     normalized.append(normalized_record)
             else:
                 # Dados completos - expandir por patamar (1, 2, 3)
@@ -164,14 +171,17 @@ class CTSingleDeckFormatter(SingleDeckFormatter):
                         "patamar": patamar_nome,
                         "patamar_numero": patamar_idx,
                         "cvu": usina.get(f"cvu_{patamar_idx}") or usina.get(f"cvu{patamar_idx}"),
-                        "disponibilidade": usina.get(f"disponibilidade_{patamar_idx}") or usina.get(f"disponibilidade{patamar_idx}"),
-                        "inflexibilidade": usina.get(f"inflexibilidade_{patamar_idx}") or usina.get(f"inflexibilidade{patamar_idx}"),
                     }
+                    
+                    # Adicionar disponibilidade e inflexibilidade apenas se não for CVU apenas
+                    if not cvu_apenas:
+                        normalized_record["disponibilidade"] = usina.get(f"disponibilidade_{patamar_idx}") or usina.get(f"disponibilidade{patamar_idx}")
+                        normalized_record["inflexibilidade"] = usina.get(f"inflexibilidade_{patamar_idx}") or usina.get(f"inflexibilidade{patamar_idx}")
                     
                     # Apenas adicionar se houver dados relevantes (não adicionar linhas vazias)
                     if normalized_record.get("cvu") is not None or \
-                       normalized_record.get("disponibilidade") is not None or \
-                       normalized_record.get("inflexibilidade") is not None:
+                       (not cvu_apenas and (normalized_record.get("disponibilidade") is not None or \
+                                            normalized_record.get("inflexibilidade") is not None)):
                         normalized.append(normalized_record)
         
         return normalized

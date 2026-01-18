@@ -65,6 +65,8 @@ export interface SingleDeckVisualizationData {
   tool_name?: string;
   // Campos específicos para DisponibilidadeUsinaTool
   disponibilidade_total?: number;
+  // Campos específicos para InflexibilidadeUsinaTool
+  inflexibilidade_total?: number;
   detalhes_patamares?: Array<{
     patamar: string;
     patamar_numero: number;

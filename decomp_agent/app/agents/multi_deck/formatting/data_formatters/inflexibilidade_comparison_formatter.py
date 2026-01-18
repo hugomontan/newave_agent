@@ -1,34 +1,34 @@
 """
-Formatter de comparação para DisponibilidadeUsinaTool no multi deck.
+Formatter de comparação para InflexibilidadeUsinaTool no multi deck.
 """
 
 from typing import Dict, Any, List
 from decomp_agent.app.agents.multi_deck.formatting.base import ComparisonFormatter, DeckData
 
 
-class DisponibilidadeComparisonFormatter(ComparisonFormatter):
+class InflexibilidadeComparisonFormatter(ComparisonFormatter):
     """
-    Formatter específico para comparação de resultados da DisponibilidadeUsinaTool.
-    Compara disponibilidade de usinas térmicas entre múltiplos decks DECOMP.
+    Formatter específico para comparação de resultados da InflexibilidadeUsinaTool.
+    Compara inflexibilidade de usinas térmicas entre múltiplos decks DECOMP.
     """
     
     def can_format(self, tool_name: str, result_structure: Dict[str, Any]) -> bool:
-        """Verifica se pode formatar resultados da DisponibilidadeUsinaTool."""
+        """Verifica se pode formatar resultados da InflexibilidadeUsinaTool."""
         # Verificar por nome da tool
         tool_name_lower = tool_name.lower() if tool_name else ""
         if (
-            tool_name == "DisponibilidadeUsinaTool" or 
-            tool_name == "DisponibilidadeMultiDeckTool" or
-            "disponibilidade" in tool_name_lower
+            tool_name == "InflexibilidadeUsinaTool" or 
+            tool_name == "InflexibilidadeMultiDeckTool" or
+            "inflexibilidade" in tool_name_lower
         ):
             return True
         
-        # Verificar pela estrutura do resultado (se tem disponibilidade_total)
+        # Verificar pela estrutura do resultado (se tem inflexibilidade_total)
         if result_structure and isinstance(result_structure, dict):
-            if "disponibilidade_total" in result_structure:
+            if "inflexibilidade_total" in result_structure:
                 return True
-            # Verificar se é um resultado de deck que contém disponibilidade_total
-            if "usina" in result_structure and "disponibilidade_total" in result_structure:
+            # Verificar se é um resultado de deck que contém inflexibilidade_total
+            if "usina" in result_structure and "inflexibilidade_total" in result_structure:
                 return True
         
         return False
@@ -44,7 +44,7 @@ class DisponibilidadeComparisonFormatter(ComparisonFormatter):
         query: str
     ) -> Dict[str, Any]:
         """
-        Formata comparação de disponibilidade entre múltiplos decks.
+        Formata comparação de inflexibilidade entre múltiplos decks.
         
         Args:
             decks_data: Lista de DeckData ordenados cronologicamente
@@ -101,20 +101,19 @@ class DisponibilidadeComparisonFormatter(ComparisonFormatter):
         
         for deck in sorted_decks:
             result = deck.result
-            disponibilidade = result.get("disponibilidade_total")
+            inflexibilidade = result.get("inflexibilidade_total")
             
             # Incluir valores zero (0.0) - apenas ignorar None
             # Valores zero são válidos quando inflexibilidades são zeradas no deck
-            if disponibilidade is None:
+            if inflexibilidade is None:
                 continue
             
             # Garantir que 0.0 seja tratado como zero válido
-            disponibilidade_value = float(disponibilidade) if disponibilidade is not None else None
-            if disponibilidade_value is None:
+            inflexibilidade_value = float(inflexibilidade) if inflexibilidade is not None else None
+            if inflexibilidade_value is None:
                 continue
             
             # Extrair data do deck
-            # A data pode estar no resultado (quando vem da tool multi-deck) ou precisamos extrair do nome do deck
             date = result.get("date")
             
             # Se não tem data no resultado, tentar extrair do nome do deck
@@ -134,7 +133,7 @@ class DisponibilidadeComparisonFormatter(ComparisonFormatter):
                 "data": date or deck.display_name,
                 "deck": deck.name,
                 "display_name": deck.display_name,
-                "disponibilidade": disponibilidade_value,  # Já convertido acima, inclui 0.0
+                "inflexibilidade": inflexibilidade_value,  # Já convertido acima, inclui 0.0
                 "usina_codigo": codigo_usina,
                 "usina_nome": nome_usina
             }
@@ -143,11 +142,11 @@ class DisponibilidadeComparisonFormatter(ComparisonFormatter):
             # Adicionar ao gráfico
             if date:
                 chart_labels.append(date)
-                chart_data_points.append(disponibilidade_value)  # Inclui 0.0
+                chart_data_points.append(inflexibilidade_value)  # Inclui 0.0
             else:
                 # Se não tem data, usar display_name
                 chart_labels.append(deck.display_name)
-                chart_data_points.append(disponibilidade_value)  # Inclui 0.0
+                chart_data_points.append(inflexibilidade_value)  # Inclui 0.0
         
         # Criar dados do gráfico
         chart_data = {
@@ -164,15 +163,14 @@ class DisponibilidadeComparisonFormatter(ComparisonFormatter):
         # Configuração do gráfico
         chart_config = {
             "type": "line",
-            "title": f"Evolução da Disponibilidade - {nome_usina}",
+            "title": f"Evolução da Inflexibilidade - {nome_usina}",
             "x_axis": "Data",
-            "y_axis": "Disponibilidade (MW)",
+            "y_axis": "Inflexibilidade (MW)",
             "tool_name": tool_name
         }
         
         # Resposta mínima - toda informação está na visualização (tabela + gráfico)
-        # Usar uma string mínima para garantir que a resposta seja exibida
-        final_response = f"Comparação de disponibilidade para {nome_usina}."
+        final_response = f"Comparação de inflexibilidade para {nome_usina}."
         
         return {
             "comparison_table": comparison_table,
