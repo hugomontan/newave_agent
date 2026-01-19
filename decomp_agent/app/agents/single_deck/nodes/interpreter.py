@@ -77,7 +77,13 @@ def interpreter_node(state: SingleDeckState) -> dict:
             
             # Formatar resposta usando o formatter
             try:
-                formatted = formatter.format_response(tool_result, tool_used, query)
+                # Verificar se o formatter aceita deck_path como parâmetro
+                import inspect
+                sig = inspect.signature(formatter.format_response)
+                if 'deck_path' in sig.parameters:
+                    formatted = formatter.format_response(tool_result, tool_used, query, deck_path=deck_path)
+                else:
+                    formatted = formatter.format_response(tool_result, tool_used, query)
                 safe_print(f"[INTERPRETER DECOMP] [OK] Resposta formatada com sucesso")
                 safe_print(f"[INTERPRETER DECOMP]   Tem visualization_data: {bool(formatted.get('visualization_data'))}")
                 

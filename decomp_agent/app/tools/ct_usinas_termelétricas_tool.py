@@ -209,6 +209,25 @@ class CTUsinasTermelétricasTool(DECOMPTool):
                 safe_print(f"[CT TOOL] Aplicando filtro: Patamar {patamar} (todos os campos)")
                 data = self._filter_by_patamar(data, patamar)
                 filtros_aplicados_list.append(f"Patamar {patamar}")
+
+            # GARANTIA ADICIONAL: Qualquer query que contenha termos de CVU ou
+            # "Custo Variável Unitário" deve SEMPRE retornar apenas estágio 1.
+            # Mesmo que, por algum motivo, o estagio tenha vindo None ou outro valor,
+            # filtramos defensivamente aqui.
+            if is_cvu_only or is_cvu_inflexibilidade_disponibilidade_query:
+                safe_print("[CT TOOL] Garantindo que resultados de CVU tenham apenas estágio 1")
+                before_len = len(data)
+                data = [
+                    d for d in data
+                    if d.get("estagio") == 1
+                    or d.get("estágio") == 1
+                    or d.get("estagio") is None
+                ]
+                safe_print(f"[CT TOOL] Registros após filtro de estágio 1 para CVU: {before_len} -> {len(data)}")
+                # Ajustar variáveis de controle para refletir a garantia de estágio 1
+                estagio = 1
+                if "Estágio 1 (forçado para CVU)" not in filtros_aplicados_list:
+                    filtros_aplicados_list.append("Estágio 1 (forçado para CVU)")
             
             safe_print(f"[CT TOOL] Retornando {len(data)} registros de usinas termelétricas")
             safe_print(f"[CT TOOL] Filtros aplicados: usina={codigo_usina}, submercado={codigo_submercado}, estagio={estagio}, patamar={patamar}, cvu_apenas={is_cvu_only}")

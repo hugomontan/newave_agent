@@ -13,14 +13,16 @@ from decomp_agent.app.agents.multi_deck.formatting.data_formatters import (
     DisponibilidadeComparisonFormatter,
     InflexibilidadeComparisonFormatter,
     CVUComparisonFormatter,
+    VolumeInicialComparisonFormatter,
 )
 
 # Lista de formatadores (em ordem de prioridade - mais específicos primeiro)
 FORMATTERS: List[ComparisonFormatter] = [
+    VolumeInicialComparisonFormatter(),  # Prioridade 95 - muito específico
     DisponibilidadeComparisonFormatter(),
     InflexibilidadeComparisonFormatter(),
     CVUComparisonFormatter(),
-    UHComparisonFormatter(),
+    UHComparisonFormatter(),  # Prioridade 10 - genérico, deve vir por último
 ]
 
 

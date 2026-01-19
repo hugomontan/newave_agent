@@ -11,22 +11,42 @@ import re
 from typing import Dict, Any, Optional
 from difflib import SequenceMatcher
 
+# ⚡ Cache global para mapeamento código -> nome das usinas hidrelétricas
+# O mapeamento é global (não depende do deck específico), então pode ser compartilhado
+_HIDR_MAPPING_CACHE: Optional[Dict[int, str]] = None
+_HIDR_CACHE_DECK_PATH: Optional[str] = None
+
+
+def clear_hidr_mapping_cache():
+    """
+    Limpa o cache de mapeamento HIDR.DAT.
+    Útil para forçar recarregamento do mapeamento.
+    """
+    global _HIDR_MAPPING_CACHE, _HIDR_CACHE_DECK_PATH
+    _HIDR_MAPPING_CACHE = None
+    _HIDR_CACHE_DECK_PATH = None
+    safe_print("[UH TOOL] 🗑️ Cache de mapeamento HIDR.DAT limpo")
+
+
+def get_hidr_cache_stats() -> Dict[str, Any]:
+    """
+    Retorna estatísticas do cache de mapeamento HIDR.DAT.
+    
+    Returns:
+        Dict com informações do cache
+    """
+    return {
+        "cached": _HIDR_MAPPING_CACHE is not None,
+        "cache_size": len(_HIDR_MAPPING_CACHE) if _HIDR_MAPPING_CACHE else 0,
+        "cache_deck_path": _HIDR_CACHE_DECK_PATH
+    }
+
 
 class UHUsinasHidrelétricasTool(DECOMPTool):
     """
-    Tool para consultar informações do Bloco UH (Usinas Hidrelétricas) do DECOMP.
+    Tool específica para consultar volume inicial/nível de partida de uma usina hidrelétrica.
     
-    Dados disponíveis:
-    - Código da usina
-    - Código do REE
-    - Volume inicial (VINI)
-    - Vazão mínima (DEFMIN)
-    - Evaporação (EVAP)
-    - Operação (OPER)
-    - Volume morto inicial (VMORTOINI)
-    - Limite superior (LIMSUP)
-    - Flag BH (Bacia Hidrográfica)
-    - Flag NW (Newave)
+    Foco único: Retornar apenas o volume inicial (VINI) de uma usina específica do Bloco UH do DECOMP.
     """
     
     def get_name(self) -> str:
@@ -34,7 +54,7 @@ class UHUsinasHidrelétricasTool(DECOMPTool):
     
     def can_handle(self, query: str) -> bool:
         """
-        Verifica se a query é sobre usinas hidrelétricas do Bloco UH.
+        Verifica se a query é sobre volume inicial/nível de partida de uma usina hidrelétrica.
         
         Args:
             query: Query do usuário
@@ -43,58 +63,55 @@ class UHUsinasHidrelétricasTool(DECOMPTool):
             True se a tool pode processar a query
         """
         query_lower = query.lower()
-        keywords = [
-            "usina hidrelétrica",
-            "usina hidreletrica",
-            "bloco uh",
-            "registro uh",
+        
+        # Verificar se a query menciona volume inicial ou nível de partida
+        tem_volume_inicial = any(kw in query_lower for kw in [
             "volume inicial",
-            "volume inicial usina",
+            "nível de partida",
+            "nivel de partida",
             "vini",
-            "ree",
-            "evaporação",
-            "evaporacao",
-            "vazão mínima",
-            "vazao minima",
-            "defmin",
-            "oper",
-            "volume morto",
-            "vmortoin",
-            "usinas do decomp",
-            "uh decomp",
-        ]
-        return any(kw in query_lower for kw in keywords)
+            "volume inicial da",
+            "volume inicial de",
+            "nível de partida da",
+            "nível de partida de",
+        ])
+        
+        # Verificar se menciona usina hidrelétrica
+        tem_usina = any(kw in query_lower for kw in [
+            "usina",
+            "uh",
+            "hidrelétrica",
+            "hidreletrica",
+        ])
+        
+        return tem_volume_inicial and tem_usina
     
     def get_description(self) -> str:
         return """
-        Tool para consultar informações do Bloco UH (Usinas Hidrelétricas) do DECOMP.
+        Tool específica para consultar volume inicial/nível de partida de uma usina hidrelétrica.
         
-        Acessa dados do registro UH que define:
-        - Volume inicial dos reservatórios (VINI)
-        - Código do REE (Reservatório Equivalente de Energia)
-        - Vazão mínima de defluência (DEFMIN)
-        - Consideração de evaporação (EVAP)
-        - Modo de operação (OPER)
-        - Volume morto inicial (VMORTOINI)
-        - Limite superior (LIMSUP)
+        Retorna apenas o volume inicial (VINI) do Bloco UH do DECOMP para uma usina específica.
+        
+        Termos-chave: volume inicial, nível de partida, VINI, volume inicial da usina, nível de partida da usina.
         
         Exemplos de queries:
-        - "Quais são as usinas hidrelétricas do deck?"
         - "Qual o volume inicial da usina 1?"
-        - "Mostre todas as usinas do REE 10"
-        - "Usinas com evaporação considerada"
+        - "Volume inicial de Furnas"
+        - "Qual o nível de partida da usina Tucuruí?"
+        - "VINI da usina 24"
+        - "Volume inicial da usina hidrelétrica de Itaipu"
         """
     
     def execute(self, query: str, **kwargs) -> Dict[str, Any]:
         """
-        Executa a consulta sobre usinas hidrelétricas do Bloco UH.
+        Executa a consulta de volume inicial/nível de partida de uma usina hidrelétrica específica.
         
         Args:
-            query: Query do usuário
+            query: Query do usuário (deve mencionar volume inicial/nível de partida e uma usina)
             **kwargs: Argumentos adicionais opcionais
             
         Returns:
-            Dict com dados das usinas hidrelétricas
+            Dict com volume inicial da usina encontrada
         """
         try:
             # ⚡ OTIMIZAÇÃO: Usar cache global do Dadger
@@ -107,25 +124,15 @@ class UHUsinasHidrelétricasTool(DECOMPTool):
                     "error": "Arquivo dadger não encontrado (nenhum arquivo dadger.rv* encontrado)"
                 }
             
-            # Extrair filtros da query (códigos numéricos)
-            codigo_usina = self._extract_codigo_usina(query)
-            codigo_ree = self._extract_codigo_ree(query)
-            
             safe_print(f"[UH TOOL] Query recebida: {query}")
-            safe_print(f"[UH TOOL] Codigo usina extraido: {codigo_usina}")
-            safe_print(f"[UH TOOL] Codigo REE extraido: {codigo_ree}")
             
-            # Obter dados das usinas (se houver código, já filtra aqui)
-            uh_data = dadger.uh(
-                codigo_usina=codigo_usina,
-                codigo_ree=codigo_ree,
-                df=True  # Retornar como DataFrame
-            )
+            # Obter TODOS os dados das usinas para buscar por nome
+            uh_data = dadger.uh(df=True)
             
             if uh_data is None or (isinstance(uh_data, pd.DataFrame) and uh_data.empty):
                 return {
                     "success": False,
-                    "error": "Nenhuma usina encontrada com os filtros especificados"
+                    "error": "Nenhuma usina encontrada no bloco UH"
                 }
             
             # Converter para formato padronizado
@@ -139,63 +146,74 @@ class UHUsinasHidrelétricasTool(DECOMPTool):
             # Criar mapeamento código -> nome das usinas (usando HIDR.DAT do NEWAVE)
             mapeamento_codigo_nome = self._create_codigo_nome_mapping(dadger, data)
             
-            # SEMPRE tentar extrair usina da query (código ou nome) - PRIORIDADE MÁXIMA
-            # Se encontrar, mostrar APENAS essa usina (sem filtro no frontend)
+            # Extrair código da usina da query (código numérico ou nome)
+            codigo_usina = self._extract_codigo_usina(query)
+            
+            # Se não encontrou código numérico, tentar buscar por nome
             if codigo_usina is None:
                 safe_print(f"[UH TOOL] Tentando extrair usina da query (código ou nome)...")
-                codigo_usina_extraido = self._extract_usina_from_query(query, dadger, data, mapeamento_codigo_nome)
-                if codigo_usina_extraido is not None:
-                    safe_print(f"[UH TOOL] [OK] Usina encontrada: codigo {codigo_usina_extraido}")
-                    codigo_usina = codigo_usina_extraido
-                    # Filtrar APENAS essa usina - query específica para uma única usina
-                    total_antes = len(data)
-                    data = [d for d in data if d.get('codigo_usina') == codigo_usina]
-                    safe_print(f"[UH TOOL] Filtro aplicado: {total_antes} -> {len(data)} registros (Usina {codigo_usina})")
+                codigo_usina = self._extract_usina_from_query(query, dadger, data, mapeamento_codigo_nome)
             
-            # Se ainda não encontrou usina, tentar buscar por REE (apenas se não houver busca por usina)
-            if codigo_usina is None and codigo_ree is None:
-                termo_busca = self._extract_search_term(query)
-                if termo_busca:
-                    safe_print(f"[UH TOOL] Buscando REE por nome: {termo_busca}")
-                    codigo_ree_por_nome = self._find_ree_by_name(dadger, termo_busca, data)
-                    if codigo_ree_por_nome is not None:
-                        total_antes = len(data)
-                        data = [d for d in data if d.get('codigo_ree') == codigo_ree_por_nome]
-                        safe_print(f"[UH TOOL] Filtro aplicado: {total_antes} -> {len(data)} usinas (REE {codigo_ree_por_nome})")
-                        codigo_ree = codigo_ree_por_nome
+            if codigo_usina is None:
+                return {
+                    "success": False,
+                    "error": "Não foi possível identificar a usina na query. Por favor, especifique o nome ou código da usina (ex: 'volume inicial da usina Furnas' ou 'volume inicial da usina 1')"
+                }
             
-            # Filtrar por volume inicial se mencionado na query
-            if "volume inicial" in query.lower() or "vini" in query.lower():
-                volume_ini = self._extract_volume_inicial(query)
-                if volume_ini is not None:
-                    data = [d for d in data if abs(d.get('volume_inicial', 0) - volume_ini) < 0.01]
+            safe_print(f"[UH TOOL] [OK] Usina identificada: código {codigo_usina}")
             
-            safe_print(f"[UH TOOL] Retornando {len(data)} usinas")
-            safe_print(f"[UH TOOL] Filtros aplicados: usina={codigo_usina}, ree={codigo_ree}")
+            # Filtrar APENAS essa usina
+            usina_encontrada = None
+            for d in data:
+                if d.get('codigo_usina') == codigo_usina:
+                    usina_encontrada = d
+                    break
             
-            # Preparar filtros com nome da usina (se houver)
-            filtros_dict = {
-                "codigo_usina": codigo_usina,
-                "codigo_ree": codigo_ree,
-            }
-            if codigo_usina is not None:
-                nome_usina = mapeamento_codigo_nome.get(codigo_usina)
-                if nome_usina and nome_usina != f"Usina {codigo_usina}":
-                    filtros_dict["nome_usina"] = nome_usina
+            if usina_encontrada is None:
+                return {
+                    "success": False,
+                    "error": f"Usina {codigo_usina} não encontrada no bloco UH"
+                }
+            
+            # Extrair volume inicial (tentar múltiplas variações de nome de campo)
+            volume_inicial = (
+                usina_encontrada.get('volume_inicial') or 
+                usina_encontrada.get('vini') or
+                usina_encontrada.get('VINI') or
+                usina_encontrada.get('volume_inicial_reservatorio')
+            )
+            
+            if volume_inicial is None:
+                return {
+                    "success": False,
+                    "error": f"Volume inicial não disponível para a usina {codigo_usina}"
+                }
+            
+            # Obter nome da usina
+            nome_usina = mapeamento_codigo_nome.get(codigo_usina, f"Usina {codigo_usina}")
+            
+            safe_print(f"[UH TOOL] ✅ Volume inicial encontrado: {volume_inicial}% para usina {codigo_usina} ({nome_usina})")
             
             return {
                 "success": True,
-                "data": data,
-                "total_usinas": len(data),
-                "filtros": filtros_dict,
-                "mapeamento_codigo_nome": mapeamento_codigo_nome,
+                "volume_inicial": float(volume_inicial),
+                "usina": {
+                    "codigo": codigo_usina,
+                    "nome": nome_usina,
+                    "codigo_ree": usina_encontrada.get('codigo_ree'),
+                },
+                "unidade": "%",
+                "descricao": f"Volume inicial (VINI) da usina {nome_usina}",
                 "tool": self.get_name()
             }
             
         except Exception as e:
+            safe_print(f"[UH TOOL] ❌ Erro ao consultar volume inicial: {e}")
+            import traceback
+            traceback.print_exc()
             return {
                 "success": False,
-                "error": f"Erro ao consultar Bloco UH: {str(e)}",
+                "error": f"Erro ao consultar volume inicial: {str(e)}",
                 "tool": self.get_name()
             }
     
@@ -249,8 +267,8 @@ class UHUsinasHidrelétricasTool(DECOMPTool):
     
     def _create_codigo_nome_mapping(self, dadger: Any, data_usinas: list) -> Dict[int, str]:
         """
-        Cria mapeamento código -> nome das usinas usando HIDR.DAT do NEWAVE.
-        Similar ao mecanismo "de para" do newave_agent.
+        ⚡ OTIMIZADO: Cria mapeamento código -> nome das usinas usando HIDR.DAT do NEWAVE.
+        Usa cache global e busca apenas no primeiro deck encontrado.
         
         Args:
             dadger: Instância do Dadger
@@ -259,12 +277,25 @@ class UHUsinasHidrelétricasTool(DECOMPTool):
         Returns:
             Dict com mapeamento {codigo_usina: nome_usina}
         """
-        mapeamento = {}
+        global _HIDR_MAPPING_CACHE, _HIDR_CACHE_DECK_PATH
+        
         codigos_usinas = {d.get('codigo_usina') for d in data_usinas if d.get('codigo_usina') is not None}
         
-        safe_print(f"[UH TOOL] Criando mapeamento para {len(codigos_usinas)} usinas")
+        # ⚡ ETAPA 1: Verificar cache global
+        if _HIDR_MAPPING_CACHE is not None:
+            # Filtrar apenas os códigos necessários do cache
+            mapeamento = {
+                codigo: _HIDR_MAPPING_CACHE.get(codigo, f"Usina {codigo}")
+                for codigo in codigos_usinas
+            }
+            safe_print(f"[UH TOOL] ✅ Usando cache de mapeamento ({len(_HIDR_MAPPING_CACHE)} usinas no cache)")
+            return mapeamento
         
-        # Estratégia: Buscar HIDR.DAT do NEWAVE (mecanismo "de para")
+        safe_print(f"[UH TOOL] Criando mapeamento para {len(codigos_usinas)} usinas (cache vazio)")
+        
+        # ⚡ ETAPA 2: Buscar HIDR.DAT apenas no primeiro deck NEWAVE encontrado
+        mapeamento = {}
+        
         # Tentar múltiplos caminhos possíveis
         possible_newave_paths = [
             # Caminho relativo: nw_multi/newave_agent/decks
@@ -280,19 +311,22 @@ class UHUsinasHidrelétricasTool(DECOMPTool):
             base_path = os.sep.join(deck_path_parts[:idx])
             possible_newave_paths.append(os.path.join(base_path, "newave_agent", "decks"))
         
-        hidr_encontrado = False
+        # Buscar apenas no primeiro deck NEWAVE encontrado (otimização)
         for newave_decks_path in possible_newave_paths:
             if not os.path.exists(newave_decks_path):
                 continue
             
             safe_print(f"[UH TOOL] Buscando HIDR.DAT em: {newave_decks_path}")
             
-            # Buscar em todos os decks NEWAVE
             try:
-                for deck_dir in os.listdir(newave_decks_path):
+                # Listar decks e ordenar por nome (mais recente primeiro)
+                deck_dirs = [d for d in os.listdir(newave_decks_path) 
+                            if os.path.isdir(os.path.join(newave_decks_path, d))]
+                deck_dirs.sort(reverse=True)  # Mais recente primeiro
+                
+                # ⚡ OTIMIZAÇÃO: Buscar apenas no primeiro deck encontrado
+                for deck_dir in deck_dirs:
                     deck_full_path = os.path.join(newave_decks_path, deck_dir)
-                    if not os.path.isdir(deck_full_path):
-                        continue
                     
                     hidr_path = os.path.join(deck_full_path, "HIDR.DAT")
                     if not os.path.exists(hidr_path):
@@ -301,28 +335,107 @@ class UHUsinasHidrelétricasTool(DECOMPTool):
                     if os.path.exists(hidr_path):
                         try:
                             from inewave.newave import Hidr
+                            safe_print(f"[UH TOOL] [OK] Lendo HIDR.DAT: {hidr_path}")
                             hidr = Hidr.read(hidr_path)
                             if hidr.cadastro is not None and not hidr.cadastro.empty:
-                                safe_print(f"[UH TOOL] [OK] HIDR.DAT encontrado: {hidr_path}")
-                                for _, hidr_row in hidr.cadastro.iterrows():
-                                    codigo_hidr = int(hidr_row.get('codigo_usina', 0))
-                                    if codigo_hidr in codigos_usinas and codigo_hidr not in mapeamento:
-                                        nome_hidr = str(hidr_row.get('nome_usina', '')).strip()
-                                        if nome_hidr and nome_hidr != 'nan' and nome_hidr != '' and nome_hidr.lower() != 'none':
-                                            mapeamento[codigo_hidr] = nome_hidr
-                                            safe_print(f"[UH TOOL]   Mapeamento: {codigo_hidr} -> {nome_hidr}")
-                                hidr_encontrado = True
-                                # Continuar em outros decks para completar mapeamento
+                                # ⚡ DEBUG: Verificar colunas disponíveis
+                                safe_print(f"[UH TOOL] [DEBUG] Colunas disponíveis no HIDR.DAT: {list(hidr.cadastro.columns)[:10]}...")
+                                safe_print(f"[UH TOOL] [DEBUG] Total de linhas no cadastro: {len(hidr.cadastro)}")
+                                
+                                # ⚡ Carregar TODOS os códigos do HIDR.DAT no cache global
+                                # (não apenas os códigos necessários agora)
+                                cache_completo = {}
+                                for idx, hidr_row in hidr.cadastro.iterrows():
+                                    # Tentar múltiplas variações de nome de coluna
+                                    codigo_hidr = None
+                                    nome_hidr = None
+                                    
+                                    # Tentar usar o índice como código (comum no HIDR.DAT)
+                                    try:
+                                        if isinstance(idx, (int, float)) and idx > 0:
+                                            codigo_hidr = int(idx)
+                                    except (ValueError, TypeError):
+                                        pass
+                                    
+                                    # Tentar diferentes nomes de coluna para código
+                                    if codigo_hidr is None:
+                                        for cod_col in ['codigo_usina', 'codigo', 'codigo_usina_hidr', 'numero_usina', 'numero']:
+                                            if cod_col in hidr_row.index:
+                                                try:
+                                                    val = hidr_row[cod_col]
+                                                    if pd.notna(val):
+                                                        codigo_hidr = int(val)
+                                                        break
+                                                except (ValueError, TypeError):
+                                                    continue
+                                    
+                                    # Tentar diferentes nomes de coluna para nome
+                                    for nome_col in ['nome_usina', 'nome', 'nome_da_usina', 'usina', 'nome_do_posto']:
+                                        if nome_col in hidr_row.index:
+                                            val = hidr_row[nome_col]
+                                            if pd.notna(val):
+                                                nome_hidr = str(val).strip()
+                                                if nome_hidr and nome_hidr != 'nan' and nome_hidr != '' and nome_hidr.lower() != 'none':
+                                                    break
+                                    
+                                    if codigo_hidr and codigo_hidr > 0 and nome_hidr:
+                                        cache_completo[codigo_hidr] = nome_hidr
+                                
+                                safe_print(f"[UH TOOL] [DEBUG] Usinas extraídas do HIDR.DAT: {len(cache_completo)}")
+                                if len(cache_completo) > 0:
+                                    # Mostrar alguns exemplos
+                                    exemplos = list(cache_completo.items())[:5]
+                                    safe_print(f"[UH TOOL] [DEBUG] Exemplos: {exemplos}")
+                                else:
+                                    # Se não encontrou nenhuma usina, tentar usar o índice como código
+                                    safe_print(f"[UH TOOL] [AVISO] Nenhuma usina encontrada com nomes válidos, tentando usar índice...")
+                                    for idx in hidr.cadastro.index:
+                                        try:
+                                            codigo_hidr = int(idx) if isinstance(idx, (int, float)) else None
+                                            if codigo_hidr and codigo_hidr > 0:
+                                                # Tentar encontrar nome em qualquer coluna de texto
+                                                row = hidr.cadastro.loc[idx]
+                                                for col in hidr.cadastro.columns:
+                                                    val = row[col]
+                                                    if pd.notna(val) and isinstance(val, str) and len(val.strip()) > 2:
+                                                        nome_hidr = val.strip()
+                                                        if nome_hidr.lower() not in ['nan', 'none', '']:
+                                                            cache_completo[codigo_hidr] = nome_hidr
+                                                            break
+                                        except Exception:
+                                            continue
+                                    
+                                    if len(cache_completo) > 0:
+                                        safe_print(f"[UH TOOL] [DEBUG] Usinas encontradas usando índice: {len(cache_completo)}")
+                                
+                                # Salvar no cache global (mesmo que vazio, para não tentar novamente)
+                                _HIDR_MAPPING_CACHE = cache_completo
+                                _HIDR_CACHE_DECK_PATH = hidr_path
+                                
+                                # Filtrar apenas os códigos necessários para retornar
+                                mapeamento = {
+                                    codigo: cache_completo.get(codigo, f"Usina {codigo}")
+                                    for codigo in codigos_usinas
+                                }
+                                
+                                safe_print(f"[UH TOOL] ✅ Cache criado com {len(cache_completo)} usinas do deck {deck_dir}")
+                                # ⚡ IMPORTANTE: Parar após encontrar o primeiro deck válido
+                                break
                         except Exception as e:
                             safe_print(f"[UH TOOL] [AVISO] Erro ao ler HIDR.DAT {hidr_path}: {e}")
                             continue
+                    
+                    # ⚡ IMPORTANTE: Se já encontrou e processou um deck válido, parar
+                    if _HIDR_MAPPING_CACHE is not None:
+                        break
+                
+                # Se encontrou mapeamento, não precisa buscar em outros caminhos
+                if _HIDR_MAPPING_CACHE is not None:
+                    break
+                    
             except Exception as e:
                 safe_print(f"[UH TOOL] [AVISO] Erro ao listar decks NEWAVE: {e}")
                 continue
-            
-            if hidr_encontrado and len(mapeamento) >= len(codigos_usinas):
-                # Mapeamento completo, não precisa continuar
-                break
         
         # Preencher códigos sem nome com formato genérico
         for codigo in codigos_usinas:
@@ -385,7 +498,40 @@ class UHUsinasHidrelétricasTool(DECOMPTool):
         
         # ETAPA 2: Buscar por nome da usina usando mapeamento (HIDR.DAT)
         if not mapeamento_codigo_nome:
-            safe_print(f"[UH TOOL] [AVISO] Mapeamento vazio, nao e possivel buscar por nome")
+            safe_print(f"[UH TOOL] [AVISO] Mapeamento vazio, tentando busca por palavras-chave conhecidas...")
+            # Fallback: usar mapeamento conhecido de nomes de usinas para códigos
+            # Baseado em usinas hidrelétricas comuns no sistema brasileiro
+            mapeamento_conhecido = {
+                "furnas": [1, 6],
+                "tucurui": [2, 20],
+                "itaipu": [3, 30],
+                "sobradinho": [4, 40],
+                "paulo afonso": [5, 50],
+                "xingo": [6, 60],
+                "serra da mesa": [7],
+                "emborcacao": [8],
+                "nova ponte": [9, 25],
+                "tres marias": [156],
+                "camargos": [1],
+                "itutinga": [2],
+                "funil grande": [4],
+                "capim branco": [27, 28],
+            }
+            
+            # Buscar palavras-chave na query
+            palavras_query = query_lower.split()
+            palavras_significativas = [p for p in palavras_query if len(p) > 3]
+            
+            for palavra in palavras_significativas:
+                for nome_usina, codigos_possiveis in mapeamento_conhecido.items():
+                    if palavra in nome_usina or nome_usina in palavra:
+                        # Verificar qual código existe nos dados
+                        for codigo in codigos_possiveis:
+                            if any(d.get('codigo_usina') == codigo for d in data_usinas):
+                                safe_print(f"[UH TOOL] [OK] Codigo {codigo} encontrado por palavra-chave '{palavra}' -> '{nome_usina}'")
+                                return codigo
+            
+            safe_print(f"[UH TOOL] [AVISO] Nenhuma usina encontrada por palavras-chave conhecidas")
             return None
         
         # Filtrar apenas usinas com nomes reais (não "Usina X")
@@ -580,10 +726,17 @@ class UHUsinasHidrelétricasTool(DECOMPTool):
         if hasattr(uh_obj, '__dict__'):
             return uh_obj.__dict__
         # Se for registro do idecomp, extrair atributos conhecidos
+        # Tentar múltiplas variações de nome de campo para volume_inicial
+        volume_inicial = (
+            getattr(uh_obj, 'volume_inicial', None) or
+            getattr(uh_obj, 'vini', None) or
+            getattr(uh_obj, 'VINI', None)
+        )
         return {
             "codigo_usina": getattr(uh_obj, 'codigo_usina', None),
             "codigo_ree": getattr(uh_obj, 'codigo_ree', None),
-            "volume_inicial": getattr(uh_obj, 'volume_inicial', None),
+            "volume_inicial": volume_inicial,
+            "vini": volume_inicial,  # Alias para compatibilidade
             "vazao_minima": getattr(uh_obj, 'vazao_minima', None) or getattr(uh_obj, 'defmin', None),
             "evaporacao": getattr(uh_obj, 'evaporacao', None) or getattr(uh_obj, 'evap', None),
             "operacao": getattr(uh_obj, 'operacao', None) or getattr(uh_obj, 'oper', None),

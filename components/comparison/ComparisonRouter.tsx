@@ -12,6 +12,7 @@ import { RestricaoEletricaView } from "./restricao-eletrica";
 import { DisponibilidadeComparisonView } from "./disponibilidade";
 import { InflexibilidadeComparisonView } from "./inflexibilidade";
 import { CVUComparisonView } from "./cvu-decomp";
+import { VolumeInicialComparisonView } from "./volume-inicial";
 import type { ComparisonData } from "./shared/types";
 
 interface ComparisonRouterProps {
@@ -76,6 +77,25 @@ export function ComparisonRouter({ comparison }: ComparisonRouterProps) {
       console.log('[ComparisonRouter] ✅ Usando InflexibilidadeComparisonView para InflexibilidadeTool');
     }
     return <InflexibilidadeComparisonView comparison={comparison} />;
+  }
+  
+  // Verificar VolumeInicialMultiDeckTool ou UHUsinasHidrelétricasTool (em contexto multi-deck)
+  if (
+    normalizedToolName.toLowerCase() === "volumeinicialmultidecktool" ||
+    normalizedToolName.toLowerCase() === "uhusinashidrelétricastool" ||
+    (normalizedToolName.toLowerCase().includes("volume inicial") && comparison.is_multi_deck) ||
+    (normalizedToolName.toLowerCase().includes("volumeinicial") && comparison.is_multi_deck)
+  ) {
+    // Verificar se é realmente volume inicial pela estrutura dos dados
+    if (comparison_table && comparison_table.length > 0) {
+      const firstRow = comparison_table[0] as any;
+      if (firstRow.volume_inicial !== undefined) {
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[ComparisonRouter] ✅ Usando VolumeInicialComparisonView para VolumeInicialMultiDeckTool');
+        }
+        return <VolumeInicialComparisonView comparison={comparison} />;
+      }
+    }
   }
   
   // Verificar CVUMultiDeckTool ou CTUsinasTermelétricasTool (em contexto multi-deck)

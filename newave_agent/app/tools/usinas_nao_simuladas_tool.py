@@ -310,9 +310,15 @@ class UsinasNaoSimuladasTool(NEWAVETool):
             Dicionário formatado
         """
         dados = {
+            # Código numérico do submercado (será usado para cruzar com o nome do subsistema)
             'codigo_submercado': int(row.get('codigo_submercado', 0)) if pd.notna(row.get('codigo_submercado')) else None,
+            # Índice do bloco de usinas não simuladas
             'indice_bloco': int(row.get('indice_bloco', 0)) if pd.notna(row.get('indice_bloco')) else None,
+            # Objeto de carga não simulada (fonte/tecnologia), ex: "PCH", "PCH MMGD", "EOL MMGD"
             'fonte': str(row.get('fonte', '')).strip() if pd.notna(row.get('fonte')) else None,
+            # Alias explícito para o objeto, para ficar claro no frontend
+            'objeto': str(row.get('fonte', '')).strip() if pd.notna(row.get('fonte')) else None,
+            # Valor de geração em MWmédio
             'valor': float(row.get('valor', 0)) if pd.notna(row.get('valor')) else None,
         }
         
@@ -335,6 +341,9 @@ class UsinasNaoSimuladasTool(NEWAVETool):
         else:
             dados['data'] = None
         
+        # Campo reservado para enriquecer com informações do submercado posteriormente
+        # (código + nome), preenchido na execução principal com base em custo_deficit.
+        dados['submercado'] = None
         return dados
     
     def execute(self, query: str, **kwargs) -> Dict[str, Any]:
@@ -404,6 +413,12 @@ class UsinasNaoSimuladasTool(NEWAVETool):
                     subsistemas_disponiveis.append({'codigo': codigo, 'nome': nome})
                     print(f"[TOOL]   - Código {codigo}: \"{nome}\"")
                 print("[TOOL] =====================================")
+            
+            # Criar mapa de código -> nome de submercado para enriquecer os dados de saída
+            submercado_map = {
+                s['codigo']: s['nome']
+                for s in subsistemas_disponiveis
+            } if subsistemas_disponiveis else {}
             
             # ETAPA 5: Identificar filtros
             print("[TOOL] ETAPA 5: Identificando filtros...")
@@ -488,7 +503,42 @@ class UsinasNaoSimuladasTool(NEWAVETool):
             print("[TOOL] ETAPA 7: Formatando resultados...")
             dados_lista = []
             for _, row in resultado_df.iterrows():
-                dados_lista.append(self._format_geracao_data(row))
+                item = self._format_geracao_data(row)
+                
+                # Enriquecer cada registro com informações completas de submercado
+                # Viés de confirmação: SEMPRE incluir informação de submercado, mesmo que seja genérica
+                codigo_sub = item.get('codigo_submercado')
+                nome_sub = submercado_map.get(codigo_sub) if codigo_sub is not None else None
+                
+                # Sempre criar campo submercado, mesmo que seja genérico
+                if codigo_sub is not None:
+                    item['submercado'] = {
+                        'codigo': codigo_sub,
+                        'nome': nome_sub if nome_sub is not None else f"Subsistema {codigo_sub}",
+                    }
+                else:
+                    # Fallback: tentar extrair do DataFrame se não estiver no item formatado
+                    codigo_sub_fallback = row.get('codigo_submercado')
+                    if codigo_sub_fallback is not None and pd.notna(codigo_sub_fallback):
+                        codigo_sub_fallback = int(codigo_sub_fallback)
+                        nome_sub_fallback = submercado_map.get(codigo_sub_fallback)
+                        item['submercado'] = {
+                            'codigo': codigo_sub_fallback,
+                            'nome': nome_sub_fallback if nome_sub_fallback is not None else f"Subsistema {codigo_sub_fallback}",
+                        }
+                        item['codigo_submercado'] = codigo_sub_fallback
+                    else:
+                        # Último fallback: submercado desconhecido
+                        item['submercado'] = {
+                            'codigo': None,
+                            'nome': "Subsistema desconhecido",
+                        }
+                
+                # Garantir que o campo "objeto" esteja sempre preenchido com a fonte
+                if not item.get('objeto') and item.get('fonte') is not None:
+                    item['objeto'] = item.get('fonte')
+                
+                dados_lista.append(item)
             
             # ETAPA 8: Estatísticas
             stats = {
@@ -541,12 +591,52 @@ class UsinasNaoSimuladasTool(NEWAVETool):
             if periodo is not None:
                 filtros_aplicados['periodo'] = periodo
             
+            # ETAPA 10: Criar resumo de confirmação dos subsistemas presentes nos dados retornados
+            # Viés de confirmação: sempre mostrar quais subsistemas estão presentes
+            subsistemas_presentes = {}
+            objetos_presentes = set()
+            
+            for item in dados_lista:
+                sub_info = item.get('submercado', {})
+                codigo_sub = sub_info.get('codigo')
+                nome_sub = sub_info.get('nome')
+                objeto = item.get('objeto') or item.get('fonte')
+                
+                if codigo_sub is not None:
+                    if codigo_sub not in subsistemas_presentes:
+                        subsistemas_presentes[codigo_sub] = {
+                            'codigo': codigo_sub,
+                            'nome': nome_sub or f"Subsistema {codigo_sub}",
+                            'objetos': set()
+                        }
+                    if objeto:
+                        subsistemas_presentes[codigo_sub]['objetos'].add(objeto)
+                        objetos_presentes.add(objeto)
+            
+            # Converter sets para listas para serialização JSON
+            resumo_subsistemas = {}
+            for codigo, info in subsistemas_presentes.items():
+                resumo_subsistemas[codigo] = {
+                    'codigo': info['codigo'],
+                    'nome': info['nome'],
+                    'objetos': sorted(list(info['objetos']))
+                }
+            
+            # Criar descrição com confirmação explícita dos subsistemas
+            if resumo_subsistemas:
+                subsistemas_nomes = [info['nome'] for info in resumo_subsistemas.values()]
+                descricao_confirmacao = f"Geração de usinas não simuladas: {len(resultado_df)} registro(s) do SISTEMA.DAT. Subsistemas presentes: {', '.join(subsistemas_nomes)}"
+            else:
+                descricao_confirmacao = f"Geração de usinas não simuladas: {len(resultado_df)} registro(s) do SISTEMA.DAT"
+            
             return {
                 "success": True,
                 "dados": dados_lista,
                 "stats": stats,
                 "filtros_aplicados": filtros_aplicados if filtros_aplicados else None,
-                "description": f"Geração de usinas não simuladas: {len(resultado_df)} registro(s) do SISTEMA.DAT",
+                "resumo_subsistemas": resumo_subsistemas,  # Viés de confirmação: sempre mostrar subsistemas presentes
+                "objetos_presentes": sorted(list(objetos_presentes)),  # Lista de todos os objetos únicos presentes
+                "description": descricao_confirmacao,
                 "tool": self.get_name()
             }
             

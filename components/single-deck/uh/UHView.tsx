@@ -3,6 +3,7 @@
 import React from "react";
 import { motion } from "framer-motion";
 import { UHTable } from "./UHTable";
+import { VolumeInicialView } from "../volume-inicial/VolumeInicialView";
 import type { SingleDeckVisualizationData } from "../shared/types";
 
 interface UHViewProps {
@@ -12,6 +13,27 @@ interface UHViewProps {
 export function UHView({ visualizationData }: UHViewProps) {
   const { table, filtros } = visualizationData;
 
+  // Detectar se é volume inicial: verificar se a tabela tem apenas as 4 colunas específicas
+  const isVolumeInicial = React.useMemo(() => {
+    if (!table || table.length === 0) return false;
+    
+    const firstRow = table[0] as any;
+    const columns = Object.keys(firstRow);
+    
+    // Volume inicial tem exatamente: usina, codigo, data, volume_inicial
+    const expectedColumns = ['usina', 'codigo', 'data', 'volume_inicial'];
+    const hasAllExpected = expectedColumns.every(col => columns.includes(col));
+    const hasOnlyExpected = columns.length === expectedColumns.length;
+    
+    return hasAllExpected && hasOnlyExpected;
+  }, [table]);
+
+  // Se for volume inicial, usar componente específico
+  if (isVolumeInicial) {
+    return <VolumeInicialView visualizationData={visualizationData} />;
+  }
+
+  // Caso contrário, usar formatação genérica do bloco UH
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}

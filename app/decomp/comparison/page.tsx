@@ -218,38 +218,8 @@ export default function ComparisonPage() {
     // Executar periodicamente para limpar overlays órfãos
     const interval = setInterval(cleanupOverlays, 2000);
     
-    // Expor função global para debug
-    (window as any).debugComparisonPage = {
-      cleanupOverlays,
-      focusInput: () => {
-        const inputElement = document.querySelector('input[placeholder*="pergunta"]') as HTMLInputElement;
-        if (inputElement) {
-          inputElement.focus();
-          inputElement.click();
-          console.log("Input focado:", inputElement === document.activeElement);
-        }
-      },
-      checkBlocking: () => {
-        const inputElement = document.querySelector('input[placeholder*="pergunta"]') as HTMLInputElement;
-        if (inputElement) {
-          const rect = inputElement.getBoundingClientRect();
-          const centerX = rect.left + rect.width / 2;
-          const centerY = rect.top + rect.height / 2;
-          const elementAtPoint = document.elementFromPoint(centerX, centerY);
-          console.log("Elemento no centro do input:", elementAtPoint);
-          return elementAtPoint;
-        }
-      },
-      removeAllOverlays: () => {
-        const overlays = document.querySelectorAll('[data-radix-dialog-overlay]');
-        overlays.forEach(overlay => overlay.remove());
-        console.log(`Removidos ${overlays.length} overlays`);
-      }
-    };
-    
     return () => {
       clearInterval(interval);
-      delete (window as any).debugComparisonPage;
     };
   }, [isDeckSelectorOpen, isLoading]);
 
@@ -275,87 +245,25 @@ export default function ComparisonPage() {
     }
   }, [isLoading, isDeckSelectorOpen]);
 
-  // Debug: monitorar mudanças no sessionId e isLoading
-  useEffect(() => {
-    console.log("[ComparisonPage] Estado atualizado - sessionId:", sessionId, "isLoading:", isLoading, "selectedDecks:", selectedDecks.length, "isDeckSelectorOpen:", isDeckSelectorOpen);
-    
-    // Verificar e limpar overlays órfãos que podem estar bloqueando
-    if (!isDeckSelectorOpen && sessionId) {
-      // Pequeno delay para garantir que o dialog foi completamente removido do DOM
-      setTimeout(() => {
-        const overlays = document.querySelectorAll('[data-radix-dialog-overlay]');
-        console.log("[ComparisonPage] Overlays encontrados:", overlays.length);
-        
-        overlays.forEach((overlay, index) => {
-          const style = window.getComputedStyle(overlay);
-          const isVisible = style.display !== 'none' && style.visibility !== 'hidden';
-          console.log(`[ComparisonPage] Overlay ${index}: display=${style.display}, pointer-events=${style.pointerEvents}, z-index=${style.zIndex}, visible=${isVisible}`);
-          
-          // Se o overlay está visível mas o dialog está fechado, pode ser um overlay órfão
-          if (isVisible && !isDeckSelectorOpen) {
-            console.warn(`[ComparisonPage] ⚠️ Overlay ${index} pode ser órfão! Tentando remover...`);
-            // Não remover automaticamente, apenas logar - pode ser necessário para animações
-          }
-        });
-        
-        // Verificar elementos bloqueando o input
-        const inputElement = document.querySelector('input[placeholder*="pergunta"]') as HTMLInputElement;
-        if (inputElement) {
-          const rect = inputElement.getBoundingClientRect();
-          const centerX = rect.left + rect.width / 2;
-          const centerY = rect.top + rect.height / 2;
-          const elementAtPoint = document.elementFromPoint(centerX, centerY);
-          console.log("[ComparisonPage] Elemento no centro do input:", elementAtPoint?.tagName, elementAtPoint?.className);
-          
-          if (elementAtPoint !== inputElement && !inputElement.contains(elementAtPoint)) {
-            console.warn("[ComparisonPage] ⚠️ Há um elemento bloqueando o input!", elementAtPoint);
-            const blockingStyle = window.getComputedStyle(elementAtPoint as Element);
-            console.log("[ComparisonPage] Estilo do elemento bloqueante:", {
-              position: blockingStyle.position,
-              zIndex: blockingStyle.zIndex,
-              pointerEvents: blockingStyle.pointerEvents,
-              display: blockingStyle.display
-            });
-          }
-        }
-      }, 300);
-    }
-  }, [sessionId, isLoading, selectedDecks, isDeckSelectorOpen]);
 
   // Função para inicializar comparação com os decks selecionados
   const initializeComparisonWithDecks = async (decks: DeckInfo[]) => {
-    console.log("[ComparisonPage] ========== INICIANDO initializeComparisonWithDecks ==========");
-    console.log("[ComparisonPage] Decks recebidos:", decks);
-    console.log("[ComparisonPage] Número de decks:", decks.length);
-    
     if (!decks || decks.length === 0) {
-      console.error("[ComparisonPage] ⚠️ Nenhum deck fornecido!");
       return;
     }
     
     try {
-      console.log("[ComparisonPage] Definindo isLoading = true");
       setIsLoading(true);
       
       const deckNames = decks.map(d => d.name);
-      console.log("[ComparisonPage] Deck names extraídos:", deckNames);
-      
-      console.log("[ComparisonPage] Chamando initDecompComparison API...");
-      const startTime = Date.now();
       const data = await initDecompComparison(deckNames);
-      const duration = Date.now() - startTime;
-      console.log("[ComparisonPage] initDecompComparison retornou em", duration, "ms:", data);
       
       if (!data || !data.session_id) {
         throw new Error("Resposta da API não contém session_id");
       }
       
-      console.log("[ComparisonPage] Definindo sessionId:", data.session_id);
       setSessionId(data.session_id);
       setSelectedDecks(decks);
-      
-      // Forçar atualização do estado
-      console.log("[ComparisonPage] Estado atualizado - sessionId:", data.session_id, "selectedDecks:", decks.length);
       
       // Pequeno delay para garantir que o estado foi atualizado
       await new Promise(resolve => setTimeout(resolve, 100));
@@ -373,12 +281,7 @@ export default function ComparisonPage() {
           timestamp: new Date(),
         },
       ]);
-      
-      console.log("[ComparisonPage] ✅ Inicialização concluída com sucesso");
     } catch (err) {
-      console.error("[ComparisonPage] ❌ Error initializing comparison:", err);
-      console.error("[ComparisonPage] Stack trace:", err instanceof Error ? err.stack : "N/A");
-      
       setMessages([
         {
           id: Date.now().toString(),
@@ -394,26 +297,20 @@ export default function ComparisonPage() {
       setSessionId(null);
       setSelectedDecks([]);
     } finally {
-      console.log("[ComparisonPage] Definindo isLoading = false");
       setIsLoading(false);
-      console.log("[ComparisonPage] ========== FINALIZANDO initializeComparisonWithDecks ==========");
     }
   };
 
   // Abrir seletor de decks ao montar (sem decks pré-selecionados)
   useEffect(() => {
-    console.log("[ComparisonPage] useEffect de inicialização executado");
     // Inicializar com os 2 decks mais recentes por padrão
     const initializeDefault = async () => {
       try {
-        console.log("[ComparisonPage] Inicializando com decks padrão...");
         setIsLoading(true);
         const data = await initDecompComparison();
-        console.log("[ComparisonPage] initDecompComparison retornou:", data);
         
         setSessionId(data.session_id);
         setSelectedDecks(data.selected_decks);
-        console.log("[ComparisonPage] Estado inicial definido - sessionId:", data.session_id);
 
         const deckList = data.selected_decks.map(d => `**${d.display_name}**`).join(", ");
         
@@ -426,7 +323,6 @@ export default function ComparisonPage() {
           },
         ]);
       } catch (err) {
-        console.error("[ComparisonPage] Error initializing comparison:", err);
         setMessages([
           {
             id: Date.now().toString(),
@@ -439,7 +335,6 @@ export default function ComparisonPage() {
         ]);
       } finally {
         setIsLoading(false);
-        console.log("[ComparisonPage] Inicialização concluída - isLoading: false");
       }
     };
 
@@ -1221,14 +1116,6 @@ export default function ComparisonPage() {
           style={{ zIndex: 10, position: 'relative' }}
         >
           <div className="max-w-7xl mx-auto px-4 py-4" style={{ position: 'relative', zIndex: 10 }}>
-            {/* Debug info */}
-            {process.env.NODE_ENV === 'development' && (
-              <div className="mb-2 text-xs text-muted-foreground">
-                Debug: sessionId={sessionId ? "✓" : "✗"}, isLoading={isLoading ? "✓" : "✗"}, 
-                isDeckSelectorOpen={isDeckSelectorOpen ? "✓" : "✗"}, 
-                selectedDecks={selectedDecks.length}
-              </div>
-            )}
             <div 
               className="relative flex items-end gap-3" 
               style={{ zIndex: 1000, position: 'relative' }}
@@ -1237,7 +1124,6 @@ export default function ComparisonPage() {
                 const target = e.target as HTMLElement;
                 const inputElement = target.closest('div')?.querySelector('input') as HTMLInputElement;
                 if (inputElement && !inputElement.disabled && target.tagName !== 'INPUT') {
-                  console.log("[ComparisonPage] Área do input clicada - forçando foco");
                   e.preventDefault();
                   e.stopPropagation();
                   setTimeout(() => {
@@ -1256,12 +1142,10 @@ export default function ComparisonPage() {
                     position: 'relative'
                   }}
                   onClick={(e) => {
-                    console.log("[ComparisonPage] Container do input clicado");
                     e.stopPropagation();
                     // Se clicou no container mas não no input, focar no input
                     const inputElement = e.currentTarget.querySelector('input') as HTMLInputElement;
                     if (inputElement && !inputElement.disabled) {
-                      console.log("[ComparisonPage] Focando no input programaticamente");
                       setTimeout(() => {
                         inputElement.focus();
                         inputElement.click();
@@ -1269,10 +1153,8 @@ export default function ComparisonPage() {
                     }
                   }}
                   onMouseDown={(e) => {
-                    console.log("[ComparisonPage] Container onMouseDown");
                     const inputElement = e.currentTarget.querySelector('input') as HTMLInputElement;
                     if (inputElement && !inputElement.disabled && e.target !== inputElement) {
-                      console.log("[ComparisonPage] MouseDown no container - redirecionando para input");
                       e.preventDefault();
                       e.stopPropagation();
                       setTimeout(() => {
@@ -1287,7 +1169,6 @@ export default function ComparisonPage() {
                     placeholder={sessionId ? "Faça uma pergunta para comparar os decks..." : "Inicializando modo comparação..."}
                     value={input}
                     onChange={(e) => {
-                      console.log("[ComparisonPage] Input onChange:", e.target.value);
                       setInput(e.target.value);
                     }}
                     onKeyDown={handleKeyPress}
@@ -1300,20 +1181,10 @@ export default function ComparisonPage() {
                       position: 'relative'
                     }}
                     onFocus={(e) => {
-                      console.log("[ComparisonPage] ✅ Input recebeu foco!");
-                      console.log("[ComparisonPage] sessionId:", sessionId);
-                      console.log("[ComparisonPage] isLoading:", isLoading);
-                      console.log("[ComparisonPage] disabled:", !sessionId || isLoading || isDeckSelectorOpen);
-                      console.log("[ComparisonPage] isDeckSelectorOpen:", isDeckSelectorOpen);
                       e.stopPropagation();
                     }}
-                    onBlur={() => {
-                      console.log("[ComparisonPage] Input perdeu foco");
-                    }}
                     onMouseDown={(e) => {
-                      console.log("[ComparisonPage] ✅ Input onMouseDown - evento capturado!");
                       if (!sessionId || isLoading || isDeckSelectorOpen) {
-                        console.warn("[ComparisonPage] ⚠️ MouseDown bloqueado - input está disabled");
                         e.preventDefault();
                         e.stopPropagation();
                         return;
@@ -1321,12 +1192,7 @@ export default function ComparisonPage() {
                       e.stopPropagation();
                     }}
                     onClick={(e) => {
-                      console.log("[ComparisonPage] ✅ Input clicado!");
-                      console.log("[ComparisonPage] sessionId:", sessionId);
-                      console.log("[ComparisonPage] isLoading:", isLoading);
-                      console.log("[ComparisonPage] isDeckSelectorOpen:", isDeckSelectorOpen);
                       if (!sessionId) {
-                        console.warn("[ComparisonPage] ⚠️ Input clicado mas sessionId é null!");
                         e.preventDefault();
                         e.stopPropagation();
                         return;
@@ -1334,7 +1200,6 @@ export default function ComparisonPage() {
                       e.stopPropagation();
                     }}
                     onPointerDown={(e) => {
-                      console.log("[ComparisonPage] Input onPointerDown");
                       e.stopPropagation();
                     }}
                     tabIndex={(!sessionId || isLoading || isDeckSelectorOpen) ? -1 : 0}
@@ -1342,13 +1207,7 @@ export default function ComparisonPage() {
                 </div>
               </div>
               <Button
-                onClick={() => {
-                  console.log("[ComparisonPage] Botão Send clicado");
-                  console.log("[ComparisonPage] sessionId:", sessionId);
-                  console.log("[ComparisonPage] input:", input);
-                  console.log("[ComparisonPage] isLoading:", isLoading);
-                  handleSendMessage();
-                }}
+                onClick={handleSendMessage}
                 disabled={!sessionId || !input.trim() || isLoading || isDeckSelectorOpen}
                 className="bg-primary hover:bg-primary/90 text-primary-foreground h-9 w-9 p-0 rounded-lg flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                 size="icon"
@@ -1364,74 +1223,6 @@ export default function ComparisonPage() {
                   ? `Comparação entre ${selectedDecks[0]?.display_name} e ${selectedDecks[1]?.display_name}`
                   : "Selecione os decks para comparação"}
             </p>
-            {/* Debug: mostrar status do input */}
-            {process.env.NODE_ENV === 'development' && (
-              <div className="text-xs text-center mt-1 space-y-1">
-                {!sessionId && (
-                  <span className="text-yellow-500 block">⚠️ Aguardando sessionId...</span>
-                )}
-                {sessionId && isLoading && (
-                  <span className="text-blue-500 block">⏳ Processando...</span>
-                )}
-                {isDeckSelectorOpen && (
-                  <span className="text-purple-500 block">📋 Selecionando decks...</span>
-                )}
-                {sessionId && !isLoading && !isDeckSelectorOpen && (
-                  <span className="text-green-500 block">✓ Pronto para consultar</span>
-                )}
-                <div className="text-xs text-muted-foreground">
-                  Input disabled: {(!sessionId || isLoading || isDeckSelectorOpen) ? "SIM" : "NÃO"}
-                </div>
-                <div className="flex gap-2 justify-center items-center mt-2">
-                  <button
-                    onClick={() => {
-                      console.log("[ComparisonPage] Botão de debug clicado - forçando foco no input");
-                      const inputElement = document.querySelector('input[placeholder*="pergunta"]') as HTMLInputElement;
-                      if (inputElement) {
-                        inputElement.focus();
-                        inputElement.click();
-                        console.log("[ComparisonPage] Input focado:", inputElement === document.activeElement);
-                      } else {
-                        console.error("[ComparisonPage] Input não encontrado!");
-                      }
-                    }}
-                    className="text-xs px-2 py-1 bg-blue-500 text-white rounded hover:bg-blue-600"
-                  >
-                    [DEBUG] Forçar foco
-                  </button>
-                  <button
-                    onClick={() => {
-                      console.log("[ComparisonPage] Removendo todos os overlays");
-                      const overlays = document.querySelectorAll('[data-radix-dialog-overlay]');
-                      overlays.forEach(overlay => {
-                        (overlay as HTMLElement).style.display = 'none';
-                        overlay.remove();
-                      });
-                      console.log(`[ComparisonPage] Removidos ${overlays.length} overlays`);
-                    }}
-                    className="text-xs px-2 py-1 bg-red-500 text-white rounded hover:bg-red-600"
-                  >
-                    [DEBUG] Limpar Overlays
-                  </button>
-                  <button
-                    onClick={() => {
-                      const inputElement = document.querySelector('input[placeholder*="pergunta"]') as HTMLInputElement;
-                      if (inputElement) {
-                        const rect = inputElement.getBoundingClientRect();
-                        const centerX = rect.left + rect.width / 2;
-                        const centerY = rect.top + rect.height / 2;
-                        const elementAtPoint = document.elementFromPoint(centerX, centerY);
-                        console.log("[ComparisonPage] Elemento bloqueando:", elementAtPoint);
-                        alert(`Elemento no centro do input: ${elementAtPoint?.tagName} - ${elementAtPoint?.className}`);
-                      }
-                    }}
-                    className="text-xs px-2 py-1 bg-yellow-500 text-white rounded hover:bg-yellow-600"
-                  >
-                    [DEBUG] Ver Bloqueio
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
         </div>
       </div>
@@ -1441,19 +1232,9 @@ export default function ComparisonPage() {
         mode="multi"
         open={isDeckSelectorOpen}
         onOpenChange={(open) => {
-          console.log("[ComparisonPage] DeckSelector onOpenChange:", open);
           setIsDeckSelectorOpen(open);
-          // Se o dialog está fechando, garantir que isLoading não está bloqueando
-          if (!open) {
-            console.log("[ComparisonPage] Dialog fechado - verificando estado");
-            // Pequeno delay para garantir que o overlay foi removido
-            setTimeout(() => {
-              console.log("[ComparisonPage] Após fechar dialog - sessionId:", sessionId, "isLoading:", isLoading);
-            }, 200);
-          }
         }}
         onSelect={(decks) => {
-          console.log("[ComparisonPage] DeckSelector onSelect chamado com:", decks);
           initializeComparisonWithDecks(decks);
         }}
         initialSelected={selectedDecks.map(d => d.name)}

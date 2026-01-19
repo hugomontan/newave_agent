@@ -9,6 +9,7 @@ from .ct_formatter import CTSingleDeckFormatter
 from .dp_formatter import DPSingleDeckFormatter
 from .disponibilidade_usina_formatter import DisponibilidadeUsinaFormatter
 from .inflexibilidade_usina_formatter import InflexibilidadeUsinaFormatter
+from .volume_inicial_formatter import VolumeInicialFormatter
 
 __all__ = [
     "UHSingleDeckFormatter",
@@ -16,4 +17,5 @@ __all__ = [
     "DPSingleDeckFormatter",
     "DisponibilidadeUsinaFormatter",
     "InflexibilidadeUsinaFormatter",
+    "VolumeInicialFormatter",
 ]

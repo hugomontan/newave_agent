@@ -15,8 +15,29 @@ class UHSingleDeckFormatter(SingleDeckFormatter):
     """
     
     def can_format(self, tool_name: str, result_structure: Dict[str, Any]) -> bool:
-        """Verifica se pode formatar resultados da UHUsinasHidrelétricasTool."""
-        return tool_name == "UHUsinasHidrelétricasTool" or "uh" in tool_name.lower()
+        """
+        Verifica se pode formatar resultados da UHUsinasHidrelétricasTool.
+        
+        NÃO formata resultados de volume inicial (esses são tratados pelo VolumeInicialFormatter).
+        """
+        if tool_name != "UHUsinasHidrelétricasTool" and "uh" not in tool_name.lower():
+            return False
+        
+        # PRIORIDADE: Se tem estrutura de volume inicial específica, NÃO formatar aqui
+        # O VolumeInicialFormatter (prioridade 95) deve tratar isso
+        # Estrutura de volume inicial: tem "volume_inicial" como chave direta + "usina" como dict
+        if "volume_inicial" in result_structure and "usina" in result_structure:
+            volume_inicial_val = result_structure.get("volume_inicial")
+            usina_val = result_structure.get("usina")
+            # Se volume_inicial é um número (não uma lista) e usina é um dict, é resultado de volume inicial
+            if isinstance(volume_inicial_val, (int, float)) and isinstance(usina_val, dict):
+                return False  # Deixar para VolumeInicialFormatter
+        
+        # Se tem "data" como lista (resultado genérico do bloco UH), pode formatar
+        if "data" in result_structure:
+            return True
+        
+        return False
     
     def get_priority(self) -> int:
         """Prioridade alta para esta tool específica."""
