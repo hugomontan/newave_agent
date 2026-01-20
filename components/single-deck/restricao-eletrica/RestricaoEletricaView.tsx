@@ -16,7 +16,11 @@ export function RestricaoEletricaView({ visualizationData }: RestricaoEletricaVi
   // Agrupar tabela por restrição
   const groupedByRestricao = React.useMemo(() => {
     if (!table || table.length === 0) return null;
-    
+
+    // Apenas agrupar se os registros tiverem campo "restricao" (formato antigo)
+    const hasRestricaoField = table.some((row) => row.restricao);
+    if (!hasRestricaoField) return null;
+
     const grouped: Record<string, typeof table> = {};
     table.forEach((row) => {
       const restricao = row.restricao ? String(row.restricao) : "Sem nome";

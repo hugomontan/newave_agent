@@ -38,6 +38,10 @@ from decomp_agent.app.config import UPLOADS_DIR
 from decomp_agent.app.agents.single_deck.graph import run_query as single_deck_run_query, run_query_stream as single_deck_run_query_stream
 from decomp_agent.app.agents.multi_deck.graph import run_query as multi_deck_run_query, run_query_stream as multi_deck_run_query_stream
 from decomp_agent.app.rag import index_documentation
+from decomp_agent.app.utils.dadger_cache import get_cached_dadger, get_cache_stats
+from decomp_agent.app.utils.deck_loader import list_available_decks, load_deck
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import time
 
 app = FastAPI(
     title="DECOMP Agent API",
@@ -118,13 +122,98 @@ def extract_json_data(stdout: str) -> tuple[str, dict | list | None]:
             return stdout, None
     return stdout, None
 
+def preload_decomp_decks():
+    """
+    Preload de todos os decks DECOMP disponíveis no cache.
+    Executa de forma síncrona no startup para garantir que tudo esteja carregado.
+    """
+    try:
+        print("\n" + "="*60)
+        print("[PRELOAD DECOMP] ⚡ Iniciando preload de decks...")
+        print("="*60)
+        start_time = time.time()
+        
+        # Listar todos os decks disponíveis
+        available_decks = list_available_decks()
+        
+        if not available_decks:
+            print("[PRELOAD DECOMP] ⚠️ Nenhum deck DECOMP encontrado")
+            return
+        
+        print(f"[PRELOAD DECOMP] 📦 Encontrados {len(available_decks)} decks")
+        
+        # Preload em paralelo (usar até 8 workers para não sobrecarregar)
+        max_workers = min(8, len(available_decks))
+        loaded_count = 0
+        error_count = 0
+        errors_detail = []
+        
+        def load_single_deck(deck_info):
+            """Carrega um deck no cache."""
+            try:
+                deck_name = deck_info["name"]
+                # Carregar deck (extrai se necessário)
+                deck_path = load_deck(deck_name)
+                # Carregar Dadger no cache
+                dadger = get_cached_dadger(str(deck_path))
+                if dadger:
+                    return (deck_name, True, None)
+                return (deck_name, False, "Dadger não encontrado")
+            except Exception as e:
+                return (deck_info.get('name', 'unknown'), False, str(e))
+        
+        print(f"[PRELOAD DECOMP] 🔄 Carregando {len(available_decks)} decks em paralelo ({max_workers} workers)...")
+        
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {
+                executor.submit(load_single_deck, deck): deck 
+                for deck in available_decks
+            }
+            
+            for future in as_completed(futures):
+                deck_name, success, error = future.result()
+                if success:
+                    loaded_count += 1
+                    if loaded_count % 10 == 0:
+                        print(f"[PRELOAD DECOMP] ✅ {loaded_count}/{len(available_decks)} decks carregados...")
+                else:
+                    error_count += 1
+                    errors_detail.append((deck_name, error))
+                    if error:
+                        print(f"[PRELOAD DECOMP] ⚠️ Erro ao carregar {deck_name}: {error}")
+        
+        elapsed = time.time() - start_time
+        cache_stats = get_cache_stats()
+        
+        print("\n" + "-"*60)
+        print(f"[PRELOAD DECOMP] ✅ Preload concluído em {elapsed:.2f}s")
+        print(f"[PRELOAD DECOMP]   📊 Decks carregados: {loaded_count}/{len(available_decks)}")
+        print(f"[PRELOAD DECOMP]   ❌ Erros: {error_count}")
+        if error_count > 0:
+            print(f"[PRELOAD DECOMP]   ⚠️ Decks com erro: {[e[0] for e in errors_detail[:5]]}")
+        print(f"[PRELOAD DECOMP]   💾 Cache: {cache_stats['currsize']}/{cache_stats['maxsize']} slots usados")
+        if cache_stats['hits'] + cache_stats['misses'] > 0:
+            print(f"[PRELOAD DECOMP]   🎯 Hit rate: {cache_stats['hit_rate']*100:.1f}%")
+        print("="*60 + "\n")
+        
+    except Exception as e:
+        print(f"\n[PRELOAD DECOMP] ❌ Erro crítico no preload: {e}")
+        import traceback
+        traceback.print_exc()
+        print("="*60 + "\n")
+
 @app.on_event("startup")
 async def startup_event():
+    """Executa no startup do servidor, ANTES de aceitar requisições."""
+    # 1. Indexar documentação primeiro
     try:
         count = index_documentation()
-        print(f"Documentação DECOMP indexada: {count} documentos")
+        print(f"📚 Documentação DECOMP indexada: {count} documentos")
     except Exception as e:
-        print(f"Erro ao indexar documentação DECOMP: {e}")
+        print(f"⚠️ Erro ao indexar documentação DECOMP: {e}")
+    
+    # 2. Preload síncrono de decks (bloqueia até terminar)
+    preload_decomp_decks()
 
 @app.get("/")
 async def root():

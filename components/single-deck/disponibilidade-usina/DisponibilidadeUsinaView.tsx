@@ -63,17 +63,17 @@ export function DisponibilidadeUsinaView({ visualizationData }: DisponibilidadeU
           <h4 className="text-base sm:text-lg font-semibold text-card-foreground mb-4">
             Dados
           </h4>
-          <div className="w-full overflow-x-auto">
-            <table className="w-full min-w-[600px] border-collapse">
+          <div className="w-full">
+            <table className="w-full border-collapse">
             <thead>
               <tr className="border-b border-border bg-background/50">
-                <th className="px-3 sm:px-4 py-3 text-left text-xs font-semibold text-card-foreground uppercase tracking-wider">
+                <th className="px-2 py-3 text-left text-xs font-semibold text-card-foreground uppercase tracking-wider">
                   Patamar
                 </th>
-                <th className="px-3 sm:px-4 py-3 text-right text-xs font-semibold text-card-foreground uppercase tracking-wider">
-                  Inflexibilidade (MW)
+                <th className="px-2 py-3 text-right text-xs font-semibold text-card-foreground uppercase tracking-wider">
+                  Disponibilidade (MW)
                 </th>
-                <th className="px-3 sm:px-4 py-3 text-right text-xs font-semibold text-card-foreground uppercase tracking-wider">
+                <th className="px-2 py-3 text-right text-xs font-semibold text-card-foreground uppercase tracking-wider">
                   Duração (horas)
                 </th>
               </tr>
@@ -84,13 +84,13 @@ export function DisponibilidadeUsinaView({ visualizationData }: DisponibilidadeU
                   key={`${patamar.patamar}-${index}`}
                   className="border-b border-border/50 hover:bg-background/30 transition-colors"
                 >
-                  <td className={`px-3 sm:px-4 py-2.5 text-sm font-medium ${getPatamarTextColor(patamar.patamar)}`}>
+                  <td className={`px-2 py-2.5 text-sm font-medium ${getPatamarTextColor(patamar.patamar)}`}>
                     {patamar.patamar}
                   </td>
-                  <td className="px-3 sm:px-4 py-2.5 text-sm text-card-foreground text-right font-mono">
+                  <td className="px-2 py-2.5 text-sm text-card-foreground text-right font-mono">
                     {formatNumber(patamar.inflexibilidade)}
                   </td>
-                  <td className="px-3 sm:px-4 py-2.5 text-sm text-card-foreground text-right font-mono">
+                  <td className="px-2 py-2.5 text-sm text-card-foreground text-right font-mono">
                     {formatNumber(patamar.duracao)}
                   </td>
                 </tr>

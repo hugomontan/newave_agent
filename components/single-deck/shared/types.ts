@@ -83,4 +83,27 @@ export interface SingleDeckVisualizationData {
     denominador: number;
     resultado: number;
   };
+  // Campos específicos para CargaMediaPonderadaTool
+  mw_medios?: Array<{
+    estagio?: number;
+    codigo_submercado?: number;
+    mw_medio: number;
+  }>;
+  // Campos específicos para PQPequenasUsinasTool
+  tables_by_regiao?: Record<string, TableRow[]>;
+  tables_by_tipo?: Record<string, TableRow[]>;
+  stats_geral?: {
+    total_registros?: number;
+    regioes_encontradas?: string[];
+    tipos_encontrados?: string[];
+    total_mw_medio_geral?: number;
+  };
+  mw_medios_por_regiao?: Array<{
+    regiao: string;
+    mw_medio: number;
+  }>;
+  mw_medios_por_tipo?: Array<{
+    tipo: string;
+    mw_medio: number;
+  }>;
 }

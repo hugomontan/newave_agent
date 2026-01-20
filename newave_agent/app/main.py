@@ -51,6 +51,9 @@ from newave_agent.app.config import UPLOADS_DIR
 from newave_agent.app.agents.single_deck.graph import run_query as single_deck_run_query, run_query_stream as single_deck_run_query_stream
 from newave_agent.app.agents.multi_deck.graph import run_query as multi_deck_run_query, run_query_stream as multi_deck_run_query_stream
 from newave_agent.app.rag import index_documentation
+from newave_agent.app.utils.deck_loader import list_available_decks, load_deck
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import time
 
 
 app = FastAPI(
@@ -115,14 +118,99 @@ def extract_json_data(stdout: str) -> tuple[str, dict | list | None]:
     return stdout, None
 
 
+def preload_newave_decks():
+    """
+    Preload de todos os decks NEWAVE disponíveis.
+    Garante que todos os decks estejam extraídos (prontos para uso).
+    Executa de forma síncrona no startup.
+    """
+    try:
+        print("\n" + "="*60)
+        print("[PRELOAD NEWAVE] ⚡ Iniciando preload de decks...")
+        print("="*60)
+        start_time = time.time()
+        
+        # Listar todos os decks disponíveis
+        available_decks = list_available_decks()
+        
+        if not available_decks:
+            print("[PRELOAD NEWAVE] ⚠️ Nenhum deck NEWAVE encontrado")
+            return
+        
+        print(f"[PRELOAD NEWAVE] 📦 Encontrados {len(available_decks)} decks")
+        
+        # Extrair todos os decks em paralelo
+        max_workers = min(8, len(available_decks))
+        extracted_count = 0
+        already_extracted = 0
+        error_count = 0
+        errors_detail = []
+        
+        def extract_single_deck(deck_info):
+            """Extrai um deck se necessário."""
+            try:
+                deck_name = deck_info["name"]
+                deck_path = load_deck(deck_name)  # Já extrai se necessário
+                if deck_info.get("extracted_path"):
+                    return (deck_name, "already_extracted", None)
+                return (deck_name, "extracted", None)
+            except Exception as e:
+                return (deck_info.get('name', 'unknown'), "error", str(e))
+        
+        print(f"[PRELOAD NEWAVE] 🔄 Processando {len(available_decks)} decks em paralelo ({max_workers} workers)...")
+        
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {
+                executor.submit(extract_single_deck, deck): deck 
+                for deck in available_decks
+            }
+            
+            for future in as_completed(futures):
+                deck_name, status, error = future.result()
+                if status == "extracted":
+                    extracted_count += 1
+                elif status == "already_extracted":
+                    already_extracted += 1
+                else:
+                    error_count += 1
+                    errors_detail.append((deck_name, error))
+                    if error:
+                        print(f"[PRELOAD NEWAVE] ⚠️ Erro ao extrair {deck_name}: {error}")
+                
+                total_processed = extracted_count + already_extracted + error_count
+                if total_processed % 10 == 0:
+                    print(f"[PRELOAD NEWAVE] ✅ {total_processed}/{len(available_decks)} decks processados...")
+        
+        elapsed = time.time() - start_time
+        
+        print("\n" + "-"*60)
+        print(f"[PRELOAD NEWAVE] ✅ Preload concluído em {elapsed:.2f}s")
+        print(f"[PRELOAD NEWAVE]   📊 Decks extraídos: {extracted_count}")
+        print(f"[PRELOAD NEWAVE]   ✅ Já extraídos: {already_extracted}")
+        print(f"[PRELOAD NEWAVE]   ❌ Erros: {error_count}")
+        if error_count > 0:
+            print(f"[PRELOAD NEWAVE]   ⚠️ Decks com erro: {[e[0] for e in errors_detail[:5]]}")
+        print("="*60 + "\n")
+        
+    except Exception as e:
+        print(f"\n[PRELOAD NEWAVE] ❌ Erro crítico no preload: {e}")
+        import traceback
+        traceback.print_exc()
+        print("="*60 + "\n")
+
+
 @app.on_event("startup")
 async def startup_event():
-    """Indexa a documentação ao iniciar."""
+    """Executa no startup do servidor, ANTES de aceitar requisições."""
+    # 1. Indexar documentação primeiro
     try:
         count = index_documentation()
-        print(f"Documentação indexada: {count} documentos")
+        print(f"📚 Documentação indexada: {count} documentos")
     except Exception as e:
-        print(f"Erro ao indexar documentação: {e}")
+        print(f"⚠️ Erro ao indexar documentação: {e}")
+    
+    # 2. Preload síncrono de decks (bloqueia até terminar)
+    preload_newave_decks()
 
 
 @app.get("/")

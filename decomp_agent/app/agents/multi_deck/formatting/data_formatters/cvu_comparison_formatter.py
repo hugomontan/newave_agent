@@ -56,7 +56,8 @@ class CVUComparisonFormatter(ComparisonFormatter):
         self,
         decks_data: List[DeckData],
         tool_name: str,
-        query: str
+        query: str,
+        **kwargs
     ) -> Dict[str, Any]:
         """
         Formata comparação de CVU entre múltiplos decks.

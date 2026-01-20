@@ -41,7 +41,8 @@ class InflexibilidadeComparisonFormatter(ComparisonFormatter):
         self,
         decks_data: List[DeckData],
         tool_name: str,
-        query: str
+        query: str,
+        **kwargs
     ) -> Dict[str, Any]:
         """
         Formata comparação de inflexibilidade entre múltiplos decks.
@@ -114,6 +115,7 @@ class InflexibilidadeComparisonFormatter(ComparisonFormatter):
                 continue
             
             # Extrair data do deck
+            # A data pode estar no resultado (quando vem da tool multi-deck) ou precisamos extrair do nome do deck
             date = result.get("date")
             
             # Se não tem data no resultado, tentar extrair do nome do deck
@@ -170,6 +172,7 @@ class InflexibilidadeComparisonFormatter(ComparisonFormatter):
         }
         
         # Resposta mínima - toda informação está na visualização (tabela + gráfico)
+        # Usar uma string mínima para garantir que a resposta seja exibida
         final_response = f"Comparação de inflexibilidade para {nome_usina}."
         
         return {

@@ -35,6 +35,8 @@ export interface ComparisonData {
   
   // Dados formatados
   chart_data?: ChartData | null;
+  chart_data_gmin?: ChartData | null; // Gráfico GMIN para restrições elétricas
+  chart_data_gmax?: ChartData | null; // Gráfico GMAX para restrições elétricas
   charts_by_par?: Record<string, {
     par: string;
     sentido: string;
@@ -57,6 +59,22 @@ export interface ComparisonData {
   stats?: Record<string, any>;
   tool_name?: string;
   meses_ordenados?: string[]; // Meses no formato YYYY-MM para matriz transposta
+  
+  // Campos para PQ (pequenas usinas)
+  tipo_filtrado?: string; // Tipo da query (EOL, EOLGD, PCH, etc.)
+  tipo_encontrado?: string; // Tipo REAL encontrado nos dados (pode ser diferente do tipo_filtrado)
+  tipos?: Array<{ tipo: string }>; // Lista de tipos encontrados
+  chart_config?: {
+    type: string;
+    title: string;
+    x_axis: string;
+    y_axis: string;
+    tool_name?: string;
+    tipo_encontrado?: string; // Tipo REAL encontrado nos dados
+  };
+  chart_config_gmin?: ChartConfig; // Configuração do gráfico GMIN
+  chart_config_gmax?: ChartConfig; // Configuração do gráfico GMAX
+  is_multi_deck?: boolean;
 }
 
 export interface MatrixRow {

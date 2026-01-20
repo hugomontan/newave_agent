@@ -1,12 +1,12 @@
 """
-Tool Multi-Deck para calcular disponibilidade de usinas térmicas em múltiplos decks DECOMP.
-Executa DisponibilidadeUsinaTool em paralelo em todos os decks selecionados.
+Tool Multi-Deck para calcular inflexibilidade de usinas térmicas em múltiplos decks DECOMP.
+Executa InflexibilidadeUsinaTool em paralelo em todos os decks selecionados.
 OTIMIZADO para máxima performance.
 """
 from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FutureTimeoutError
 from typing import Dict, Any, List, Optional
 from decomp_agent.app.tools.base import DECOMPTool
-from decomp_agent.app.tools.disponibilidade_usina_tool import DisponibilidadeUsinaTool
+from decomp_agent.app.tools.inflexibilidade_usina_tool import InflexibilidadeUsinaTool
 from decomp_agent.app.utils.deck_loader import (
     parse_deck_name,
     calculate_week_thursday,
@@ -19,11 +19,11 @@ import pandas as pd
 import multiprocessing
 
 
-class DisponibilidadeMultiDeckTool(DECOMPTool):
+class InflexibilidadeMultiDeckTool(DECOMPTool):
     """
-    Tool para calcular disponibilidade de usinas térmicas em múltiplos decks DECOMP.
+    Tool para calcular inflexibilidade de usinas térmicas em múltiplos decks DECOMP.
     
-    Executa DisponibilidadeUsinaTool em paralelo em todos os decks selecionados
+    Executa InflexibilidadeUsinaTool em paralelo em todos os decks selecionados
     e retorna resultados agregados com datas calculadas (quinta-feira de cada semana).
     
     OTIMIZAÇÕES APLICADAS:
@@ -36,7 +36,7 @@ class DisponibilidadeMultiDeckTool(DECOMPTool):
     
     def __init__(self, deck_paths: Dict[str, str]):
         """
-        Inicializa a tool multi-deck de disponibilidade.
+        Inicializa a tool multi-deck de inflexibilidade.
         
         Args:
             deck_paths: Dict mapeando nome do deck para seu caminho (ex: {"DC202501-sem1": "/path/to/deck"})
@@ -53,11 +53,11 @@ class DisponibilidadeMultiDeckTool(DECOMPTool):
         self.max_workers = min(len(deck_paths), max(multiprocessing.cpu_count() * 2, 8))
     
     def get_name(self) -> str:
-        return "DisponibilidadeMultiDeckTool"
+        return "InflexibilidadeMultiDeckTool"
     
     def can_handle(self, query: str) -> bool:
         """
-        Verifica se a query é sobre cálculo de disponibilidade de usina.
+        Verifica se a query é sobre cálculo de inflexibilidade de usina.
         
         Args:
             query: Query do usuário
@@ -67,22 +67,22 @@ class DisponibilidadeMultiDeckTool(DECOMPTool):
         """
         query_lower = query.lower()
         keywords = [
-            "disponibilidade",
-            "disponibilidade usina",
-            "disponibilidade da usina",
-            "calcular disponibilidade",
-            "disponibilidade total",
-            "disponibilidade de",
-            "disponibilidade cubatao",
-            "disponibilidade angra",
+            "inflexibilidade",
+            "inflexibilidade usina",
+            "inflexibilidade da usina",
+            "calcular inflexibilidade",
+            "inflexibilidade total",
+            "inflexibilidade de",
+            "inflexibilidade cubatao",
+            "inflexibilidade angra",
         ]
         return any(kw in query_lower for kw in keywords)
     
     def get_description(self) -> str:
         return """
-        Tool para calcular disponibilidade total de uma usina termelétrica em múltiplos decks DECOMP.
+        Tool para calcular inflexibilidade total de uma usina termelétrica em múltiplos decks DECOMP.
         
-        Executa o cálculo de disponibilidade em paralelo em todos os decks selecionados,
+        Executa o cálculo de inflexibilidade em paralelo em todos os decks selecionados,
         combinando dados dos blocos CT (inflexibilidades) e DP (durações dos patamares).
         
         Retorna resultados agregados com datas calculadas (quinta-feira de cada semana)
@@ -108,21 +108,21 @@ class DisponibilidadeMultiDeckTool(DECOMPTool):
                 "error": "Nenhum deck disponível para comparação"
             }
         
-        safe_print(f"[DISPONIBILIDADE MULTI-DECK] ========== INÍCIO ==========")
-        safe_print(f"[DISPONIBILIDADE MULTI-DECK] Query: {query[:100]}")
-        safe_print(f"[DISPONIBILIDADE MULTI-DECK] Decks: {list(self.deck_paths.keys())}")
-        safe_print(f"[DISPONIBILIDADE MULTI-DECK] Workers: {self.max_workers}")
+        safe_print(f"[INFLEXIBILIDADE MULTI-DECK] ========== INÍCIO ==========")
+        safe_print(f"[INFLEXIBILIDADE MULTI-DECK] Query: {query[:100]}")
+        safe_print(f"[INFLEXIBILIDADE MULTI-DECK] Decks: {list(self.deck_paths.keys())}")
+        safe_print(f"[INFLEXIBILIDADE MULTI-DECK] Workers: {self.max_workers}")
         
         # OTIMIZAÇÃO 1: Carregar dadgers em paralelo primeiro
-        safe_print(f"[DISPONIBILIDADE MULTI-DECK] Carregando {len(self.deck_paths)} dadgers em paralelo...")
+        safe_print(f"[INFLEXIBILIDADE MULTI-DECK] Carregando {len(self.deck_paths)} dadgers em paralelo...")
         dadger_cache = self._load_all_dadgers_parallel()
         
-        safe_print(f"[DISPONIBILIDADE MULTI-DECK] ✅ {len(dadger_cache)}/{len(self.deck_paths)} dadgers carregados")
+        safe_print(f"[INFLEXIBILIDADE MULTI-DECK] ✅ {len(dadger_cache)}/{len(self.deck_paths)} dadgers carregados")
         
         # OTIMIZAÇÃO 2: Identificar nome canônico primeiro, depois buscar código
         # ESTRATÉGIA: Usar matcher centralizado para identificar nome canônico,
         # depois buscar código correspondente em qualquer deck que tenha essa usina
-        safe_print(f"[DISPONIBILIDADE MULTI-DECK] Tentando identificar usina da query: '{query}'")
+        safe_print(f"[INFLEXIBILIDADE MULTI-DECK] Tentando identificar usina da query: '{query}'")
         
         from shared.utils.usina_name_matcher import find_usina_match, normalize_usina_name
         
@@ -158,13 +158,13 @@ class DisponibilidadeMultiDeckTool(DECOMPTool):
                                         nome_to_codigo_map[nome_normalized] = (codigo, nome_original)
                         checked_decks += 1
             except Exception as e:
-                safe_print(f"[DISPONIBILIDADE MULTI-DECK] ⚠️ Erro ao coletar nomes do deck {deck_name}: {e}")
+                safe_print(f"[INFLEXIBILIDADE MULTI-DECK] ⚠️ Erro ao coletar nomes do deck {deck_name}: {e}")
                 continue
         
         # Se não coletou nomes, tentar carregar um deck
         if not all_available_names:
             first_deck_path = list(self.deck_paths.values())[0]
-            safe_print(f"[DISPONIBILIDADE MULTI-DECK] Tentando identificar usina da query (fallback): '{query}'")
+            safe_print(f"[INFLEXIBILIDADE MULTI-DECK] Tentando identificar usina da query (fallback): '{query}'")
             try:
                 from decomp_agent.app.utils.dadger_cache import get_cached_dadger
                 dadger = get_cached_dadger(first_deck_path)
@@ -181,17 +181,17 @@ class DisponibilidadeMultiDeckTool(DECOMPTool):
                                     if nome_normalized not in nome_to_codigo_map:
                                         nome_to_codigo_map[nome_normalized] = (codigo, nome_original)
             except Exception as e:
-                safe_print(f"[DISPONIBILIDADE MULTI-DECK] ⚠️ Erro no fallback: {e}")
+                safe_print(f"[INFLEXIBILIDADE MULTI-DECK] ⚠️ Erro no fallback: {e}")
         
         if not all_available_names:
-            safe_print(f"[DISPONIBILIDADE MULTI-DECK] ❌ Nenhuma usina encontrada nos decks")
+            safe_print(f"[INFLEXIBILIDADE MULTI-DECK] ❌ Nenhuma usina encontrada nos decks")
             return {
                 "success": False,
                 "is_comparison": True,
                 "is_multi_deck": True,
-                "error": f"Não foi possível identificar a usina na query '{query}'. Por favor, especifique o nome ou código da usina (ex: 'disponibilidade de Cubatao' ou 'disponibilidade da usina 97')",
+                "error": f"Não foi possível identificar a usina na query '{query}'. Por favor, especifique o nome ou código da usina (ex: 'inflexibilidade de Cubatao' ou 'inflexibilidade da usina 97')",
                 "decks": [],
-                "tool_name": "DisponibilidadeUsinaTool"
+                "tool_name": "InflexibilidadeUsinaTool"
             }
         
         # ETAPA 2: Usar matcher centralizado para encontrar o nome canônico
@@ -199,14 +199,14 @@ class DisponibilidadeMultiDeckTool(DECOMPTool):
         match_result = find_usina_match(query, available_names_list, threshold=0.5)
         
         if not match_result:
-            safe_print(f"[DISPONIBILIDADE MULTI-DECK] ❌ Usina não identificada na query: '{query}'")
+            safe_print(f"[INFLEXIBILIDADE MULTI-DECK] ❌ Usina não identificada na query: '{query}'")
             return {
                 "success": False,
                 "is_comparison": True,
                 "is_multi_deck": True,
-                "error": f"Não foi possível identificar a usina na query '{query}'. Por favor, especifique o nome ou código da usina (ex: 'disponibilidade de Cubatao' ou 'disponibilidade da usina 97')",
+                "error": f"Não foi possível identificar a usina na query '{query}'. Por favor, especifique o nome ou código da usina (ex: 'inflexibilidade de Cubatao' ou 'inflexibilidade da usina 97')",
                 "decks": [],
-                "tool_name": "DisponibilidadeUsinaTool"
+                "tool_name": "InflexibilidadeUsinaTool"
             }
         
         matched_name_original, score = match_result
@@ -239,20 +239,20 @@ class DisponibilidadeMultiDeckTool(DECOMPTool):
                     continue
         
         if not codigo_usina:
-            safe_print(f"[DISPONIBILIDADE MULTI-DECK] ❌ Código não encontrado para usina: '{matched_name_original}'")
+            safe_print(f"[INFLEXIBILIDADE MULTI-DECK] ❌ Código não encontrado para usina: '{matched_name_original}'")
             return {
                 "success": False,
                 "is_comparison": True,
                 "is_multi_deck": True,
                 "error": f"Nome da usina identificado ('{matched_name_original}'), mas código não encontrado nos decks.",
                 "decks": [],
-                "tool_name": "DisponibilidadeUsinaTool"
+                "tool_name": "InflexibilidadeUsinaTool"
             }
         
-        safe_print(f"[DISPONIBILIDADE MULTI-DECK] ✅ Usina identificada: {nome_usina} (código {codigo_usina}) - nome canônico: '{matched_name_normalized}' (score: {score:.2f})")
+        safe_print(f"[INFLEXIBILIDADE MULTI-DECK] ✅ Usina identificada: {nome_usina} (código {codigo_usina}) - nome canônico: '{matched_name_normalized}' (score: {score:.2f})")
         
         # OTIMIZAÇÃO 3: Executar cálculo em paralelo usando dadgers já carregados
-        safe_print(f"[DISPONIBILIDADE MULTI-DECK] Executando cálculo em {len(self.deck_paths)} decks em paralelo...")
+        safe_print(f"[INFLEXIBILIDADE MULTI-DECK] Executando cálculo em {len(self.deck_paths)} decks em paralelo...")
         
         deck_results = []
         
@@ -298,12 +298,12 @@ class DisponibilidadeMultiDeckTool(DECOMPTool):
                     })
                     
                     if result.get("success"):
-                        safe_print(f"[DISPONIBILIDADE MULTI-DECK] ✅ {deck_name}: {result.get('disponibilidade_total', 'N/A')} MW")
+                        safe_print(f"[INFLEXIBILIDADE MULTI-DECK] ✅ {deck_name}: {result.get('inflexibilidade_total', 'N/A')} MW")
                     else:
-                        safe_print(f"[DISPONIBILIDADE MULTI-DECK] ❌ {deck_name}: {result.get('error', 'Erro desconhecido')}")
+                        safe_print(f"[INFLEXIBILIDADE MULTI-DECK] ❌ {deck_name}: {result.get('error', 'Erro desconhecido')}")
                         
                 except FutureTimeoutError:
-                    safe_print(f"[DISPONIBILIDADE MULTI-DECK] ⏱️ Timeout ao processar {deck_name}")
+                    safe_print(f"[INFLEXIBILIDADE MULTI-DECK] ⏱️ Timeout ao processar {deck_name}")
                     deck_results.append({
                         "name": deck_name,
                         "display_name": self.deck_display_names.get(deck_name, deck_name),
@@ -313,7 +313,7 @@ class DisponibilidadeMultiDeckTool(DECOMPTool):
                         "date": None
                     })
                 except Exception as e:
-                    safe_print(f"[DISPONIBILIDADE MULTI-DECK] ❌ Erro ao processar {deck_name}: {e}")
+                    safe_print(f"[INFLEXIBILIDADE MULTI-DECK] ❌ Erro ao processar {deck_name}: {e}")
                     deck_results.append({
                         "name": deck_name,
                         "display_name": self.deck_display_names.get(deck_name, deck_name),
@@ -340,8 +340,8 @@ class DisponibilidadeMultiDeckTool(DECOMPTool):
                 x["name"]
             ))
         
-        safe_print(f"[DISPONIBILIDADE MULTI-DECK] ✅ {len(successful_results)}/{len(deck_results)} decks processados com sucesso")
-        safe_print(f"[DISPONIBILIDADE MULTI-DECK] ========== FIM ==========")
+        safe_print(f"[INFLEXIBILIDADE MULTI-DECK] ✅ {len(successful_results)}/{len(deck_results)} decks processados com sucesso")
+        safe_print(f"[INFLEXIBILIDADE MULTI-DECK] ========== FIM ==========")
         
         return {
             "success": True,
@@ -351,7 +351,7 @@ class DisponibilidadeMultiDeckTool(DECOMPTool):
                 "codigo": codigo_usina,
                 "nome": nome_usina
             },
-            "tool_name": "DisponibilidadeUsinaTool"
+            "tool_name": "InflexibilidadeUsinaTool"
         }
     
     def _load_all_dadgers_parallel(self) -> Dict[str, Any]:
@@ -374,7 +374,7 @@ class DisponibilidadeMultiDeckTool(DECOMPTool):
                     return (deck_name, dadger)
                 return (deck_name, None)
             except Exception as e:
-                safe_print(f"[DISPONIBILIDADE MULTI-DECK] ⚠️ Erro ao carregar dadger para {deck_name}: {e}")
+                safe_print(f"[INFLEXIBILIDADE MULTI-DECK] ⚠️ Erro ao carregar dadger para {deck_name}: {e}")
                 return (deck_name, None)
         
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
@@ -390,9 +390,9 @@ class DisponibilidadeMultiDeckTool(DECOMPTool):
                     if dadger is not None:
                         dadger_cache[deck_name_result] = dadger
                 except FutureTimeoutError:
-                    safe_print(f"[DISPONIBILIDADE MULTI-DECK] ⏱️ Timeout ao carregar dadger para {deck_name}")
+                    safe_print(f"[INFLEXIBILIDADE MULTI-DECK] ⏱️ Timeout ao carregar dadger para {deck_name}")
                 except Exception as e:
-                    safe_print(f"[DISPONIBILIDADE MULTI-DECK] ⚠️ Erro ao obter resultado de carregamento para {deck_name}: {e}")
+                    safe_print(f"[INFLEXIBILIDADE MULTI-DECK] ⚠️ Erro ao obter resultado de carregamento para {deck_name}: {e}")
         
         return dadger_cache
     
@@ -409,11 +409,11 @@ class DisponibilidadeMultiDeckTool(DECOMPTool):
             Dict com codigo e nome da usina, ou None se não encontrada
         """
         try:
-            # Usar a mesma lógica da DisponibilidadeUsinaTool
-            from decomp_agent.app.tools.disponibilidade_usina_tool import DisponibilidadeUsinaTool
+            # Usar a mesma lógica da InflexibilidadeUsinaTool
+            from decomp_agent.app.tools.inflexibilidade_usina_tool import InflexibilidadeUsinaTool
             # Criar tool temporária apenas para usar o método de extração
-            temp_tool = DisponibilidadeUsinaTool(self.deck_path)
-            codigo_usina = temp_tool._extract_usina_from_query(query, dadger)
+            temp_tool = InflexibilidadeUsinaTool(self.deck_path)
+            codigo_usina = temp_tool._extract_usina_from_query_fast(query, dadger.ct(estagio=1, df=True))
             
             if codigo_usina is None:
                 return None
@@ -438,7 +438,7 @@ class DisponibilidadeMultiDeckTool(DECOMPTool):
             }
             
         except Exception as e:
-            safe_print(f"[DISPONIBILIDADE MULTI-DECK] ⚠️ Erro ao extrair usina: {e}")
+            safe_print(f"[INFLEXIBILIDADE MULTI-DECK] ⚠️ Erro ao extrair usina: {e}")
             return None
     
     def _extract_usina_from_query_once(self, query: str, deck_path: str) -> Optional[Dict[str, Any]]:
@@ -461,16 +461,16 @@ class DisponibilidadeMultiDeckTool(DECOMPTool):
             if not dadger:
                 return None
             
-            # Usar a mesma lógica da DisponibilidadeUsinaTool
-            from decomp_agent.app.tools.disponibilidade_usina_tool import DisponibilidadeUsinaTool
-            temp_tool = DisponibilidadeUsinaTool(deck_path)
-            codigo_usina = temp_tool._extract_usina_from_query(query, dadger)
+            # Usar a mesma lógica da InflexibilidadeUsinaTool
+            from decomp_agent.app.tools.inflexibilidade_usina_tool import InflexibilidadeUsinaTool
+            temp_tool = InflexibilidadeUsinaTool(deck_path)
+            ct_df = dadger.ct(estagio=1, df=True)
+            codigo_usina = temp_tool._extract_usina_from_query_fast(query, ct_df)
             
             if codigo_usina is None:
                 return None
             
             # Buscar nome da usina
-            ct_df = dadger.ct(estagio=1, df=True)
             if ct_df is not None and isinstance(ct_df, pd.DataFrame) and not ct_df.empty:
                 if 'codigo_usina' in ct_df.columns and 'nome_usina' in ct_df.columns:
                     usina_row = ct_df[ct_df['codigo_usina'] == codigo_usina]
@@ -487,7 +487,7 @@ class DisponibilidadeMultiDeckTool(DECOMPTool):
             }
             
         except Exception as e:
-            safe_print(f"[DISPONIBILIDADE MULTI-DECK] ⚠️ Erro ao extrair usina: {e}")
+            safe_print(f"[INFLEXIBILIDADE MULTI-DECK] ⚠️ Erro ao extrair usina: {e}")
             return None
     
     def _execute_single_deck(
@@ -498,7 +498,7 @@ class DisponibilidadeMultiDeckTool(DECOMPTool):
         dadger: Optional[Any]
     ) -> Dict[str, Any]:
         """
-        Executa DisponibilidadeUsinaTool em um único deck (versão otimizada).
+        Executa InflexibilidadeUsinaTool em um único deck (versão otimizada).
         
         Args:
             deck_name: Nome do deck
@@ -507,7 +507,7 @@ class DisponibilidadeMultiDeckTool(DECOMPTool):
             dadger: Objeto Dadger já carregado (do cache)
             
         Returns:
-            Resultado da DisponibilidadeUsinaTool
+            Resultado da InflexibilidadeUsinaTool
         """
         try:
             # Se dadger não foi fornecido (não estava no cache), carregar agora
@@ -522,7 +522,7 @@ class DisponibilidadeMultiDeckTool(DECOMPTool):
                     }
             
             # Usar método otimizado que pula leitura de arquivo e extração de usina
-            tool = DisponibilidadeUsinaTool(deck_path)
+            tool = InflexibilidadeUsinaTool(deck_path)
             result = tool.execute_with_codigo_usina(
                 codigo_usina=codigo_usina,
                 dadger=dadger,
@@ -530,7 +530,7 @@ class DisponibilidadeMultiDeckTool(DECOMPTool):
             )
             return result
         except Exception as e:
-            safe_print(f"[DISPONIBILIDADE MULTI-DECK] Erro ao executar tool em {deck_name}: {e}")
+            safe_print(f"[INFLEXIBILIDADE MULTI-DECK] Erro ao executar tool em {deck_name}: {e}")
             return {
                 "success": False,
                 "error": str(e)

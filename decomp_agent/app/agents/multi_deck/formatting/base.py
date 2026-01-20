@@ -80,7 +80,8 @@ class ComparisonFormatter(ABC):
         self,
         decks_data: List[DeckData],
         tool_name: str,
-        query: str
+        query: str,
+        **kwargs
     ) -> Dict[str, Any]:
         """
         Formata a comparação entre N decks.
@@ -89,6 +90,7 @@ class ComparisonFormatter(ABC):
             decks_data: Lista de DeckData ordenados cronologicamente (mais antigo primeiro)
             tool_name: Nome da tool usada
             query: Query original do usuário
+            **kwargs: Argumentos adicionais específicos da tool (ex: tipo_filtrado para PQ)
             
         Returns:
             Dict com:

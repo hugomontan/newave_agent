@@ -3,7 +3,6 @@ Tool para calcular inflexibilidade total de uma usina termelétrica.
 Combina dados dos blocos CT (inflexibilidades) e DP (durações dos patamares).
 
 OTIMIZADO: Herda de PatamarCalculationBase, reutiliza toda a lógica comum.
-Mesmo formato e cálculo da DisponibilidadeUsinaTool.
 """
 from decomp_agent.app.tools.patamar_calculation_base import PatamarCalculationBase
 from decomp_agent.app.config import safe_print
@@ -19,7 +18,7 @@ class InflexibilidadeUsinaTool(PatamarCalculationBase):
     - Bloco CT: Inflexibilidades por patamar (PESADA, MEDIA, LEVE)
     - Bloco DP: Durações dos patamares em horas
     
-    Fórmula (mesma da disponibilidade):
+    Fórmula:
     Inflexibilidade Total = 
       (Inflexibilidade_Leve × Duração_Leve + 
        Inflexibilidade_Médio × Duração_Médio + 
@@ -68,7 +67,7 @@ class InflexibilidadeUsinaTool(PatamarCalculationBase):
         - Bloco CT: Inflexibilidades por patamar (PESADA, MEDIA, LEVE) no estágio 1
         - Bloco DP: Durações dos patamares em horas no estágio 1
         
-        Fórmula de cálculo (mesma da disponibilidade):
+        Fórmula de cálculo:
         Inflexibilidade Total = 
           (Inflexibilidade_Leve × Duração_Leve + 
            Inflexibilidade_Médio × Duração_Médio + 
@@ -92,7 +91,7 @@ class InflexibilidadeUsinaTool(PatamarCalculationBase):
         resultado: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
-        Formata resultado para inflexibilidade - MESMO FORMATO da disponibilidade.
+        Formata resultado para inflexibilidade.
         
         Args:
             codigo_usina: Código da usina
@@ -103,11 +102,11 @@ class InflexibilidadeUsinaTool(PatamarCalculationBase):
             resultado: Dict com resultado do cálculo (contém "total" e "calculo")
             
         Returns:
-            Dict formatado com resultado de inflexibilidade (mesmo formato da disponibilidade)
+            Dict formatado com resultado de inflexibilidade
         """
         return {
             "success": True,
-            "inflexibilidade_total": resultado["total"],  # Única diferença: nome do campo
+            "inflexibilidade_total": resultado["total"],
             "usina": {
                 "codigo": codigo_usina,
                 "nome": nome_usina,
@@ -197,6 +196,8 @@ class InflexibilidadeUsinaTool(PatamarCalculationBase):
             inflexibilidades = self._extract_inflexibilidades(ct_record)
             
             # Verificar se todas as inflexibilidades são None (0 é um valor válido!)
+            # Se todas forem None, significa que não encontrou os dados
+            # Se alguma for 0, isso é válido e deve prosseguir com o cálculo
             if not inflexibilidades or all(v is None for v in inflexibilidades.values()):
                 return {
                     "success": False,

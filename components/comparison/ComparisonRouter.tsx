@@ -9,10 +9,14 @@ import { CVUView } from "./cvu";
 import { ReservatorioInicialView } from "./reservatorio-inicial";
 import { UsinasNaoSimuladasView } from "./usinas-nao-simuladas";
 import { RestricaoEletricaView } from "./restricao-eletrica";
-import { DisponibilidadeComparisonView } from "./disponibilidade";
 import { InflexibilidadeComparisonView } from "./inflexibilidade";
 import { CVUComparisonView } from "./cvu-decomp";
 import { VolumeInicialComparisonView } from "./volume-inicial";
+import { DPComparisonView } from "./dp-decomp";
+import { PQComparisonView } from "./pq-decomp";
+import { CargaAndeComparisonView } from "./carga-ande-decomp";
+import { LimitesIntercambioComparisonView } from "./limites-intercambio-decomp";
+import { RestricoesEletricasComparisonView } from "./restricao-eletrica-decomp";
 import type { ComparisonData } from "./shared/types";
 
 interface ComparisonRouterProps {
@@ -55,18 +59,6 @@ export function ComparisonRouter({ comparison }: ComparisonRouterProps) {
     return <UsinasNaoSimuladasView comparison={comparison} />;
   }
   
-  // Verificar DisponibilidadeUsinaTool ou DisponibilidadeMultiDeckTool
-  if (
-    normalizedToolName.toLowerCase() === "disponibilidadeusinatool" ||
-    normalizedToolName.toLowerCase() === "disponibilidademultidecktool" ||
-    normalizedToolName.toLowerCase().includes("disponibilidade")
-  ) {
-    if (process.env.NODE_ENV === 'development') {
-      console.log('[ComparisonRouter] ✅ Usando DisponibilidadeComparisonView para DisponibilidadeTool');
-    }
-    return <DisponibilidadeComparisonView comparison={comparison} />;
-  }
-  
   // Verificar InflexibilidadeUsinaTool ou InflexibilidadeMultiDeckTool
   if (
     normalizedToolName.toLowerCase() === "inflexibilidadeusinatool" ||
@@ -98,6 +90,19 @@ export function ComparisonRouter({ comparison }: ComparisonRouterProps) {
     }
   }
   
+  // Verificar DPMultiDeckTool ou DPCargaSubsistemasTool (em contexto multi-deck)
+  if (
+    normalizedToolName.toLowerCase() === "dpmultidecktool" ||
+    normalizedToolName.toLowerCase() === "dpcargasubsistemastool" ||
+    (normalizedToolName.toLowerCase().includes("dp") && comparison.is_multi_deck) ||
+    (normalizedToolName.toLowerCase().includes("carga subsistemas") && comparison.is_multi_deck)
+  ) {
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[ComparisonRouter] ✅ Usando DPComparisonView para DPMultiDeckTool');
+    }
+    return <DPComparisonView comparison={comparison} />;
+  }
+  
   // Verificar CVUMultiDeckTool ou CTUsinasTermelétricasTool (em contexto multi-deck)
   if (
     normalizedToolName.toLowerCase() === "cvumultidecktool" ||
@@ -108,6 +113,19 @@ export function ComparisonRouter({ comparison }: ComparisonRouterProps) {
       console.log('[ComparisonRouter] ✅ Usando CVUComparisonView para CVUMultiDeckTool');
     }
     return <CVUComparisonView comparison={comparison} />;
+  }
+  
+  // Verificar PQMultiDeckTool ou PQPequenasUsinasTool (em contexto multi-deck)
+  if (
+    normalizedToolName.toLowerCase() === "pqmultidecktool" ||
+    normalizedToolName.toLowerCase() === "pqpequenasusinastool" ||
+    (normalizedToolName.toLowerCase().includes("pq") && comparison.is_multi_deck) ||
+    (normalizedToolName.toLowerCase().includes("pequenas usinas") && comparison.is_multi_deck)
+  ) {
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[ComparisonRouter] ✅ Usando PQComparisonView para PQMultiDeckTool');
+    }
+    return <PQComparisonView comparison={comparison} />;
   }
   
   // Verificação adicional: se chart_config indica UsinasNaoSimuladasTool mas tool_name não está presente
@@ -122,24 +140,68 @@ export function ComparisonRouter({ comparison }: ComparisonRouterProps) {
   switch (normalizedVizType) {
     case "table_with_line_chart":
       // Tools que compartilham table_with_line_chart
-      // IMPORTANTE: UsinasNaoSimuladasTool e DisponibilidadeTool já foram tratados acima, não devem chegar aqui
+      // IMPORTANTE: UsinasNaoSimuladasTool e InflexibilidadeTool já foram tratados acima, não devem chegar aqui
       if (normalizedToolName === "CargaMensalTool" || normalizedToolName === "CadicTool") {
         return <CargaMensalView comparison={comparison} />;
       }
       if (normalizedToolName === "ClastValoresTool") {
         return <CVUView comparison={comparison} />;
       }
-      // Verificar DisponibilidadeTool novamente (caso não tenha sido capturado acima)
-      if (
-        normalizedToolName.toLowerCase().includes("disponibilidade")
-      ) {
-        return <DisponibilidadeComparisonView comparison={comparison} />;
-      }
       // Verificar InflexibilidadeTool
       if (
         normalizedToolName.toLowerCase().includes("inflexibilidade")
       ) {
         return <InflexibilidadeComparisonView comparison={comparison} />;
+      }
+      // Verificar Carga ANDE (multi-deck)
+      if (
+        (normalizedToolName === "CargaAndeTool" || 
+         normalizedToolName === "CargaAndeMultiDeckTool" ||
+         normalizedToolName.toLowerCase().includes("cargaande") ||
+         normalizedToolName.toLowerCase().includes("carga ande")) && 
+        comparison.is_multi_deck
+      ) {
+        return <CargaAndeComparisonView comparison={comparison} />;
+      }
+      // Verificar DP (multi-deck)
+      if (
+        (normalizedToolName === "DPCargaSubsistemasTool" || 
+         normalizedToolName === "DPMultiDeckTool" ||
+         normalizedToolName.toLowerCase().includes("dpcargasubsistemas")) && 
+        comparison.is_multi_deck
+      ) {
+        return <DPComparisonView comparison={comparison} />;
+      }
+      // Verificar PQ (multi-deck)
+      if (
+        (normalizedToolName === "PQPequenasUsinasTool" || 
+         normalizedToolName === "PQMultiDeckTool" ||
+         normalizedToolName.toLowerCase().includes("pqpequenasusinas")) && 
+        comparison.is_multi_deck
+      ) {
+        return <PQComparisonView comparison={comparison} />;
+      }
+      // Verificar Limites de Intercâmbio (multi-deck)
+      if (
+        (normalizedToolName === "LimitesIntercambioDECOMPTool" || 
+         normalizedToolName === "LimitesIntercambioMultiDeckTool" ||
+         normalizedToolName.toLowerCase().includes("limitesintercambio") ||
+         normalizedToolName.toLowerCase().includes("limites de intercambio") ||
+         normalizedToolName.toLowerCase().includes("limites de intercâmbio")) && 
+        comparison.is_multi_deck
+      ) {
+        return <LimitesIntercambioComparisonView comparison={comparison} />;
+      }
+      // Verificar Restrições Elétricas (multi-deck DECOMP)
+      if (
+        (normalizedToolName === "RestricoesEletricasDECOMPTool" || 
+         normalizedToolName === "RestricoesEletricasMultiDeckTool" ||
+         normalizedToolName.toLowerCase().includes("restricoeseletricas") ||
+         normalizedToolName.toLowerCase().includes("restrições elétricas") ||
+         normalizedToolName.toLowerCase().includes("restricoes eletricas")) && 
+        comparison.is_multi_deck
+      ) {
+        return <RestricoesEletricasComparisonView comparison={comparison} />;
       }
       // Verificar CVU (multi-deck)
       if (
@@ -175,6 +237,9 @@ export function ComparisonRouter({ comparison }: ComparisonRouterProps) {
 
     case "restricao_eletrica":
       return <RestricaoEletricaView comparison={comparison} />;
+
+    case "restricoes_eletricas_comparison":
+      return <RestricoesEletricasComparisonView comparison={comparison} />;
 
     case "line_chart":
       // Tools que usam line_chart padrão

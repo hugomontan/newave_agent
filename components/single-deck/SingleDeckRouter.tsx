@@ -19,6 +19,8 @@ import { CTView } from "./ct";
 import { DPView } from "./dp";
 import { DisponibilidadeUsinaView } from "./disponibilidade-usina";
 import { InflexibilidadeUsinaView } from "./inflexibilidade-usina";
+import { PQView } from "./pq";
+import { CargaAndeView } from "./carga-ande";
 
 interface SingleDeckRouterProps {
   visualizationData: SingleDeckVisualizationData;
@@ -49,6 +51,7 @@ export function SingleDeckRouter({ visualizationData }: SingleDeckRouterProps) {
       return <DsvaguaView visualizationData={visualizationData} />;
     
     case "LimitesIntercambioTool":
+    case "LimitesIntercambioDECOMPTool":
       return <LimitesIntercambioView visualizationData={visualizationData} />;
     
     case "HidrCadastroTool":
@@ -67,6 +70,7 @@ export function SingleDeckRouter({ visualizationData }: SingleDeckRouterProps) {
       return <ModifOperacaoView visualizationData={visualizationData} />;
     
     case "RestricaoEletricaTool":
+    case "RestricoesEletricasDECOMPTool":
       return <RestricaoEletricaView visualizationData={visualizationData} />;
     
     case "UHUsinasHidrelétricasTool":
@@ -83,6 +87,12 @@ export function SingleDeckRouter({ visualizationData }: SingleDeckRouterProps) {
     
     case "InflexibilidadeUsinaTool":
       return <InflexibilidadeUsinaView visualizationData={visualizationData} />;
+    
+    case "PQPequenasUsinasTool":
+      return <PQView visualizationData={visualizationData} />;
+    
+    case "CargaAndeTool":
+      return <CargaAndeView visualizationData={visualizationData} />;
     
     default:
       return null;

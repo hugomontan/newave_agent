@@ -11,7 +11,7 @@ interface LimitesIntercambioViewProps {
 }
 
 export function LimitesIntercambioView({ visualizationData }: LimitesIntercambioViewProps) {
-  const { table, charts_by_par } = visualizationData;
+  const { table, mw_medios, charts_by_par } = visualizationData;
 
   // Agrupar por par_key se existir (igual ao multi-deck)
   const groupedByPar = React.useMemo(() => {
@@ -39,6 +39,7 @@ export function LimitesIntercambioView({ visualizationData }: LimitesIntercambio
       animate={{ opacity: 1, y: 0 }}
       className="w-full space-y-6 mt-4"
     >
+      {/* Tabela de Limites de Intercâmbio */}
       {groupedByPar && charts_by_par ? (
         // Renderizar tabela e gráfico juntos para cada par (igual ao multi-deck)
         Object.entries(groupedByPar).map(([key, group]) => {
@@ -83,6 +84,37 @@ export function LimitesIntercambioView({ visualizationData }: LimitesIntercambio
           data={table}
         />
       ) : null}
+
+      {/* MW Médios (similar ao CargaAndeView) */}
+      {mw_medios && mw_medios.length > 0 && (
+        <div className="bg-card border border-border rounded-lg p-4 sm:p-6">
+          <div>
+            <p className="text-sm text-muted-foreground mb-1">Limites de Intercâmbio Média Ponderada</p>
+            {mw_medios.map((mw: any, index: number) => (
+              <div key={index} className="mb-2 last:mb-0">
+                <p className="text-lg sm:text-xl font-semibold text-card-foreground mb-1">
+                  {mw.sentido || "Sentido"}
+                </p>
+                <p className="text-3xl sm:text-4xl font-bold text-card-foreground">
+                  {typeof mw.mw_medio === "number" ? mw.mw_medio.toLocaleString("pt-BR", {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  }) : mw.mw_medio}{" "}
+                  <span className="text-lg font-normal text-muted-foreground">MWmed</span>
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {(!table || table.length === 0) && (!mw_medios || mw_medios.length === 0) && (
+        <div className="bg-card border border-border rounded-lg p-4 sm:p-6">
+          <p className="text-sm text-muted-foreground">
+            Nenhum dado disponível.
+          </p>
+        </div>
+      )}
     </motion.div>
   );
 }

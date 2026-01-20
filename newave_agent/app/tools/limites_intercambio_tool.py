@@ -68,6 +68,28 @@ class LimitesIntercambioTool(NEWAVETool):
         """
         query_lower = query.lower()
         
+        # Normalizar abreviações de submercado para nomes completos
+        # NE = nordeste, SE = sudeste, N = norte, S = sul
+        def _normalize_submercado_tokens(text: str) -> str:
+            # Usar word boundaries para evitar substituir partes de outras palavras
+            replacements = [
+                (r"\bse\b", "sudeste"),
+                (r"\bsudeste\b", "sudeste"),
+                (r"\bne\b", "nordeste"),
+                (r"\bnordeste\b", "nordeste"),
+                (r"\bn\b", "norte"),
+                (r"\bnorte\b", "norte"),
+                (r"\bs\b", "sul"),
+                (r"\bsul\b", "sul"),
+            ]
+            normalized = text
+            for pattern, repl in replacements:
+                normalized = re.sub(pattern, repl, normalized)
+            return normalized
+        
+        # Aplicar normalização na query em minúsculas
+        query_lower = _normalize_submercado_tokens(query_lower)
+        
         # Obter lista de subsistemas disponíveis
         subsistemas_disponiveis = []
         if sistema.custo_deficit is not None:

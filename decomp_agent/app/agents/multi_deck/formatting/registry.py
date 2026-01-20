@@ -10,16 +10,24 @@ from .base import ComparisonFormatter, DeckData
 # Importar formatadores
 from decomp_agent.app.agents.multi_deck.formatting.data_formatters import (
     UHComparisonFormatter,
-    DisponibilidadeComparisonFormatter,
     InflexibilidadeComparisonFormatter,
     CVUComparisonFormatter,
     VolumeInicialComparisonFormatter,
+    DPComparisonFormatter,
+    PQComparisonFormatter,
+    CargaAndeComparisonFormatter,
+    LimitesIntercambioComparisonFormatter,
+    RestricoesEletricasComparisonFormatter,
 )
 
 # Lista de formatadores (em ordem de prioridade - mais específicos primeiro)
 FORMATTERS: List[ComparisonFormatter] = [
     VolumeInicialComparisonFormatter(),  # Prioridade 95 - muito específico
-    DisponibilidadeComparisonFormatter(),
+    LimitesIntercambioComparisonFormatter(),  # Prioridade 85 - específico para limites de intercâmbio
+    RestricoesEletricasComparisonFormatter(),  # Prioridade 85 - específico para restrições elétricas
+    CargaAndeComparisonFormatter(),  # Prioridade 10 - específico para Carga ANDE
+    DPComparisonFormatter(),  # Prioridade 10 - específico para DP
+    PQComparisonFormatter(),  # Prioridade 10 - específico para PQ
     InflexibilidadeComparisonFormatter(),
     CVUComparisonFormatter(),
     UHComparisonFormatter(),  # Prioridade 10 - genérico, deve vir por último
@@ -169,15 +177,19 @@ def format_comparison_response(
     
     # Obter formatter apropriado
     # Tentar usar tool_name do resultado se tool_used não estiver disponível ou não corresponder
+    from decomp_agent.app.config import safe_print
+    
     tool_name_to_use = tool_used
     if "tool_name" in tool_result:
         tool_name_to_use = tool_result.get("tool_name", tool_used)
     
     formatter = get_formatter_for_tool(tool_name_to_use, decks_data[0].result if decks_data else {})
     
+    safe_print(f"[FORMATTER REGISTRY] Formatter selecionado: {formatter.__class__.__name__ if formatter else 'None'}")
+    safe_print(f"[FORMATTER REGISTRY] tool_name_to_use: {tool_name_to_use}, tool_used: {tool_used}")
+    
     if formatter is None:
         # Fallback: formatação básica
-        from decomp_agent.app.config import safe_print
         safe_print(f"[FORMATTER REGISTRY] Nenhum formatter encontrado para tool: {tool_name_to_use} (tool_used: {tool_used})")
         safe_print(f"[FORMATTER REGISTRY] Result structure keys: {list(decks_data[0].result.keys()) if decks_data else []}")
         return {
@@ -186,7 +198,25 @@ def format_comparison_response(
         }
     
     # Formatar usando o formatter
-    formatted = formatter.format_multi_deck_comparison(decks_data, tool_used, query)
+    # Extrair kwargs adicionais do tool_result (ex: tipo_filtrado e tipo_encontrado para PQ)
+    extra_kwargs = {}
+    if "tipo_filtrado" in tool_result:
+        extra_kwargs["tipo_filtrado"] = tool_result.get("tipo_filtrado")
+    # IMPORTANTE: tipo_encontrado tem prioridade sobre tipo_filtrado (é o tipo REAL nos dados)
+    if "tipo_encontrado" in tool_result:
+        extra_kwargs["tipo_encontrado"] = tool_result.get("tipo_encontrado")
+        safe_print(f"[FORMATTER REGISTRY] tipo_encontrado (REAL): {extra_kwargs['tipo_encontrado']}")
+    elif "tipo_filtrado" in tool_result:
+        safe_print(f"[FORMATTER REGISTRY] tipo_filtrado (query): {extra_kwargs['tipo_filtrado']}")
+    
+    formatted = formatter.format_multi_deck_comparison(decks_data, tool_used, query, **extra_kwargs)
+    
+    safe_print(f"[FORMATTER REGISTRY] Formatter retornou: keys={list(formatted.keys())}")
+    
+    # Garantir que tool_name está presente no comparison_data
+    if "tool_name" not in formatted:
+        formatted["tool_name"] = tool_name_to_use
+        safe_print(f"[FORMATTER REGISTRY] Adicionado tool_name ao comparison_data: {tool_name_to_use}")
     
     return {
         "final_response": formatted.get("final_response", ""),
