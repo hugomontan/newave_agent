@@ -27,19 +27,28 @@ export function RestricaoEletricaTable({ data }: RestricaoEletricaTableProps) {
   const isDecompFormat =
     "Nome" in firstRow &&
     ("GMIN P1" in firstRow || "GMAX P1" in firstRow);
+  
+  // Usar sempre 3 patamares (P1, P2, P3)
+  const maxPatamares = 3;
 
   const handleDownloadCSV = () => {
     let csvData;
     if (isDecompFormat) {
-      csvData = data.map((row) => ({
-        Nome: row["Nome"] ?? "",
-        "GMIN P1": row["GMIN P1"] ?? 0,
-        "GMIN P2": row["GMIN P2"] ?? 0,
-        "GMIN P3": row["GMIN P3"] ?? 0,
-        "GMAX P1": row["GMAX P1"] ?? 0,
-        "GMAX P2": row["GMAX P2"] ?? 0,
-        "GMAX P3": row["GMAX P3"] ?? 0,
-      }));
+      const csvRow: Record<string, any> = { Nome: "" };
+      for (let i = 1; i <= maxPatamares; i++) {
+        csvRow[`GMIN P${i}`] = null;
+        csvRow[`GMAX P${i}`] = null;
+      }
+      csvData = data.map((row) => {
+        const csvRow: Record<string, any> = {
+          Nome: row["Nome"] ?? "",
+        };
+        for (let i = 1; i <= maxPatamares; i++) {
+          csvRow[`GMIN P${i}`] = row[`GMIN P${i}`] ?? null;
+          csvRow[`GMAX P${i}`] = row[`GMAX P${i}`] ?? null;
+        }
+        return csvRow;
+      });
     } else {
       csvData = data.map((row) => ({
         Restrição: row.restricao ? String(row.restricao) : "",
@@ -71,31 +80,29 @@ export function RestricaoEletricaTable({ data }: RestricaoEletricaTableProps) {
 
       <div className="w-full">
         <div className="inline-block w-full align-middle px-0">
-          <table className="w-full border-collapse">
+          <table className="w-full border-collapse bg-background/30">
             <thead>
               {isDecompFormat ? (
                 <tr className="border-b border-border bg-background/50">
                   <th className="px-3 sm:px-4 py-3 text-left text-xs font-semibold text-card-foreground uppercase tracking-wider">
                     Nome
                   </th>
-                  <th className="px-3 sm:px-4 py-3 text-right text-xs font-semibold text-card-foreground uppercase tracking-wider">
-                    GMIN P1
-                  </th>
-                  <th className="px-3 sm:px-4 py-3 text-right text-xs font-semibold text-card-foreground uppercase tracking-wider">
-                    GMIN P2
-                  </th>
-                  <th className="px-3 sm:px-4 py-3 text-right text-xs font-semibold text-card-foreground uppercase tracking-wider">
-                    GMIN P3
-                  </th>
-                  <th className="px-3 sm:px-4 py-3 text-right text-xs font-semibold text-card-foreground uppercase tracking-wider">
-                    GMAX P1
-                  </th>
-                  <th className="px-3 sm:px-4 py-3 text-right text-xs font-semibold text-card-foreground uppercase tracking-wider">
-                    GMAX P2
-                  </th>
-                  <th className="px-3 sm:px-4 py-3 text-right text-xs font-semibold text-card-foreground uppercase tracking-wider">
-                    GMAX P3
-                  </th>
+                  {Array.from({ length: maxPatamares }, (_, i) => (
+                    <th
+                      key={`gmin-${i + 1}`}
+                      className="px-3 sm:px-4 py-3 text-right text-xs font-semibold text-card-foreground uppercase tracking-wider"
+                    >
+                      GMIN P{i + 1}
+                    </th>
+                  ))}
+                  {Array.from({ length: maxPatamares }, (_, i) => (
+                    <th
+                      key={`gmax-${i + 1}`}
+                      className="px-3 sm:px-4 py-3 text-right text-xs font-semibold text-card-foreground uppercase tracking-wider"
+                    >
+                      GMAX P{i + 1}
+                    </th>
+                  ))}
                 </tr>
               ) : (
                 <tr className="border-b border-border bg-background/50">
@@ -118,22 +125,23 @@ export function RestricaoEletricaTable({ data }: RestricaoEletricaTableProps) {
               {displayedData.map((row, index) => {
                 if (isDecompFormat) {
                   const nome = (row["Nome"] ?? "") as string;
-                  const gmin1 = row["GMIN P1"] as number | null;
-                  const gmin2 = row["GMIN P2"] as number | null;
-                  const gmin3 = row["GMIN P3"] as number | null;
-                  const gmax1 = row["GMAX P1"] as number | null;
-                  const gmax2 = row["GMAX P2"] as number | null;
-                  const gmax3 = row["GMAX P3"] as number | null;
+                  const gminValues: (number | null)[] = [];
+                  const gmaxValues: (number | null)[] = [];
+                  
+                  for (let i = 1; i <= maxPatamares; i++) {
+                    gminValues.push(row[`GMIN P${i}`] as number | null | undefined ?? null);
+                    gmaxValues.push(row[`GMAX P${i}`] as number | null | undefined ?? null);
+                  }
 
                   return (
                     <tr
                       key={`${nome}-${index}`}
-                      className="border-b border-border/50 hover:bg-background/30 transition-colors"
+                      className="border-b border-border/50 bg-background/20 hover:bg-background/40 transition-colors"
                     >
                       <td className="px-3 sm:px-4 py-2.5 text-sm text-card-foreground font-medium whitespace-nowrap">
                         {nome}
                       </td>
-                      {[gmin1, gmin2, gmin3, gmax1, gmax2, gmax3].map((val, idx) => (
+                      {[...gminValues, ...gmaxValues].map((val, idx) => (
                         <td
                           key={idx}
                           className="px-3 sm:px-4 py-2.5 text-sm text-card-foreground text-right whitespace-nowrap font-mono"
@@ -154,7 +162,7 @@ export function RestricaoEletricaTable({ data }: RestricaoEletricaTableProps) {
                   return (
                     <tr
                       key={`${restricao}-${patamar}-${periodo}-${index}`}
-                      className="border-b border-border/50 hover:bg-background/30 transition-colors"
+                      className="border-b border-border/50 bg-background/20 hover:bg-background/40 transition-colors"
                     >
                       <td className="px-3 sm:px-4 py-2.5 text-sm text-card-foreground font-medium whitespace-nowrap">
                         {restricao}

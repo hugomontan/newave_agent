@@ -476,7 +476,7 @@ export function ChatMessage({ message, onOptionClick }: ChatMessageProps) {
                           <h1 className="text-xl font-semibold text-white mt-5 mb-3 tracking-tight" style={{ color: '#ffffff' }}>{children}</h1>
                         ),
                         h2: ({ children }) => (
-                          <h2 className="text-lg font-semibold text-foreground mt-4 mb-2.5 border-b border-border pb-1.5 tracking-tight">
+                          <h2 className="text-xl font-semibold text-white mt-4 mb-4 tracking-tight" style={{ color: '#ffffff' }}>
                             {children}
                           </h2>
                         ),

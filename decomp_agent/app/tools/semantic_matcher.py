@@ -440,16 +440,36 @@ def find_best_tool_semantic(
         query_embedding, query_embedding_normalized = _get_query_embedding(expanded_query, embeddings_model)
         safe_print(f"[SEMANTIC MATCHER] ✅ Embedding da query gerado (dimensão: {len(query_embedding)})")
         
-        # Obter embeddings de todas as tools em paralelo (com cache)
-        safe_print("[SEMANTIC MATCHER] Obtendo embeddings das tools...")
-        tool_embeddings_dict = _get_tool_embeddings_parallel(tools, embeddings_model)
+        # Filtrar tools por can_handle antes de calcular similaridades
+        safe_print("[SEMANTIC MATCHER] Filtrando tools por can_handle...")
+        tools_filtered = []
+        for tool in tools:
+            try:
+                if tool.can_handle(query):
+                    tools_filtered.append(tool)
+                    safe_print(f"[SEMANTIC MATCHER]   ✓ {tool.get_name()}: can_handle=True")
+                else:
+                    safe_print(f"[SEMANTIC MATCHER]   ✗ {tool.get_name()}: can_handle=False (excluído)")
+            except Exception as e:
+                safe_print(f"[SEMANTIC MATCHER]   ⚠️ {tool.get_name()}: Erro ao verificar can_handle: {e} (incluindo mesmo assim)")
+                tools_filtered.append(tool)
+        
+        safe_print(f"[SEMANTIC MATCHER] Tools após filtro can_handle: {len(tools_filtered)}/{len(tools)}")
+        
+        if not tools_filtered:
+            safe_print("[SEMANTIC MATCHER] ⚠️ Nenhuma tool passou pelo filtro can_handle")
+            return None
+        
+        # Obter embeddings apenas das tools filtradas (com cache)
+        safe_print("[SEMANTIC MATCHER] Obtendo embeddings das tools filtradas...")
+        tool_embeddings_dict = _get_tool_embeddings_parallel(tools_filtered, embeddings_model)
         
         # Preparar arrays para cálculo vetorizado
         tool_names = []
         tool_embeddings_normalized = []
         tool_map = {}  # Mapear tool_name para tool
         
-        for tool in tools:
+        for tool in tools_filtered:
             tool_name = tool.get_name()
             if tool_name in tool_embeddings_dict:
                 tool_names.append(tool_name)

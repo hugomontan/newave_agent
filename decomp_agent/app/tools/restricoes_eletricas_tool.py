@@ -502,20 +502,21 @@ class RestricoesEletricasDECOMPTool(DECOMPTool):
             if not nome and tipo_atual == "intercambio" and texto.startswith("&"):
                 texto_sem_ampersand = texto[1:].strip()
                 
-                # Ignorar linhas que são claramente comentários genéricos
-                if any(gen in texto_sem_ampersand.lower() for gen in [
-                    "maximo --->", "minimo --->", "rt-ons dpl", "sgi", 
-                    "relatorio", "limites de seguranca", "restricao operativa"
-                ]):
-                    # Mas pode ter nome antes: "FNS + FNESE - Restricao..." → pegar "FNS + FNESE"
-                    # Padrão: nome em maiúsculas com possíveis "+" e espaços, seguido de " -" ou " --->"
-                    match_nome = re.match(r"^([A-Z][A-Z\s\+\-]+?)(?:\s*[-–]{1,3}>?\s*)", texto_sem_ampersand)
-                    if match_nome:
-                        nome_candidato = match_nome.group(1).strip()
-                        # Filtrar nomes muito curtos (< 2 chars) ou que são apenas números
-                        if len(nome_candidato) >= 2 and not nome_candidato.replace(" ", "").replace("+", "").isdigit():
-                            nome = nome_candidato
-                elif texto_sem_ampersand and len(texto_sem_ampersand) >= 2:
+                # SEMPRE tentar extrair nome antes de separadores, mesmo se a linha tem palavras genéricas
+                # Padrão: nome em maiúsculas com possíveis "+" e espaços, seguido de " -", " --->", " =", ou " ("
+                # Exemplos: 
+                #   "FNS = GH LAJEADO..." → "FNS"
+                #   "FNS + FNESE - Restricao..." → "FNS + FNESE"
+                #   "FNEN (-FNE) = Fluxo..." → "FNEN" (para no parêntese)
+                match_nome = re.match(r"^([A-Z][A-Z\s\+\-]+?)(?:\s*[-–]{1,3}>?\s*|\s*=\s*|\s*\()", texto_sem_ampersand)
+                if match_nome:
+                    nome_candidato = match_nome.group(1).strip()
+                    # Filtrar nomes muito curtos (< 2 chars) ou que são apenas números
+                    if len(nome_candidato) >= 2 and not nome_candidato.replace(" ", "").replace("+", "").isdigit():
+                        nome = nome_candidato
+                
+                # Se não encontrou nome antes de separadores, verificar se é comentário simples
+                if not nome and texto_sem_ampersand and len(texto_sem_ampersand) >= 2:
                     # Comentário simples: & FNESE ou & FNS + FNESE (apenas nome, sem " -")
                     # Verificar se parece com um nome de intercâmbio (principalmente maiúsculas, pode ter +)
                     # Aceitar se é principalmente maiúsculas (pelo menos 70% do texto)
@@ -680,6 +681,87 @@ class RestricoesEletricasDECOMPTool(DECOMPTool):
 
         matches: List[Dict[str, Any]] = []
         
+        # ============================================================
+        # REGRA ESPECIAL: Correspondência direta para restrições de intercâmbio conhecidas
+        # Lista exata: FNS, FNESE, FNNE, FNEN, EXPNE, FNS + FNESE, RSUL
+        # Esta verificação deve ocorrer ANTES do matching geral (antes de usinas)
+        # ============================================================
+        restricoes_intercambio_diretas = {
+            "fns": "fns",
+            "fnese": "fnese",
+            "fnne": "fnne",
+            "fnen": "fnen",
+            "expne": "expne",
+            "fns + fnese": "fns + fnese",
+            "rsul": "rsul"
+        }
+        
+        # Verificar se a query normalizada corresponde a uma restrição de intercâmbio conhecida
+        if alvo_norm in restricoes_intercambio_diretas:
+            for item in pool:
+                # Verificar apenas restrições de intercâmbio
+                if item.get("tipo") != "intercambio":
+                    continue
+                
+                nome_pool = item.get("nome", "")
+                norm_pool = self._normalize(str(nome_pool)) if nome_pool else ""
+                
+                if not norm_pool:
+                    continue
+                
+                # Regra especial para FNS: deve matchar apenas se o nome_pool NÃO começar com "FNS +"
+                # Isso previne que "FNS" match com "FNS + FNESE"
+                if alvo_norm == "fns":
+                    # Se o nome_pool começa com "fns +", não é match (deve ser "FNS + FNESE")
+                    if norm_pool.startswith("fns +"):
+                        continue  # Ignora este item completamente
+                    # Só continua se o nome_pool é exatamente "fns" ou contém "fns" como nome alternativo correto
+                
+                # Coletar todos os nomes possíveis (principal + alternativos)
+                all_names = [nome_pool]
+                all_names.extend(item.get("nomes_alternativos", []))
+                
+                for nome_candidate in all_names:
+                    if not nome_candidate:
+                        continue
+                    
+                    nome_candidate_norm = self._normalize(str(nome_candidate))
+                    
+                    # Match exato (sem espaços extras)
+                    if alvo_norm == nome_candidate_norm:
+                        # Regra adicional para FNS: garantir que o candidato não seja "FNS + FNESE"
+                        if alvo_norm == "fns" and nome_candidate_norm.startswith("fns +"):
+                            continue  # Ignora este candidato
+                        
+                        matches.append({
+                            "codigo_label": item.get("codigo_label", item.get("codigo")),
+                            "codigo_restricao": item.get(
+                                "codigo_restricao", item.get("codigo_label", item.get("codigo"))
+                            ),
+                            "nome": nome_pool,
+                            "nome_match_usado": nome_candidate,
+                            "tipo": item.get("tipo", "intercambio"),
+                            "nomes_alternativos": item.get("nomes_alternativos", []),
+                            "score": 1.0,  # Match exato
+                        })
+                        break  # Encontrou match exato, não precisa verificar mais
+            
+            # Se encontrou matches diretos, retornar apenas o melhor (mais específico)
+            # IMPORTANTE: Se não encontrou matches para restrições diretas, retornar vazio
+            # (não continuar para o matching geral, pois essas são correspondências exatas)
+            if matches:
+                # Ordenar por score e retornar o melhor
+                matches.sort(key=lambda m: m.get("score", 0.0), reverse=True)
+                return [matches[0]]
+            else:
+                # Não encontrou match exato para restrição direta → retornar vazio
+                # (evita fallback para matching geral que poderia dar match incorreto)
+                return []
+        
+        # ============================================================
+        # MATCHING GERAL (se não encontrou match direto)
+        # ============================================================
+        
         # Verificar se query tem estrutura de intercâmbio (contém "+")
         has_plus = " + " in alvo_norm
         if has_plus:
@@ -820,22 +902,33 @@ class RestricoesEletricasDECOMPTool(DECOMPTool):
                             best_score = score
                             melhor_nome_usado = nome_candidate
             
-            # Fallback: usar score simples se não encontrou match via componentes
+            # Fallback: usar score simples APENAS se:
+            # 1. Query NÃO tem múltiplos componentes (query simples), OU
+            # 2. Query tem múltiplos componentes MAS candidato também tem (ambos compostos)
+            # Isso evita que "FNS + FNESE" match "FNESE" através do fallback
             if best_score < 0.7:
-                # Tentar score simples para casos que não se encaixam nas regras acima
-                s_simple = _score_simple(alvo_norm, norm_pool)
+                # Se query tem "+" (composta), só usar fallback se candidato também tem "+"
+                # Queries compostas devem priorizar matches compostos
+                candidate_has_plus = " + " in norm_pool
                 
-                # Verificar alternativos também
-                for nome_alt in item.get("nomes_alternativos", []):
-                    norm_alt = self._normalize(str(nome_alt))
-                    if norm_alt:
-                        s_alt_simple = _score_simple(alvo_norm, norm_alt)
-                        if s_alt_simple > s_simple:
-                            s_simple = s_alt_simple
-                            melhor_nome_usado = nome_alt
-                
-                if s_simple > best_score:
-                    best_score = s_simple
+                if not has_plus or candidate_has_plus:
+                    # Tentar score simples para casos que não se encaixam nas regras acima
+                    s_simple = _score_simple(alvo_norm, norm_pool)
+                    
+                    # Verificar alternativos também
+                    for nome_alt in item.get("nomes_alternativos", []):
+                        norm_alt = self._normalize(str(nome_alt))
+                        if norm_alt:
+                            # Se query é composta, só considerar alternativos também compostos
+                            alt_has_plus = " + " in norm_alt
+                            if not has_plus or alt_has_plus:
+                                s_alt_simple = _score_simple(alvo_norm, norm_alt)
+                                if s_alt_simple > s_simple:
+                                    s_simple = s_alt_simple
+                                    melhor_nome_usado = nome_alt
+                    
+                    if s_simple > best_score:
+                        best_score = s_simple
             
             # Só adicionar se score é significativo
             if best_score >= 0.7:

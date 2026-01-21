@@ -13,6 +13,7 @@ from decomp_agent.app.tools.pq_pequenas_usinas_tool import PQPequenasUsinasTool
 from decomp_agent.app.tools.carga_ande_tool import CargaAndeTool
 from decomp_agent.app.tools.limites_intercambio_tool import LimitesIntercambioDECOMPTool
 from decomp_agent.app.tools.restricoes_eletricas_tool import RestricoesEletricasDECOMPTool
+from decomp_agent.app.tools.restricoes_vazao_hq_tool import RestricoesVazaoHQTool
 
 # Registry de tools para modo single deck DECOMP
 TOOLS_REGISTRY_SINGLE = [
@@ -25,6 +26,7 @@ TOOLS_REGISTRY_SINGLE = [
     CargaAndeTool,
     LimitesIntercambioDECOMPTool,
     RestricoesEletricasDECOMPTool,
+    RestricoesVazaoHQTool,
 ]
 
 

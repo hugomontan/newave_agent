@@ -5,6 +5,8 @@ Entrega apenas a tabela via visualization_data, com mínimo texto.
 
 from typing import Dict, Any, List
 
+import pandas as pd
+
 from decomp_agent.app.agents.single_deck.formatters.base import SingleDeckFormatter
 
 
@@ -12,8 +14,8 @@ class RestricoesEletricasSingleDeckFormatter(SingleDeckFormatter):
     """Formatter para RestricoesEletricasDECOMPTool."""
 
     def can_format(self, tool_name: str, result_structure: Dict[str, Any]) -> bool:
-        """Verifica se pode formatar RestricoesEletricasDECOMPTool."""
-        return tool_name == "RestricoesEletricasDECOMPTool"
+        """Verifica se pode formatar RestricoesEletricasDECOMPTool ou RestricoesVazaoHQTool."""
+        return tool_name in ("RestricoesEletricasDECOMPTool", "RestricoesVazaoHQTool")
 
     def get_priority(self) -> int:
         """Prioridade semelhante a outros formatters de dados estruturados."""
@@ -36,51 +38,95 @@ class RestricoesEletricasSingleDeckFormatter(SingleDeckFormatter):
 
         data: List[Dict[str, Any]] = tool_result.get("data", []) or []
 
+        # Filtrar apenas registros do estágio 1
+        data_filtrada = []
+        for row in data:
+            # Tentar diferentes nomes possíveis para o campo de estágio
+            estagio = None
+            for campo in ["estagio", "estágio", "estagio_inicial", "ip", "stage"]:
+                if campo in row and row[campo] is not None:
+                    try:
+                        estagio = int(row[campo])
+                        break
+                    except (ValueError, TypeError):
+                        continue
+            
+            # Se não encontrou campo de estágio ou estágio é 1, incluir o registro
+            if estagio is None or estagio == 1:
+                data_filtrada.append(row)
+
+        data = data_filtrada
+
         if not data:
             return {
                 "final_response": "Nenhuma restrição encontrada para essa consulta.",
                 "visualization_data": None,
             }
 
-        # Helper para tratar valores numéricos (NaN/None -> 0)
-        def _to_num(v):
+        # Helper para tratar valores numéricos
+        # Para restrições de vazão: NaN/None -> None (será exibido como "-")
+        # Para restrições elétricas: NaN/None -> 0 (comportamento original)
+        def _to_num(v, allow_none=False):
             from math import isnan
 
             if v is None:
-                return 0
+                return None if allow_none else 0
+            
+            # Tratar pandas NaN
+            try:
+                if pd.isna(v):
+                    return None if allow_none else 0
+            except (TypeError, ValueError):
+                pass
+            
             try:
                 f = float(v)
-                return 0 if isnan(f) else f
-            except Exception:
-                return v
+                if isnan(f):
+                    return None if allow_none else 0
+                return f
+            except (ValueError, TypeError):
+                return None if allow_none else v
+
+        # Usar sempre 3 patamares (P1, P2, P3)
+        max_patamares = 3
 
         # Normalizar dados em uma tabela simples, com colunas renomeadas:
         # - Nome
-        # - GMIN P1 / GMIN P2 / GMIN P3
-        # - GMAX P1 / GMAX P2 / GMAX P3
+        # - GMIN P1 / GMIN P2 / GMIN P3 (e P4, P5 se disponíveis)
+        # - GMAX P1 / GMAX P2 / GMAX P3 (e P4, P5 se disponíveis)
         table_rows: List[Dict[str, Any]] = []
+        is_vazao = tool_name == "RestricoesVazaoHQTool"
 
         for row in data:
             row_out: Dict[str, Any] = {}
 
-            # Nome da restrição
-            nome = ", ".join(row.get("nomes_possiveis", []) or [])
-            if not nome and isinstance(row.get("nome"), str):
-                nome = row.get("nome")  # fallback
+            # Nome da restrição (adaptar para HQ se necessário)
+            if is_vazao:
+                nome = row.get("nome_usina") or f"UHE {row.get('codigo_usina', '?')}"
+            else:
+                nome = ", ".join(row.get("nomes_possiveis", []) or [])
+                if not nome and isinstance(row.get("nome"), str):
+                    nome = row.get("nome")  # fallback
             row_out["Nome"] = nome
 
-            # GMIN por patamar
-            row_out["GMIN P1"] = _to_num(row.get("limite_inferior_1"))
-            row_out["GMIN P2"] = _to_num(row.get("limite_inferior_2"))
-            row_out["GMIN P3"] = _to_num(row.get("limite_inferior_3"))
-
-            # GMAX por patamar
-            row_out["GMAX P1"] = _to_num(row.get("limite_superior_1"))
-            row_out["GMAX P2"] = _to_num(row.get("limite_superior_2"))
-            row_out["GMAX P3"] = _to_num(row.get("limite_superior_3"))
+            # GMIN e GMAX por patamar (até max_patamares)
+            for i in range(1, max_patamares + 1):
+                gmin_key = f"GMIN P{i}"
+                gmax_key = f"GMAX P{i}"
+                
+                # Para restrições de vazão, permitir None (será exibido como "-")
+                row_out[gmin_key] = _to_num(row.get(f"limite_inferior_{i}"), allow_none=is_vazao)
+                row_out[gmax_key] = _to_num(row.get(f"limite_superior_{i}"), allow_none=is_vazao)
 
             table_rows.append(row_out)
 
+        # Construir lista de colunas dinamicamente baseado no número de patamares
+        columns = ["Nome"]
+        for i in range(1, max_patamares + 1):
+            columns.append(f"GMIN P{i}")
+        for i in range(1, max_patamares + 1):
+            columns.append(f"GMAX P{i}")
+        
         visualization_data = {
             "table": table_rows,
             "chart_data": None,
@@ -90,29 +136,30 @@ class RestricoesEletricasSingleDeckFormatter(SingleDeckFormatter):
             "export": {
                 "enabled": True,
                 "format": "csv",
-                "suggested_filename": "restricoes_eletricas.csv",
-                "columns": [
-                    "Nome",
-                    "GMIN P1",
-                    "GMIN P2",
-                    "GMIN P3",
-                    "GMAX P1",
-                    "GMAX P2",
-                    "GMAX P3",
-                ],
+                "suggested_filename": "restricoes_vazao.csv" if is_vazao else "restricoes_eletricas.csv",
+                "columns": columns,
             },
         }
 
         # Usar o primeiro registro bruto para montar o título:
-        # "Restrições elétricas: {NOME_RESTRIÇÃO} {CÓDIGO}"
+        # "Restrições elétricas: {NOME_RESTRIÇÃO} {CÓDIGO}" ou "Restrições de vazão: {USINA}"
         first_raw = data[0]
-        nome_titulo = ", ".join(first_raw.get("nomes_possiveis", []) or []) or "?"
-        codigo = (
-            first_raw.get("codigo_label_comentario")
-            or first_raw.get("codigo_restricao")
-            or "?"
-        )
-        titulo = f"Restrições elétricas: {nome_titulo} {codigo}"
+        
+        # Adaptar título baseado no tipo de tool
+        if tool_name == "RestricoesVazaoHQTool":
+            nome_usina = first_raw.get("nome_usina") or "?"
+            codigo_usina = first_raw.get("codigo_usina") or "?"
+            # Formatar título como heading markdown (##) em caixa alta para destaque visual
+            titulo = f"## UHE {nome_usina.upper()} {codigo_usina}"
+        else:
+            nome_titulo = ", ".join(first_raw.get("nomes_possiveis", []) or []) or "?"
+            codigo = (
+                first_raw.get("codigo_label_comentario")
+                or first_raw.get("codigo_restricao")
+                or "?"
+            )
+            # Formatar título como heading markdown (##) em caixa alta para destaque visual
+            titulo = f"## RESTRIÇÕES ELÉTRICAS: {nome_titulo.upper()} {codigo}"
 
         return {
             "final_response": titulo,

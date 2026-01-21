@@ -45,6 +45,14 @@ class CTUsinasTermelétricasTool(DECOMPTool):
             True se a tool pode processar a query
         """
         query_lower = query.lower()
+        
+        # Excluir queries que são especificamente sobre disponibilidade ou inflexibilidade
+        # sem mencionar CVU, bloco CT, ou outros termos relacionados
+        if "disponibilidade" in query_lower and not any(kw in query_lower for kw in ["cvu", "custo", "bloco ct", "registro ct", "ct", "usina term"]):
+            return False
+        if "inflexibilidade" in query_lower and not any(kw in query_lower for kw in ["cvu", "custo", "bloco ct", "registro ct", "ct", "usina term"]):
+            return False
+        
         keywords = [
             "usina termelétrica",
             "usina termeletrica",
