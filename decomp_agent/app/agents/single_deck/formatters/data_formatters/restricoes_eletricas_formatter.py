@@ -14,8 +14,12 @@ class RestricoesEletricasSingleDeckFormatter(SingleDeckFormatter):
     """Formatter para RestricoesEletricasDECOMPTool."""
 
     def can_format(self, tool_name: str, result_structure: Dict[str, Any]) -> bool:
-        """Verifica se pode formatar RestricoesEletricasDECOMPTool ou RestricoesVazaoHQTool."""
-        return tool_name in ("RestricoesEletricasDECOMPTool", "RestricoesVazaoHQTool")
+        """Verifica se pode formatar RestricoesEletricasDECOMPTool ou tools de vazão HQ."""
+        return tool_name in (
+            "RestricoesEletricasDECOMPTool",
+            "RestricoesVazaoHQTool",
+            "RestricoesVazaoHQConjuntaTool",
+        )
 
     def get_priority(self) -> int:
         """Prioridade semelhante a outros formatters de dados estruturados."""
@@ -92,17 +96,42 @@ class RestricoesEletricasSingleDeckFormatter(SingleDeckFormatter):
 
         # Normalizar dados em uma tabela simples, com colunas renomeadas:
         # - Nome
-        # - GMIN P1 / GMIN P2 / GMIN P3 (e P4, P5 se disponíveis)
-        # - GMAX P1 / GMAX P2 / GMAX P3 (e P4, P5 se disponíveis)
+        # - GMIN P1 / GMIN P2 / GMIN P3
+        # - GMAX P1 / GMAX P2 / GMAX P3
         table_rows: List[Dict[str, Any]] = []
-        is_vazao = tool_name == "RestricoesVazaoHQTool"
+        is_vazao = tool_name in (
+            "RestricoesVazaoHQTool",
+            "RestricoesVazaoHQConjuntaTool",
+        )
+        is_vazao_conjunta = tool_name == "RestricoesVazaoHQConjuntaTool"
 
         for row in data:
             row_out: Dict[str, Any] = {}
 
             # Nome da restrição (adaptar para HQ se necessário)
             if is_vazao:
-                nome = row.get("nome_usina") or f"UHE {row.get('codigo_usina', '?')}"
+                if is_vazao_conjunta:
+                    # Para restrições conjuntas, usar "usinas_envolvidas" como nome
+                    usinas_env_nome = row.get("usinas_envolvidas")
+                    if usinas_env_nome:
+                        # Extrair apenas os nomes (antes dos parênteses) e juntar com " + "
+                        nomes = []
+                        for parte in usinas_env_nome.split(","):
+                            parte_limpa = parte.strip()
+                            if "(" in parte_limpa:
+                                nome_so = parte_limpa.split("(")[0].strip()
+                                if nome_so:
+                                    nomes.append(nome_so)
+                            else:
+                                if parte_limpa:
+                                    nomes.append(parte_limpa)
+                        nome = " + ".join(nomes) if nomes else usinas_env_nome
+                    else:
+                        # Fallback
+                        nome = row.get("nome_usina") or f"UHE {row.get('codigo_usina', '?')}"
+                else:
+                    # Para restrições unitárias, usar nome da usina
+                    nome = row.get("nome_usina") or f"UHE {row.get('codigo_usina', '?')}"
             else:
                 nome = ", ".join(row.get("nomes_possiveis", []) or [])
                 if not nome and isinstance(row.get("nome"), str):
@@ -146,12 +175,36 @@ class RestricoesEletricasSingleDeckFormatter(SingleDeckFormatter):
         first_raw = data[0]
         
         # Adaptar título baseado no tipo de tool
-        if tool_name == "RestricoesVazaoHQTool":
+        if tool_name == "RestricoesVazaoHQConjuntaTool":
+            # Para restrições conjuntas, usar todas as usinas envolvidas
+            usinas_env_titulo = first_raw.get("usinas_envolvidas") or ""
+            if usinas_env_titulo:
+                # Extrair apenas os nomes (antes dos parênteses) e juntar com " + "
+                nomes_titulo = []
+                for parte in usinas_env_titulo.split(","):
+                    parte_limpa = parte.strip()
+                    if "(" in parte_limpa:
+                        nome_so = parte_limpa.split("(")[0].strip()
+                        if nome_so:
+                            nomes_titulo.append(nome_so.upper())
+                    else:
+                        if parte_limpa:
+                            nomes_titulo.append(parte_limpa.upper())
+                nomes_str = " + ".join(nomes_titulo) if nomes_titulo else usinas_env_titulo.upper()
+                titulo = f"## RESTRIÇÃO DE VAZÃO CONJUNTA: {nomes_str}"
+            else:
+                # Fallback
+                nome_usina = first_raw.get("nome_usina") or "?"
+                codigo_usina = first_raw.get("codigo_usina") or "?"
+                titulo = f"## RESTRIÇÃO DE VAZÃO CONJUNTA: UHE {nome_usina.upper()} {codigo_usina}"
+        elif tool_name == "RestricoesVazaoHQTool":
+            # Para restrições unitárias, usar nome e código da usina
             nome_usina = first_raw.get("nome_usina") or "?"
             codigo_usina = first_raw.get("codigo_usina") or "?"
             # Formatar título como heading markdown (##) em caixa alta para destaque visual
             titulo = f"## UHE {nome_usina.upper()} {codigo_usina}"
         else:
+            # Restrições elétricas (RE)
             nome_titulo = ", ".join(first_raw.get("nomes_possiveis", []) or []) or "?"
             codigo = (
                 first_raw.get("codigo_label_comentario")

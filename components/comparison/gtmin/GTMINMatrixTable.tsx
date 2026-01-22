@@ -175,8 +175,8 @@ export function GTMINMatrixTable({ matrixData, deckNames }: GTMINMatrixTableProp
             </div>
 
             {/* Tabela: Linhas = meses, Colunas = decks */}
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse">
+            <div className="w-full overflow-x-auto">
+              <table className="w-full border-collapse" style={{ minWidth: 'max-content' }}>
                 <thead>
                   <tr>
                     <th className="border border-border bg-muted/50 px-3 py-2 text-left text-sm font-semibold text-card-foreground sticky left-0 z-10">

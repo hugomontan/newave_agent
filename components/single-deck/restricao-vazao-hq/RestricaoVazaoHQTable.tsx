@@ -39,35 +39,35 @@ export function RestricaoVazaoHQTable({ data }: RestricaoVazaoHQTableProps) {
   };
 
   return (
-    <div className="bg-card border border-border rounded-lg p-4 sm:p-6">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-3">
-          <span className="text-sm text-muted-foreground">
+    <div className="bg-card border border-border rounded-lg p-2 sm:p-3">
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">
             {data.length} registros
           </span>
         </div>
         <button
           onClick={handleDownloadCSV}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-card-foreground bg-background/50 hover:bg-background/70 border border-border rounded-lg transition-colors"
+          className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-card-foreground bg-background/50 hover:bg-background/70 border border-border rounded transition-colors"
           title="Baixar como CSV"
         >
-          <Download className="w-4 h-4" />
+          <Download className="w-3 h-3" />
           CSV
         </button>
       </div>
 
-      <div className="w-full">
-        <div className="inline-block w-full align-middle px-0">
-          <table className="w-full border-collapse bg-background/30">
+      <div className="w-full overflow-hidden">
+        <div className="w-full">
+          <table className="w-full border-collapse bg-background/30 text-xs">
             <thead>
               <tr className="border-b border-border bg-background/50">
-                <th className="px-3 sm:px-4 py-3 text-left text-xs font-semibold text-card-foreground uppercase tracking-wider">
+                <th className="px-2 py-1.5 text-left text-[10px] font-semibold text-card-foreground uppercase tracking-tight">
                   Nome
                 </th>
                 {Array.from({ length: maxPatamares }, (_, i) => (
                   <th
                     key={`gmin-${i + 1}`}
-                    className="px-3 sm:px-4 py-3 text-right text-xs font-semibold text-card-foreground uppercase tracking-wider"
+                    className="px-1.5 py-1.5 text-right text-[10px] font-semibold text-card-foreground uppercase tracking-tight"
                   >
                     GMIN P{i + 1}
                   </th>
@@ -75,7 +75,7 @@ export function RestricaoVazaoHQTable({ data }: RestricaoVazaoHQTableProps) {
                 {Array.from({ length: maxPatamares }, (_, i) => (
                   <th
                     key={`gmax-${i + 1}`}
-                    className="px-3 sm:px-4 py-3 text-right text-xs font-semibold text-card-foreground uppercase tracking-wider"
+                    className="px-1.5 py-1.5 text-right text-[10px] font-semibold text-card-foreground uppercase tracking-tight"
                   >
                     GMAX P{i + 1}
                   </th>
@@ -98,13 +98,13 @@ export function RestricaoVazaoHQTable({ data }: RestricaoVazaoHQTableProps) {
                     key={`${nome}-${index}`}
                     className="border-b border-border/50 bg-background/20 hover:bg-background/40 transition-colors"
                   >
-                    <td className="px-3 sm:px-4 py-2.5 text-sm text-card-foreground font-medium whitespace-nowrap">
+                    <td className="px-2 py-1.5 text-xs text-card-foreground font-medium max-w-[200px] truncate" title={nome}>
                       {nome}
                     </td>
                     {[...gminValues, ...gmaxValues].map((val, idx) => (
                       <td
                         key={idx}
-                        className="px-3 sm:px-4 py-2.5 text-sm text-card-foreground text-right whitespace-nowrap font-mono"
+                        className="px-1.5 py-1.5 text-xs text-card-foreground text-right whitespace-nowrap font-mono"
                       >
                         {val !== null && val !== undefined
                           ? formatInteger(Number(val))
@@ -122,16 +122,16 @@ export function RestricaoVazaoHQTable({ data }: RestricaoVazaoHQTableProps) {
       {hasMoreRows && (
         <button
           onClick={() => setIsExpanded(!isExpanded)}
-          className="mt-4 flex items-center gap-2 text-sm text-muted-foreground hover:text-card-foreground transition-colors"
+          className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground hover:text-card-foreground transition-colors"
         >
           {isExpanded ? (
             <>
-              <ChevronUp className="w-4 h-4" />
+              <ChevronUp className="w-3 h-3" />
               Mostrar menos
             </>
           ) : (
             <>
-              <ChevronDown className="w-4 h-4" />
+              <ChevronDown className="w-3 h-3" />
               Mostrar mais ({data.length - INITIAL_ROWS} registros)
             </>
           )}

@@ -18,13 +18,18 @@ from decomp_agent.app.agents.multi_deck.formatting.data_formatters import (
     CargaAndeComparisonFormatter,
     LimitesIntercambioComparisonFormatter,
     RestricoesEletricasComparisonFormatter,
+    RestricoesVazaoHQComparisonFormatter,
+    GLComparisonFormatter,
 )
 
 # Lista de formatadores (em ordem de prioridade - mais específicos primeiro)
+# IMPORTANTE: Ordem importa quando há mesma prioridade - verificar tool_name primeiro
 FORMATTERS: List[ComparisonFormatter] = [
     VolumeInicialComparisonFormatter(),  # Prioridade 95 - muito específico
+    GLComparisonFormatter(),  # Prioridade 85 - específico para gerações GNL (GL) - ANTES de RestricoesVazaoHQ
     LimitesIntercambioComparisonFormatter(),  # Prioridade 85 - específico para limites de intercâmbio
     RestricoesEletricasComparisonFormatter(),  # Prioridade 85 - específico para restrições elétricas
+    RestricoesVazaoHQComparisonFormatter(),  # Prioridade 85 - específico para restrições de vazão
     CargaAndeComparisonFormatter(),  # Prioridade 10 - específico para Carga ANDE
     DPComparisonFormatter(),  # Prioridade 10 - específico para DP
     PQComparisonFormatter(),  # Prioridade 10 - específico para PQ
@@ -54,8 +59,27 @@ def get_formatter_for_tool(
     ]
     
     if candidates:
-        # Retornar o formatador com maior prioridade
-        return max(candidates, key=lambda f: f.get_priority())
+        # Se houver múltiplos candidatos, priorizar:
+        # 1. Maior prioridade
+        # 2. Se empate, preferir o que corresponde ao tool_name (verificar primeiro na lista)
+        max_priority = max(f.get_priority() for f in candidates)
+        priority_candidates = [f for f in candidates if f.get_priority() == max_priority]
+        
+        # Se há empate de prioridade, verificar qual corresponde melhor ao tool_name
+        if len(priority_candidates) > 1:
+            tool_name_lower = tool_name.lower() if tool_name else ""
+            # Verificar se algum candidato corresponde explicitamente ao tool_name
+            for candidate in priority_candidates:
+                candidate_name = candidate.__class__.__name__.lower()
+                # GLComparisonFormatter para GL tools
+                if "glcomparison" in candidate_name and ("gl" in tool_name_lower or "gnl" in tool_name_lower):
+                    return candidate
+                # RestricoesVazaoHQComparisonFormatter para vazao tools
+                if "vazao" in candidate_name and ("vazao" in tool_name_lower or "hq" in tool_name_lower):
+                    return candidate
+        
+        # Retornar o primeiro candidato com maior prioridade (ordem na lista importa)
+        return priority_candidates[0]
     
     # TODO: Criar LLMFreeFormatter como fallback
     # Por enquanto, retornar None e tratar no código chamador

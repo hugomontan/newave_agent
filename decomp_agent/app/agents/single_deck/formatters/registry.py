@@ -20,6 +20,7 @@ from decomp_agent.app.agents.single_deck.formatters.data_formatters import (
     CargaAndeSingleDeckFormatter,
     LimitesIntercambioSingleDeckFormatter,
     RestricoesEletricasSingleDeckFormatter,
+    GLSingleDeckFormatter,
 )
 
 # Formatter genérico (fallback)
@@ -34,6 +35,7 @@ SINGLE_DECK_FORMATTERS = [
     DPSingleDeckFormatter(),  # Agora também formata carga média ponderada
     PQSingleDeckFormatter(),  # Prioridade 90 - formatter para pequenas usinas
     CargaAndeSingleDeckFormatter(),  # Prioridade 90 - formatter para carga ANDE
+    GLSingleDeckFormatter(),  # Prioridade 90 - formatter para gerações GNL
     LimitesIntercambioSingleDeckFormatter(),  # Prioridade 85 - formatter para limites de intercâmbio
     RestricoesEletricasSingleDeckFormatter(),  # Prioridade 85 - formatter para RE
     DisponibilidadeUsinaFormatter(),

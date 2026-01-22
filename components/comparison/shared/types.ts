@@ -49,6 +49,18 @@ export interface ComparisonData {
     };
   }>;
   charts_by_restricao?: Record<string, Record<string, ChartData>>;
+  charts_by_patamar?: Record<string, {
+    patamar: string;
+    patamar_numero: number;
+    chart_data: ChartData | null;
+    chart_config?: {
+      type: string;
+      title: string;
+      x_axis: string;
+      y_axis: string;
+      tool_name?: string;
+    };
+  }>;
   differences?: Difference[];
   comparison_table?: TableRow[];
   matrix_data?: MatrixRow[];

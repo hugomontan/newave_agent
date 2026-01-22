@@ -482,6 +482,31 @@ def find_dadger_file(deck_path: str) -> Optional[str]:
     return None
 
 
+def find_dadgnl_file(deck_path: str) -> Optional[str]:
+    """
+    Encontra o arquivo dadgnl em um deck DECOMP.
+    Aceita qualquer arquivo dadgnl.rv* (rvx, rv0, rv1, rv2, rv3, rv4, etc.).
+    
+    Args:
+        deck_path: Caminho do diretório do deck
+        
+    Returns:
+        Caminho completo do arquivo dadgnl encontrado, ou None se não encontrado
+    """
+    from pathlib import Path
+    
+    deck_path_obj = Path(deck_path)
+    if not deck_path_obj.is_dir():
+        return None
+    
+    # Buscar qualquer arquivo dadgnl.rv*
+    for file in deck_path_obj.glob("dadgnl.rv*"):
+        if file.is_file():
+            return str(file)
+    
+    return None
+
+
 def calculate_week_thursday(year: int, month: int, week: int) -> str:
     """
     Calcula a data da quinta-feira da semana N do mês.

@@ -43,6 +43,11 @@ class RestricoesVazaoHQTool(DECOMPTool):
         Detecta queries sobre restrições de vazão/hidráulicas/HQ.
         """
         q = query.lower()
+
+        # Se a query fala explicitamente em "conjunta"/"somatório", deixar
+        # essa responsabilidade para a RestricoesVazaoHQConjuntaTool.
+        if "conjunta" in q or "somatorio" in q or "somatório" in q:
+            return False
         keywords = [
             "restricao de vazao",
             "restrição de vazão",
@@ -126,7 +131,7 @@ class RestricoesVazaoHQTool(DECOMPTool):
             if dadger is None:
                 return self._error("Arquivo dadger não encontrado (nenhum dadger.rv* / dadger.rvx).")
 
-            # 2) Resolver usina (codigo_usina, nome_usina)
+            # 2) Resolver usina principal (codigo_usina, nome_usina)
             codigo_usina, nome_usina = self._resolver_codigo_usina(query, dadger)
             if codigo_usina is None:
                 return {
@@ -137,9 +142,100 @@ class RestricoesVazaoHQTool(DECOMPTool):
 
             safe_print(f"[HQ] UHE resolvida: codigo={codigo_usina}, nome='{nome_usina}'")
 
-            # 3) Buscar restrições HQ vinculadas a essa usina via CQ
-            restricoes = self._buscar_restricoes_vazao_por_usina(codigo_usina, nome_usina, dadger)
+            # 3) Detectar TODAS as usinas mencionadas na query
+            usinas_mencionadas = self._listar_usinas_na_query(query, dadger)
+
+            # Garantir que, pelo menos, a usina principal esteja presente
+            if not usinas_mencionadas:
+                usinas_mencionadas = [(codigo_usina, nome_usina)]
+            else:
+                codigos_mencionados = {c for c, _ in usinas_mencionadas}
+                if codigo_usina not in codigos_mencionados:
+                    usinas_mencionadas.insert(0, (codigo_usina, nome_usina))
+
+            safe_print(
+                f"[HQ] Usinas mencionadas na query: "
+                f"{[(c, n) for c, n in usinas_mencionadas]}"
+            )
+
+            # 4) Buscar restrições HQ:
+            #    - se apenas 1 usina: considerar apenas HQ "puras" dessa usina
+            #      (somente_usina_exata=True), ou seja, ignorar HQ multi-usina
+            #    - se 2+ usinas: interseção de HQ entre TODAS as usinas, ou seja,
+            #      somente as HQ que são, de fato, conjuntas
+            if len(usinas_mencionadas) == 1:
+                restricoes = self._buscar_restricoes_vazao_por_usina(
+                    codigo_usina,
+                    nome_usina,
+                    dadger,
+                    somente_usina_exata=True,
+                )
+            else:
+                # Usina de referência (primeira da lista) para montar os registros
+                cod_ref, nome_ref = usinas_mencionadas[0]
+                safe_print(f"[HQ] Modo multi-usina. Usina de referência: {cod_ref} '{nome_ref}'")
+
+                restricoes_ref = self._buscar_restricoes_vazao_por_usina(
+                    cod_ref,
+                    nome_ref,
+                    dadger,
+                    somente_usina_exata=False,
+                )
+
+                if not restricoes_ref:
+                    restricoes = []
+                else:
+                    codigos_comuns = {
+                        r.get("codigo_restricao")
+                        for r in restricoes_ref
+                        if r.get("codigo_restricao") is not None
+                    }
+
+                    for cod_u, nome_u in usinas_mencionadas[1:]:
+                        restricoes_u = self._buscar_restricoes_vazao_por_usina(
+                            cod_u,
+                            nome_u,
+                            dadger,
+                            somente_usina_exata=False,
+                        )
+                        codigos_u = {
+                            r.get("codigo_restricao")
+                            for r in restricoes_u
+                            if r.get("codigo_restricao") is not None
+                        }
+                        safe_print(
+                            f"[HQ] Códigos HQ da usina {cod_u} ('{nome_u}'): "
+                            f"{sorted(codigos_u)}"
+                        )
+                        codigos_comuns &= codigos_u
+
+                    safe_print(f"[HQ] Códigos HQ em comum entre as usinas: {sorted(codigos_comuns)}")
+
+                    if not codigos_comuns:
+                        restricoes = []
+                    else:
+                        restricoes = [
+                            r
+                            for r in restricoes_ref
+                            if r.get("codigo_restricao") in codigos_comuns
+                        ]
+
+                # Atualizar usina principal para a de referência (para título/metadata)
+                codigo_usina, nome_usina = cod_ref, nome_ref
+
             if not restricoes:
+                # Mensagem mais específica quando múltiplas usinas foram citadas
+                if len(usinas_mencionadas) > 1:
+                    nomes = " e ".join(n for _, n in usinas_mencionadas)
+                    return {
+                        "success": False,
+                        "error": (
+                            f"As usinas {nomes} não possuem nenhuma restrição de vazão "
+                            "HQ/LQ em comum neste deck."
+                        ),
+                        "tool": self.get_name(),
+                    }
+
                 return {
                     "success": False,
                     "error": (
@@ -151,15 +247,17 @@ class RestricoesVazaoHQTool(DECOMPTool):
                     "tool": self.get_name(),
                 }
 
-            # 4) (Opcional) Integrar durações de patamar via DP para média ponderada
+            # 5) (Opcional) Integrar durações de patamar via DP para média ponderada
             duracoes = self._extrair_duracoes_patamares(dadger)
             if duracoes and all(v is not None for v in duracoes.values()):
                 safe_print(f"[HQ] Durações de patamar encontradas: {duracoes}")
                 for r in restricoes:
                     self._calcular_vazao_media_ponderada_inplace(r, duracoes)
 
-            # 5) Resposta final
-            codigos_encontrados = sorted({r.get("codigo_restricao") for r in restricoes if r.get("codigo_restricao")})
+            # 6) Resposta final
+            codigos_encontrados = sorted(
+                {r.get("codigo_restricao") for r in restricoes if r.get("codigo_restricao")}
+            )
             return {
                 "success": True,
                 "usina": {
@@ -584,14 +682,73 @@ class RestricoesVazaoHQTool(DECOMPTool):
         safe_print(f"[HQ] [AVISO] Nenhuma usina especifica detectada na query")
         return None
 
+    def _listar_usinas_na_query(
+        self, query: str, dadger: Any
+    ) -> List[Tuple[int, str]]:
+        """
+        Retorna uma lista [(codigo_usina, nome_usina)] de todas as usinas
+        cujo nome aparece textualmente na query.
+
+        Usa o mesmo mapeamento HIDR.DAT que as demais tools (UHUsinasHidrelétricasTool).
+        """
+        query_lower = query.lower()
+
+        # Carregar UH para ter a lista de códigos presentes no deck
+        try:
+            uh_data = dadger.uh(df=True)
+        except Exception:
+            uh_data = None
+
+        if uh_data is None or (isinstance(uh_data, pd.DataFrame) and uh_data.empty):
+            return []
+
+        if isinstance(uh_data, pd.DataFrame):
+            data_usinas = uh_data.to_dict("records")
+        elif isinstance(uh_data, list):
+            data_usinas = [self._uh_to_dict(u) for u in uh_data]
+        else:
+            data_usinas = [self._uh_to_dict(uh_data)]
+
+        # Mapeamento código -> nome a partir do HIDR.DAT
+        mapeamento = self._create_codigo_nome_mapping(dadger, data_usinas)
+
+        candidatos: List[Tuple[int, int, str]] = []
+        for codigo, nome in mapeamento.items():
+            if not nome:
+                continue
+            nome_lower = str(nome).lower().strip()
+            if len(nome_lower) < 3:
+                continue
+            pos = query_lower.find(nome_lower)
+            if pos != -1:
+                candidatos.append((pos, int(codigo), str(nome)))
+
+        # Ordenar pela posição do nome na query
+        candidatos.sort(key=lambda x: x[0])
+
+        # Remover posição e evitar códigos duplicados
+        vistos = set()
+        resultado: List[Tuple[int, str]] = []
+        for _, cod, nome in candidatos:
+            if cod not in vistos:
+                vistos.add(cod)
+                resultado.append((cod, nome))
+
+        return resultado
+
     # 2) Mapear codigo_usina -> codigos HQ via CQ e ler HQ/LQ
 
     def _buscar_restricoes_vazao_por_usina(
-        self, codigo_usina: int, nome_usina: Optional[str], dadger: Any
+        self,
+        codigo_usina: int,
+        nome_usina: Optional[str],
+        dadger: Any,
+        somente_usina_exata: bool = False,
     ) -> List[Dict[str, Any]]:
         """
         A partir de codigo_usina, encontra restrições HQ via CQ e monta registros
-        combinando HQ/LQ.
+        combinando HQ/LQ, considerando que uma mesma restrição HQ pode envolver
+        múltiplas usinas (multi-usina) via bloco CQ.
         """
         # CQ df
         cq_df = dadger.cq(df=True)
@@ -613,10 +770,32 @@ class RestricoesVazaoHQTool(DECOMPTool):
             safe_print(f"[HQ] Colunas CQ não identificadas. Colunas: {list(cq_df.columns)}")
             return []
 
+        # Todas as linhas CQ em que a usina consultada participa
         cq_usina = cq_df[cq_df[col_cod_usina] == codigo_usina]
         if cq_usina.empty:
             safe_print(f"[HQ] Nenhuma linha CQ encontrada para codigo_usina={codigo_usina}.")
             return []
+
+        # Criar mapeamento código->nome das usinas para poder montar,
+        # para cada código HQ, a lista de TODAS as usinas envolvidas.
+        try:
+            uh_data = dadger.uh(df=True)
+        except Exception:
+            uh_data = None
+
+        data_usinas: List[Dict[str, Any]] = []
+        if isinstance(uh_data, pd.DataFrame):
+            data_usinas = uh_data.to_dict("records")
+        elif isinstance(uh_data, list):
+            data_usinas = [self._uh_to_dict(u) for u in uh_data]
+        elif uh_data is not None:
+            data_usinas = [self._uh_to_dict(uh_data)]
+
+        try:
+            mapeamento_codigo_nome = self._create_codigo_nome_mapping(dadger, data_usinas)
+        except Exception:
+            # Se algo der errado, seguimos apenas com os códigos numéricos
+            mapeamento_codigo_nome = {}
 
         codigos = sorted(
             {int(v) for v in cq_usina[col_cod_restricao].dropna().unique().tolist()}
@@ -653,6 +832,36 @@ class RestricoesVazaoHQTool(DECOMPTool):
         resultados: List[Dict[str, Any]] = []
 
         for cod in codigos:
+            # Para este código de restrição HQ, descobrir TODAS as usinas
+            # que participam via bloco CQ (multi-usina).
+            cq_cod = cq_df[cq_df[col_cod_restricao] == cod]
+            cod_usinas_env = sorted(
+                {
+                    int(v)
+                    for v in cq_cod[col_cod_usina].dropna().unique().tolist()
+                    if v is not None
+                }
+            )
+
+            # Se o modo "somente_usina_exata" estiver ativo, queremos
+            # ignorar restrições que envolvam OUTRAS usinas além da
+            # consultada (ou seja, HQ multi-usina).
+            if somente_usina_exata and len(cod_usinas_env) > 1:
+                safe_print(
+                    f"[HQ] Ignorando código {cod} em modo somente_usina_exata "
+                    f"(usinas envolvidas: {cod_usinas_env})"
+                )
+                continue
+
+            multi_usina_flag = len(cod_usinas_env) > 1
+
+            nomes_usinas_env: List[str] = []
+            for cu in cod_usinas_env:
+                nome_env = mapeamento_codigo_nome.get(cu, f"Usina {cu}")
+                nomes_usinas_env.append(f"{nome_env} ({cu})")
+
+            usinas_envolvidas_str = ", ".join(nomes_usinas_env) if nomes_usinas_env else None
+
             # HQ cabeçalho
             hq_info: Dict[str, Any] = {}
             if col_cod_hq and not hq_df.empty:
@@ -680,7 +889,9 @@ class RestricoesVazaoHQTool(DECOMPTool):
             for idx, row in lq_cod.iterrows():
                 d = row.to_dict()
                 d["codigo_restricao"] = cod
+                # código da UHE CONSULTADA (que originou a query)
                 d["codigo_usina"] = codigo_usina
+                d["multi_usina"] = multi_usina_flag
 
                 if col_estagio:
                     d["estagio"] = row.get(col_estagio)
@@ -714,9 +925,11 @@ class RestricoesVazaoHQTool(DECOMPTool):
                     if chave in hq_info and chave not in d:
                         d[chave] = hq_info.get(chave)
 
-                # Adicionar nome da usina para contexto
+                # Adicionar nome da usina consultada e TODAS as usinas envolvidas na HQ
                 if nome_usina:
                     d["nome_usina"] = nome_usina
+                if usinas_envolvidas_str:
+                    d["usinas_envolvidas"] = usinas_envolvidas_str
 
                 resultados.append(d)
 

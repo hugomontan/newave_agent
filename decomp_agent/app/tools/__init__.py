@@ -8,6 +8,7 @@ from .dp_carga_subsistemas_tool import DPCargaSubsistemasTool
 from .inflexibilidade_usina_tool import InflexibilidadeUsinaTool
 from .disponibilidade_usina_tool import DisponibilidadeUsinaTool
 from .limites_intercambio_tool import LimitesIntercambioDECOMPTool
+from .gl_geracoes_gnl_tool import GLGeracoesGNLTool
 
 __all__ = [
     "UHUsinasHidrelétricasTool",
@@ -16,4 +17,5 @@ __all__ = [
     "InflexibilidadeUsinaTool",
     "DisponibilidadeUsinaTool",
     "LimitesIntercambioDECOMPTool",
+    "GLGeracoesGNLTool",
 ]

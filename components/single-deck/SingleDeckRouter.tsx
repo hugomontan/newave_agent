@@ -22,6 +22,7 @@ import { DisponibilidadeUsinaView } from "./disponibilidade-usina";
 import { InflexibilidadeUsinaView } from "./inflexibilidade-usina";
 import { PQView } from "./pq";
 import { CargaAndeView } from "./carga-ande";
+import { GLView } from "./gl-geracoes-gnl";
 
 interface SingleDeckRouterProps {
   visualizationData: SingleDeckVisualizationData;
@@ -75,6 +76,7 @@ export function SingleDeckRouter({ visualizationData }: SingleDeckRouterProps) {
       return <RestricaoEletricaView visualizationData={visualizationData} />;
     
     case "RestricoesVazaoHQTool":
+    case "RestricoesVazaoHQConjuntaTool":
       return <RestricaoVazaoHQView visualizationData={visualizationData} />;
     
     case "UHUsinasHidrelétricasTool":
@@ -97,6 +99,9 @@ export function SingleDeckRouter({ visualizationData }: SingleDeckRouterProps) {
     
     case "CargaAndeTool":
       return <CargaAndeView visualizationData={visualizationData} />;
+    
+    case "GLGeracoesGNLTool":
+      return <GLView visualizationData={visualizationData} />;
     
     default:
       return null;

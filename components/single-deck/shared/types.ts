@@ -32,6 +32,12 @@ export interface SingleDeckVisualizationData {
     chart_data: ChartData;
     chart_config?: ChartConfig;
   }>;
+  charts_by_patamar?: Record<string, {
+    patamar: string;
+    patamar_numero: number;
+    chart_data: ChartData;
+    chart_config?: ChartConfig;
+  }>;
   charts_by_restricao?: Record<string, {
     labels: string[];
     datasets: Array<{

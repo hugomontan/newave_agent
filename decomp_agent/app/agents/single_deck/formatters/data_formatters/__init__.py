@@ -14,6 +14,7 @@ from .pq_formatter import PQSingleDeckFormatter
 from .carga_ande_formatter import CargaAndeSingleDeckFormatter
 from .limites_intercambio_formatter import LimitesIntercambioSingleDeckFormatter
 from .restricoes_eletricas_formatter import RestricoesEletricasSingleDeckFormatter
+from .gl_formatter import GLSingleDeckFormatter
 
 __all__ = [
     "UHSingleDeckFormatter",
@@ -26,4 +27,5 @@ __all__ = [
     "CargaAndeSingleDeckFormatter",
     "LimitesIntercambioSingleDeckFormatter",
     "RestricoesEletricasSingleDeckFormatter",
+    "GLSingleDeckFormatter",
 ]

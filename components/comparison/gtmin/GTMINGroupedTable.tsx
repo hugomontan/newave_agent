@@ -240,7 +240,12 @@ export function GTMINGroupedTable({ differences, deck1Name, deck2Name, deckNames
 
       <div className="overflow-x-auto -mx-4 sm:mx-0">
         <div className="inline-block min-w-full align-middle px-4 sm:px-0">
-          <table className="min-w-full border-collapse">
+          <table 
+            className="border-collapse" 
+            style={{ 
+              minWidth: isTransposed && meses.length > 0 ? 'max-content' : '100%' 
+            }}
+          >
             <thead>
               <tr className="border-b border-border bg-background/50">
                 <th className="px-3 sm:px-4 py-3 text-left text-xs font-semibold text-card-foreground uppercase tracking-wider whitespace-nowrap">

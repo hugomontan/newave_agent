@@ -9,6 +9,8 @@ from decomp_agent.app.agents.multi_deck.tools.pq_multi_deck_tool import PQMultiD
 from decomp_agent.app.agents.multi_deck.tools.carga_ande_multi_deck_tool import CargaAndeMultiDeckTool
 from decomp_agent.app.agents.multi_deck.tools.limites_intercambio_multi_deck_tool import LimitesIntercambioMultiDeckTool
 from decomp_agent.app.agents.multi_deck.tools.restricoes_eletricas_multi_deck_tool import RestricoesEletricasMultiDeckTool
+from decomp_agent.app.agents.multi_deck.tools.restricoes_vazao_hq_multi_deck_tool import RestricoesVazaoHQMultiDeckTool
+from decomp_agent.app.agents.multi_deck.tools.gl_multi_deck_tool import GLMultiDeckTool
 
 TOOLS_REGISTRY_MULTI = [
     InflexibilidadeMultiDeckTool,
@@ -19,6 +21,8 @@ TOOLS_REGISTRY_MULTI = [
     CargaAndeMultiDeckTool,
     LimitesIntercambioMultiDeckTool,
     RestricoesEletricasMultiDeckTool,
+    RestricoesVazaoHQMultiDeckTool,
+    GLMultiDeckTool,
 ]
 
 def get_available_tools(selected_decks: List[str], deck_paths: Dict[str, str]) -> List[DECOMPTool]:

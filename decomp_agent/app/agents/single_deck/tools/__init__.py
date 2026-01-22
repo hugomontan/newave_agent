@@ -14,6 +14,8 @@ from decomp_agent.app.tools.carga_ande_tool import CargaAndeTool
 from decomp_agent.app.tools.limites_intercambio_tool import LimitesIntercambioDECOMPTool
 from decomp_agent.app.tools.restricoes_eletricas_tool import RestricoesEletricasDECOMPTool
 from decomp_agent.app.tools.restricoes_vazao_hq_tool import RestricoesVazaoHQTool
+from decomp_agent.app.tools.restricoes_vazao_hq_conjunta_tool import RestricoesVazaoHQConjuntaTool
+from decomp_agent.app.tools.gl_geracoes_gnl_tool import GLGeracoesGNLTool
 
 # Registry de tools para modo single deck DECOMP
 TOOLS_REGISTRY_SINGLE = [
@@ -27,6 +29,8 @@ TOOLS_REGISTRY_SINGLE = [
     LimitesIntercambioDECOMPTool,
     RestricoesEletricasDECOMPTool,
     RestricoesVazaoHQTool,
+    RestricoesVazaoHQConjuntaTool,
+    GLGeracoesGNLTool,
 ]
 
 

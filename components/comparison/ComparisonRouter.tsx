@@ -17,6 +17,8 @@ import { PQComparisonView } from "./pq-decomp";
 import { CargaAndeComparisonView } from "./carga-ande-decomp";
 import { LimitesIntercambioComparisonView } from "./limites-intercambio-decomp";
 import { RestricoesEletricasComparisonView } from "./restricao-eletrica-decomp";
+import { RestricoesVazaoHQComparisonView } from "./restricao-vazao-hq-decomp";
+import { GLComparisonView } from "./gl-decomp/GLComparisonView";
 import type { ComparisonData } from "./shared/types";
 
 interface ComparisonRouterProps {
@@ -57,6 +59,24 @@ export function ComparisonRouter({ comparison }: ComparisonRouterProps) {
       console.log('[ComparisonRouter] ✅ Usando UsinasNaoSimuladasView para UsinasNaoSimuladasTool');
     }
     return <UsinasNaoSimuladasView comparison={comparison} />;
+  }
+  
+  // Verificar GL (multi-deck) - ANTES do switch para garantir detecção
+  const isGLTool = (
+    normalizedToolName === "GLGeracoesGNLTool" || 
+    normalizedToolName === "GLMultiDeckTool" ||
+    normalizedToolName.toLowerCase().includes("glgeracoesgnl") ||
+    normalizedToolName.toLowerCase().includes("geracoes gnl") ||
+    normalizedToolName.toLowerCase().includes("gerações gnl") ||
+    normalizedToolName.toLowerCase().startsWith("gl") ||
+    normalizedVizType === "gl_comparison"
+  );
+  
+  if (isGLTool && comparison.is_multi_deck) {
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[ComparisonRouter] ✅ Usando GLComparisonView para GL tool (detectado antes do switch)');
+    }
+    return <GLComparisonView comparison={comparison} />;
   }
   
   // Verificar InflexibilidadeUsinaTool ou InflexibilidadeMultiDeckTool
@@ -126,6 +146,24 @@ export function ComparisonRouter({ comparison }: ComparisonRouterProps) {
       console.log('[ComparisonRouter] ✅ Usando PQComparisonView para PQMultiDeckTool');
     }
     return <PQComparisonView comparison={comparison} />;
+  }
+  
+  // Verificar Restrições de Vazão (multi-deck DECOMP) - antes do switch
+  if (
+    (normalizedToolName === "RestricoesVazaoHQTool" || 
+     normalizedToolName === "RestricoesVazaoHQConjuntaTool" ||
+     normalizedToolName === "RestricoesVazaoHQMultiDeckTool" ||
+     normalizedToolName.toLowerCase().includes("restricoesvazao") ||
+     normalizedToolName.toLowerCase().includes("restrições de vazão") ||
+     normalizedToolName.toLowerCase().includes("restricoes de vazao") ||
+     normalizedToolName.toLowerCase().includes("vazao hq") ||
+     normalizedToolName.toLowerCase().includes("vazão hq")) && 
+    comparison.is_multi_deck
+  ) {
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[ComparisonRouter] ✅ Usando RestricoesVazaoHQComparisonView para RestricoesVazaoHQTool');
+    }
+    return <RestricoesVazaoHQComparisonView comparison={comparison} />;
   }
   
   // Verificação adicional: se chart_config indica UsinasNaoSimuladasTool mas tool_name não está presente
@@ -203,6 +241,21 @@ export function ComparisonRouter({ comparison }: ComparisonRouterProps) {
       ) {
         return <RestricoesEletricasComparisonView comparison={comparison} />;
       }
+      // Verificar Restrições de Vazão (multi-deck DECOMP)
+      if (
+        (normalizedToolName === "RestricoesVazaoHQTool" || 
+         normalizedToolName === "RestricoesVazaoHQConjuntaTool" ||
+         normalizedToolName === "RestricoesVazaoHQMultiDeckTool" ||
+         normalizedToolName.toLowerCase().includes("restricoesvazao") ||
+         normalizedToolName.toLowerCase().includes("restrições de vazão") ||
+         normalizedToolName.toLowerCase().includes("restricoes de vazao") ||
+         normalizedToolName.toLowerCase().includes("vazao hq") ||
+         normalizedToolName.toLowerCase().includes("vazão hq")) && 
+        comparison.is_multi_deck
+      ) {
+        return <RestricoesVazaoHQComparisonView comparison={comparison} />;
+      }
+      // GL já foi verificado antes do switch, não precisa verificar novamente aqui
       // Verificar CVU (multi-deck)
       if (
         normalizedToolName.toLowerCase().includes("cvu") && comparison.is_multi_deck
@@ -241,6 +294,9 @@ export function ComparisonRouter({ comparison }: ComparisonRouterProps) {
     case "restricoes_eletricas_comparison":
       return <RestricoesEletricasComparisonView comparison={comparison} />;
 
+    case "restricoes_vazao_hq_comparison":
+      return <RestricoesVazaoHQComparisonView comparison={comparison} />;
+
     case "line_chart":
       // Tools que usam line_chart padrão
       // IMPORTANTE: UsinasNaoSimuladasTool já foi tratado acima, não deve chegar aqui
@@ -273,6 +329,14 @@ export function ComparisonRouter({ comparison }: ComparisonRouterProps) {
       if (normalizedToolName === "RestricaoEletricaTool" && (hasTableData || comparison.charts_by_restricao)) {
         return <RestricaoEletricaView comparison={comparison} />;
       }
+      if (
+        (normalizedToolName === "RestricoesVazaoHQTool" || 
+         normalizedToolName === "RestricoesVazaoHQConjuntaTool" ||
+         normalizedToolName === "RestricoesVazaoHQMultiDeckTool") && 
+        (hasTableData || hasChartData)
+      ) {
+        return <RestricoesVazaoHQComparisonView comparison={comparison} />;
+      }
       // Se não há dados, mostrar mensagem
       if (!hasTableData && !hasChartData) {
         return (
@@ -300,6 +364,14 @@ export function ComparisonRouter({ comparison }: ComparisonRouterProps) {
       }
       if (normalizedToolName === "RestricaoEletricaTool" && (hasTableData || comparison.charts_by_restricao)) {
         return <RestricaoEletricaView comparison={comparison} />;
+      }
+      if (
+        (normalizedToolName === "RestricoesVazaoHQTool" || 
+         normalizedToolName === "RestricoesVazaoHQConjuntaTool" ||
+         normalizedToolName === "RestricoesVazaoHQMultiDeckTool") && 
+        (hasTableData || hasChartData)
+      ) {
+        return <RestricoesVazaoHQComparisonView comparison={comparison} />;
       }
       // Se não há dados, mostrar mensagem
       if (!hasTableData && !hasChartData) {

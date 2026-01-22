@@ -12,6 +12,8 @@ from .pq_comparison_formatter import PQComparisonFormatter
 from .carga_ande_comparison_formatter import CargaAndeComparisonFormatter
 from .limites_intercambio_comparison_formatter import LimitesIntercambioComparisonFormatter
 from .restricoes_eletricas_comparison_formatter import RestricoesEletricasComparisonFormatter
+from .restricoes_vazao_hq_comparison_formatter import RestricoesVazaoHQComparisonFormatter
+from .gl_comparison_formatter import GLComparisonFormatter
 
 __all__ = [
     "UHComparisonFormatter",
@@ -23,4 +25,6 @@ __all__ = [
     "CargaAndeComparisonFormatter",
     "LimitesIntercambioComparisonFormatter",
     "RestricoesEletricasComparisonFormatter",
+    "RestricoesVazaoHQComparisonFormatter",
+    "GLComparisonFormatter",
 ]

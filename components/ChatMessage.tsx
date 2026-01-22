@@ -213,7 +213,7 @@ export function ChatMessage({ message, onOptionClick }: ChatMessageProps) {
         </div>
 
         {/* Message content */}
-        <div className="flex-1">
+        <div className="flex-1 min-w-0">
           {isUser ? (
             <div className="bg-[hsl(210,70%,55%)] text-white rounded-2xl rounded-tr-sm px-4 py-3">
               <p className="whitespace-pre-wrap text-[15px] leading-relaxed">
@@ -226,8 +226,8 @@ export function ChatMessage({ message, onOptionClick }: ChatMessageProps) {
               </p>
             </div>
           ) : (
-            <div className="bg-[hsl(222,47%,18%)] rounded-2xl rounded-tl-sm px-4 py-3">
-              <div className="space-y-4">
+            <div className="bg-[hsl(222,47%,18%)] rounded-2xl rounded-tl-sm px-4 py-3 w-full max-w-full overflow-x-auto">
+              <div className="space-y-4 min-w-0">
                 {/* Retry badge */}
                 {message.retryCount && message.retryCount > 0 && (
                   <Badge variant="secondary" className="mb-2">
@@ -600,10 +600,8 @@ export function ChatMessage({ message, onOptionClick }: ChatMessageProps) {
 
               {/* Comparison View - mostrar mesmo durante loading de disambiguation */}
               {message.comparisonData && (
-                <div className="w-full px-2 sm:px-4 max-w-full">
-                  <div className="w-full">
-                    <ComparisonView comparison={message.comparisonData} />
-                  </div>
+                <div className="w-full max-w-full min-w-0">
+                  <ComparisonView comparison={message.comparisonData} />
                 </div>
               )}
 
