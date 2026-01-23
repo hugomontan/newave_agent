@@ -4,12 +4,6 @@ import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
-import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -30,9 +24,6 @@ interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
-  code?: string;
-  executionSuccess?: boolean;
-  executionOutput?: string | null;
   rawData?: Record<string, unknown>[] | null;
   retryCount?: number;
   error?: string | null;
@@ -622,67 +613,6 @@ export function ChatMessage({ message, onOptionClick }: ChatMessageProps) {
                     title=" Dados Extraídos"
                   />
                 </div>
-              )}
-
-              {/* Generated code accordion - mostrar mesmo durante loading de disambiguation */}
-              {message.code && (
-                <Accordion type="single" collapsible className="mt-5">
-                  <AccordionItem value="code" className="border border-btg-graphite-200/60 rounded-xl overflow-hidden">
-                    <AccordionTrigger className="px-4 hover:no-underline">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium">💻 Código Python</span>
-                        <Badge
-                          variant={message.executionSuccess ? "default" : "destructive"}
-                          className="ml-2"
-                        >
-                          {message.executionSuccess ? "✓ Sucesso" : "✗ Erro"}
-                        </Badge>
-                      </div>
-                    </AccordionTrigger>
-                    <AccordionContent className="px-4 pb-4">
-                      <div className="relative group">
-                        <SyntaxHighlighter
-                          style={oneDark}
-                          language="python"
-                          PreTag="div"
-                          className="rounded-lg text-sm !bg-[#1e1e2e]"
-                          showLineNumbers
-                        >
-                          {message.code}
-                        </SyntaxHighlighter>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity bg-muted hover:bg-muted/80 text-foreground h-8 w-8 p-0"
-                          onClick={() => copyToClipboard(message.code || "")}
-                        >
-                          {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                        </Button>
-                      </div>
-
-                      {/* Execution output */}
-                      {message.executionOutput && (
-                        <div className="mt-3">
-                          <p className="text-xs text-muted-foreground mb-1">Saída da execução:</p>
-                          <div className="bg-background rounded-lg p-3 overflow-x-auto max-h-40 overflow-y-auto border border-border">
-                            <pre className="text-xs text-green-400 font-mono whitespace-pre">
-                              {message.executionOutput}
-                            </pre>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Error display */}
-                      {message.error && (
-                        <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg">
-                          <p className="text-red-700 text-sm font-mono whitespace-pre-wrap">
-                            {message.error}
-                          </p>
-                        </div>
-                      )}
-                    </AccordionContent>
-                  </AccordionItem>
-                </Accordion>
               )}
 
               {/* Download buttons - Elegant */}

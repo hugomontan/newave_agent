@@ -103,22 +103,13 @@ def comparison_interpreter_node(state: MultiDeckState) -> dict:
             safe_print(f"[COMPARISON INTERPRETER] Processando disambiguation com {len(disambiguation.get('options', []))} opções")
             return {"final_response": ""}
         
-        # Se não há tool_result e não há disambiguation, retornar mensagem
+        # Se não há tool_result e não há disambiguation, retornar mensagem genérica
         safe_print(f"[COMPARISON INTERPRETER] Nenhuma tool disponível para processar a consulta de comparação")
-        no_tool_msg = """## Nenhuma tool disponível para sua consulta de comparação
+        no_tool_msg = """## Não foi encontrado sentido semântico entre o pedido e os dados disponíveis
 
-Não encontrei uma tool pré-programada que possa processar sua solicitação de comparação.
+Não foi possível identificar uma correspondência semântica entre sua consulta e os dados disponíveis no sistema.
 
-### Sugestões de perguntas válidas:
-
-- "Compare a carga mensal entre dezembro e janeiro"
-- "Quais são as diferenças nos limites de intercâmbio?"
-- "Compare os custos de classes térmicas entre os decks"
-- "Compare as vazões históricas entre os períodos"
-
-### Tools disponíveis:
-
-Consulte a documentação para ver todas as tools disponíveis para comparação de decks NEWAVE."""
+Por favor, reformule sua pergunta ou consulte a documentação para ver os tipos de dados que podem ser consultados."""
         no_tool_msg = clean_response_text(no_tool_msg, max_emojis=2)
         return {"final_response": no_tool_msg, "comparison_data": None}
         

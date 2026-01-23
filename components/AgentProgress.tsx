@@ -6,9 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, Check, Loader2, Code } from "lucide-react";
-import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
+import { ChevronDown, Check, Loader2 } from "lucide-react";
 
 export interface AgentStep {
   node: string;
@@ -21,7 +19,6 @@ export interface AgentStep {
 
 interface AgentProgressProps {
   steps: AgentStep[];
-  currentCode: string;
   streamingResponse: string;
   isStreaming: boolean;
   retryCount?: number;
@@ -30,14 +27,12 @@ interface AgentProgressProps {
 
 export function AgentProgress({
   steps,
-  currentCode,
   streamingResponse,
   isStreaming,
   retryCount = 0,
   maxRetries = 3,
 }: AgentProgressProps) {
   const [isExpanded, setIsExpanded] = useState(true);
-  const [showCode, setShowCode] = useState(false);
   
   const completedSteps = steps.filter((s) => s.status === "completed").length;
   const currentStep = steps.find((s) => s.status === "running");
@@ -152,34 +147,6 @@ export function AgentProgress({
                     </div>
                   ))}
                 </div>
-
-                {/* Code viewer */}
-                {currentCode && (
-                  <div className="mt-4">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setShowCode(!showCode)}
-                      className="mb-2"
-                    >
-                      <Code className="w-4 h-4 mr-2" />
-                      {showCode ? "Ocultar" : "Mostrar"} código gerado
-                    </Button>
-                    {showCode && (
-                      <div className="relative mt-2">
-                        <SyntaxHighlighter
-                          style={oneDark}
-                          language="python"
-                          PreTag="div"
-                          className="rounded-lg text-sm !bg-[#1e1e2e]"
-                          showLineNumbers
-                        >
-                          {currentCode}
-                        </SyntaxHighlighter>
-                      </div>
-                    )}
-                  </div>
-                )}
 
                 {/* Streaming response preview */}
                 {streamingResponse && isStreaming && (

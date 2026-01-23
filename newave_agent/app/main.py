@@ -89,13 +89,9 @@ class QueryResponse(BaseModel):
     session_id: str
     query: str
     response: str
-    generated_code: str
-    execution_success: bool
-    execution_output: str | None = None
-    raw_data: dict | list | None = None  # Dados brutos para download
-    retry_count: int = 0
     error: str | None = None
     comparison_data: dict | None = None  # Dados de comparação multi-deck
+    visualization_data: dict | None = None  # Dados de visualização single-deck
 
 
 class UploadResponse(BaseModel):
@@ -109,19 +105,6 @@ class IndexResponse(BaseModel):
     message: str
 
 
-def extract_json_data(stdout: str) -> tuple[str, dict | list | None]:
-    """Extrai dados JSON do output se presentes."""
-    if "---JSON_DATA_START---" in stdout and "---JSON_DATA_END---" in stdout:
-        parts = stdout.split("---JSON_DATA_START---")
-        clean_output = parts[0].strip()
-        json_part = parts[1].split("---JSON_DATA_END---")[0].strip()
-        try:
-            import json
-            raw_data = json.loads(json_part)
-            return clean_output, raw_data
-        except:
-            return stdout, None
-    return stdout, None
 
 
 def preload_newave_decks():
@@ -305,23 +288,13 @@ async def query_deck(request: QueryRequest):
         else:
             result = single_deck_run_query(request.query, deck_path, session_id=session_id)
         
-        execution_result = result.get("execution_result") or {}
-        stdout = execution_result.get("stdout", "")
-        
-        # Extrair dados JSON se presentes
-        clean_output, raw_data = extract_json_data(stdout)
-        
         return QueryResponse(
             session_id=session_id,
             query=request.query,
             response=result.get("final_response", ""),
-            generated_code=result.get("generated_code", ""),
-            execution_success=execution_result.get("success", False),
-            execution_output=clean_output,
-            raw_data=raw_data,
-            retry_count=result.get("retry_count", 0),
             error=result.get("error"),
-            comparison_data=result.get("comparison_data")
+            comparison_data=result.get("comparison_data"),
+            visualization_data=result.get("visualization_data")
         )
     except Exception as e:
         raise HTTPException(

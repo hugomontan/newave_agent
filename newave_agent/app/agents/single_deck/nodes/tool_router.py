@@ -22,21 +22,8 @@ from newave_agent.app.config import (
     DISAMBIGUATION_MIN_SCORE,
     safe_print
 )
+from shared.utils.debug import write_debug_log
 
-# Função auxiliar para escrever no log de debug de forma segura
-def _write_debug_log(data: dict):
-    """Escreve no arquivo de debug, criando o diretório se necessário."""
-    try:
-        log_path = r'c:\Users\Inteli\OneDrive\Desktop\nw_multi\.cursor\debug.log'
-        log_dir = os.path.dirname(log_path)
-        # Criar diretório se não existir
-        os.makedirs(log_dir, exist_ok=True)
-        # Escrever no arquivo
-        with open(log_path, 'a', encoding='utf-8') as f:
-            f.write(json_module.dumps(data) + '\n')
-    except Exception:
-        # Silenciosamente ignorar erros de log para não interromper o fluxo
-        pass
 
 # Mapeamento de descrições curtas fixas para cada tool
 # Usado nas opções de disambiguation
@@ -111,7 +98,7 @@ def tool_router_node(state: SingleDeckState) -> dict:
                 return {
                     "tool_result": result,
                     "tool_used": tool_name,
-                    "tool_route": True,  # Flag para pular coder/executor
+                    "tool_route": True,
                     "execution_result": {
                         "success": True,
                         "stdout": f"Tool {tool_name} executada com sucesso. {result.get('summary', {}).get('total_registros', data_count)} registros processados.",
@@ -121,7 +108,7 @@ def tool_router_node(state: SingleDeckState) -> dict:
                 }
             else:
                 safe_print(f"[TOOL ROUTER] [AVISO] Tool {tool_name} executada mas retornou erro: {result.get('error')}")
-                # Mesmo com erro, a tool foi tentada, então não usar coder
+                # Mesmo com erro, a tool foi tentada
                 return {
                     "tool_result": result,
                     "tool_used": tool_name,
@@ -212,7 +199,7 @@ def tool_router_node(state: SingleDeckState) -> dict:
                 safe_print(f"[TOOL ROUTER]   Query que será usada na tool: {query_to_use}")
                 
                 # #region agent log
-                _write_debug_log({
+                write_debug_log({
                     "sessionId": "debug-session",
                     "runId": "run1",
                     "hypothesisId": "G",
@@ -246,7 +233,7 @@ def tool_router_node(state: SingleDeckState) -> dict:
                         result["from_disambiguation"] = True
                         return result
                 
-                safe_print(f"[TOOL ROUTER] ⚠️ Não foi possível identificar tool, continuando com fluxo normal")
+                safe_print(f"[TOOL ROUTER] ⚠️ Não foi possível identificar tool")
     
     # 1. Verificar palavras-chave prioritárias ANTES do semantic matching
     # Isso garante que tools com palavras-chave prioritárias sejam executadas diretamente
@@ -315,7 +302,7 @@ def tool_router_node(state: SingleDeckState) -> dict:
             )
             
             # #region agent log
-            _write_debug_log({
+            write_debug_log({
                 "sessionId": "debug-session",
                 "runId": "run1",
                 "hypothesisId": "F",
@@ -340,7 +327,7 @@ def tool_router_node(state: SingleDeckState) -> dict:
                     safe_print(f"[TOOL ROUTER]   Tool selecionada: {tool_name} (score: {top_score:.4f})")
                     safe_print(f"[TOOL ROUTER]   Query que sera usada na tool: {original_query_for_tool}")
                     # #region agent log
-                    _write_debug_log({
+                    write_debug_log({
                         "sessionId": "debug-session",
                         "runId": "run1",
                         "hypothesisId": "H",
@@ -382,7 +369,7 @@ def tool_router_node(state: SingleDeckState) -> dict:
                     # Sem ambiguidade, executar tool diretamente
                     safe_print(f"[TOOL ROUTER]   Status: [OK] Score >= {SEMANTIC_MATCH_MIN_SCORE:.3f} (tool sera executada)")
                     # #region agent log
-                    _write_debug_log({
+                    write_debug_log({
                         "sessionId": "debug-session",
                         "runId": "run1",
                         "hypothesisId": "H",
@@ -395,9 +382,7 @@ def tool_router_node(state: SingleDeckState) -> dict:
                     return _execute_tool(top_tool, tool_name)
                 else:
                     safe_print(f"[TOOL ROUTER] ⚠️ Match semântico: melhor score {top_score:.4f} < {SEMANTIC_MATCH_MIN_SCORE:.3f}")
-                    safe_print(f"[TOOL ROUTER]   → Nenhuma tool será executada, fluxo normal (coder/executor) assumirá")
-                    if USE_HYBRID_MATCHING:
-                        safe_print("[TOOL ROUTER]   → Continuando para keyword matching (fallback)...")
+                    safe_print(f"[TOOL ROUTER]   → Nenhuma tool será executada")
             else:
                 # Se veio de disambiguation mas não encontrou nenhuma tool, tentar com threshold 0.0
                 if is_from_disambiguation:
@@ -417,7 +402,7 @@ def tool_router_node(state: SingleDeckState) -> dict:
                             safe_print(f"[TOOL ROUTER] ✅ Tool encontrada com threshold 0.0: {tool_name} (score: {top_score:.4f})")
                             safe_print(f"[TOOL ROUTER]   Query que sera usada na tool: {original_query_for_tool}")
                             # #region agent log
-                            _write_debug_log({
+                            write_debug_log({
                                 "sessionId": "debug-session",
                                 "runId": "run1",
                                 "hypothesisId": "H",
@@ -434,9 +419,7 @@ def tool_router_node(state: SingleDeckState) -> dict:
                         safe_print(f"[TOOL ROUTER] ⚠️ Erro no fallback com threshold 0.0: {e}")
                 
                 safe_print(f"[TOOL ROUTER] ⚠️ Match semântico: nenhuma tool encontrada acima do threshold")
-                safe_print(f"[TOOL ROUTER]   → Nenhuma tool será executada, fluxo normal (coder/executor) assumirá")
-                if USE_HYBRID_MATCHING:
-                    safe_print("[TOOL ROUTER]   → Continuando para keyword matching (fallback)...")
+                safe_print(f"[TOOL ROUTER]   → Nenhuma tool será executada")
         except Exception as e:
             safe_print(f"[TOOL ROUTER] ⚠️ Erro no match semântico: {e}")
             import traceback
@@ -445,27 +428,8 @@ def tool_router_node(state: SingleDeckState) -> dict:
                 safe_print("[TOOL ROUTER]   → Continuando para keyword matching (fallback após erro)...")
             # Continuar para fallback keyword matching
     
-    # 2. Fallback para keyword matching (se híbrido habilitado ou se semântico desabilitado)
-    if USE_HYBRID_MATCHING or not SEMANTIC_MATCHING_ENABLED:
-        safe_print("[TOOL ROUTER] Verificando qual tool pode processar a query (keyword matching)...")
-        for tool in tools:
-            tool_name = tool.get_name()
-            safe_print(f"[TOOL ROUTER] Testando tool: {tool_name}")
-            
-            try:
-                if tool.can_handle(query):
-                    safe_print(f"[TOOL ROUTER] [OK] Tool {tool_name} pode processar a query!")
-                    return _execute_tool(tool, tool_name)
-                else:
-                    safe_print(f"[TOOL ROUTER] [X] Tool {tool_name} nao pode processar")
-            except Exception as e:
-                safe_print(f"[TOOL ROUTER] ❌ Erro ao testar/executar tool {tool_name}: {e}")
-                import traceback
-                traceback.print_exc()
-                continue
-    
-    # Nenhuma tool pode processar, continuar fluxo normal
-    safe_print("[TOOL ROUTER] ⚠️ Nenhuma tool pode processar, continuando fluxo normal")
+    # Nenhuma tool encontrada pelo semantic matching - terminar fluxo
+    safe_print("[TOOL ROUTER] ⚠️ Nenhuma tool encontrada pelo semantic matching")
     safe_print("[TOOL ROUTER] ===== FIM: tool_router_node (retornando tool_route=False) =====")
     return {
         "tool_route": False

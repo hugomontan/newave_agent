@@ -7,24 +7,9 @@ import json as json_module
 from newave_agent.app.agents.single_deck.state import SingleDeckState
 from newave_agent.app.config import safe_print
 from newave_agent.app.utils.text_utils import clean_response_text
+from shared.utils.debug import write_debug_log
 from newave_agent.app.agents.single_deck.formatters.registry import get_formatter_for_tool
 from newave_agent.app.tools import get_available_tools
-
-# Função auxiliar para escrever no log de debug de forma segura
-def _write_debug_log(data: dict):
-    """Escreve no arquivo de debug, criando o diretório se necessário."""
-    try:
-        log_path = r'c:\Users\Inteli\OneDrive\Desktop\nw_multi\.cursor\debug.log'
-        log_dir = os.path.dirname(log_path)
-        # Criar diretório se não existir
-        os.makedirs(log_dir, exist_ok=True)
-        # Escrever no arquivo
-        with open(log_path, 'a', encoding='utf-8') as f:
-            f.write(json_module.dumps(data) + '\n')
-    except Exception:
-        # Silenciosamente ignorar erros de log para não interromper o fluxo
-        pass
-
 
 def interpreter_node(state: SingleDeckState) -> dict:
     """
@@ -36,7 +21,7 @@ def interpreter_node(state: SingleDeckState) -> dict:
     3. Caso contrário: retorna mensagem informando que não há tool disponível
     """
     # #region agent log
-    _write_debug_log({
+    write_debug_log({
         "sessionId": "debug-session",
         "runId": "run1",
         "hypothesisId": "A",
@@ -56,7 +41,7 @@ def interpreter_node(state: SingleDeckState) -> dict:
             safe_print(f"[INTERPRETER]   Success: {tool_result.get('success', False)}")
             
             # #region agent log
-            _write_debug_log({
+            write_debug_log({
                 "sessionId": "debug-session",
                 "runId": "run1",
                 "hypothesisId": "B",
@@ -103,7 +88,7 @@ def interpreter_node(state: SingleDeckState) -> dict:
             safe_print(f"[INTERPRETER]   Usando formatter: {formatter.__class__.__name__}")
             
             # #region agent log
-            _write_debug_log({
+            write_debug_log({
                 "sessionId": "debug-session",
                 "runId": "run1",
                 "hypothesisId": "C",
@@ -121,7 +106,7 @@ def interpreter_node(state: SingleDeckState) -> dict:
             visualization_data = result.get("visualization_data")
             
             # #region agent log
-            _write_debug_log({
+            write_debug_log({
                 "sessionId": "debug-session",
                 "runId": "run1",
                 "hypothesisId": "D",
@@ -152,23 +137,14 @@ def interpreter_node(state: SingleDeckState) -> dict:
             safe_print(f"[INTERPRETER] Processando disambiguation com {len(disambiguation.get('options', []))} opções")
             return {"final_response": ""}  # Vazio - frontend já cria a mensagem
         
-        # Se não há tool_result e não há disambiguation, retornar mensagem
+        # Se não há tool_result e não há disambiguation, retornar mensagem genérica
         safe_print(f"[INTERPRETER] Nenhuma tool disponível para processar a consulta")
-        no_tool_msg = """## Nenhuma tool disponível para sua consulta
+        
+        no_tool_msg = """## Não foi encontrado sentido semântico entre o pedido e os dados disponíveis
 
-Não encontrei uma tool pré-programada que possa processar sua solicitação.
+Não foi possível identificar uma correspondência semântica entre sua consulta e os dados disponíveis no sistema.
 
-### Sugestões de perguntas válidas:
-
-- "Quais são as usinas hidrelétricas com maior potência instalada?"
-- "Quais térmicas têm manutenção programada?"
-- "Qual o custo das classes térmicas?"
-- "Qual a demanda do submercado Sudeste?"
-- "Quais são as vazões históricas do posto 1?"
-
-### Tools disponíveis:
-
-Consulte a documentação para ver todas as tools disponíveis para análise de decks NEWAVE."""
+Por favor, reformule sua pergunta ou consulte a documentação para ver os tipos de dados que podem ser consultados."""
         no_tool_msg = clean_response_text(no_tool_msg, max_emojis=2)
         return {"final_response": no_tool_msg}
         

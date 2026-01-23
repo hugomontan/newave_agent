@@ -27,6 +27,7 @@ from newave_agent.app.agents.single_deck.formatters.data_formatters import (
 
 # Formatter genérico (fallback)
 from newave_agent.app.agents.single_deck.formatters.generic_formatter import GenericSingleDeckFormatter
+from shared.utils.debug import write_debug_log
 
 # Lista de formatters ordenada por prioridade (maior primeiro)
 SINGLE_DECK_FORMATTERS = [
@@ -43,22 +44,6 @@ SINGLE_DECK_FORMATTERS = [
     RestricaoEletricaSingleDeckFormatter(),
     ConfhdSingleDeckFormatter(),
 ]
-
-# Função auxiliar para escrever no log de debug de forma segura
-def _write_debug_log(data: dict):
-    """Escreve no arquivo de debug, criando o diretório se necessário."""
-    try:
-        log_path = r'c:\Users\Inteli\OneDrive\Desktop\nw_multi\.cursor\debug.log'
-        log_dir = os.path.dirname(log_path)
-        # Criar diretório se não existir
-        os.makedirs(log_dir, exist_ok=True)
-        # Escrever no arquivo
-        with open(log_path, 'a', encoding='utf-8') as f:
-            f.write(json_module.dumps(data) + '\n')
-    except Exception:
-        # Silenciosamente ignorar erros de log para não interromper o fluxo
-        pass
-
 
 def get_formatter_for_tool(
     tool: NEWAVETool,

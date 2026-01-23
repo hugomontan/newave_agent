@@ -11,19 +11,6 @@ from decomp_agent.app.agents.single_deck.formatters.registry import get_formatte
 from decomp_agent.app.tools import get_available_tools
 
 
-# Função auxiliar para escrever no log de debug de forma segura
-def _write_debug_log(data: dict):
-    """Escreve no arquivo de debug, criando o diretório se necessário."""
-    try:
-        log_path = r'c:\Users\Inteli\OneDrive\Desktop\nw_multi\.cursor\debug.log'
-        log_dir = os.path.dirname(log_path)
-        os.makedirs(log_dir, exist_ok=True)
-        with open(log_path, 'a', encoding='utf-8') as f:
-            f.write(json_module.dumps(data) + '\n')
-    except Exception:
-        pass
-
-
 def interpreter_node(state: SingleDeckState) -> dict:
     """
     Node que formata os resultados e gera a resposta final em Markdown.
@@ -113,23 +100,14 @@ def interpreter_node(state: SingleDeckState) -> dict:
             safe_print(f"[INTERPRETER DECOMP] Processando disambiguation com {len(disambiguation.get('options', []))} opções")
             return {"final_response": ""}  # Vazio - frontend já cria a mensagem
         
-        # Se não há tool_result e não há disambiguation, retornar mensagem
+        # Se não há tool_result e não há disambiguation, retornar mensagem genérica
         safe_print(f"[INTERPRETER DECOMP] Nenhuma tool disponível para processar a consulta")
-        no_tool_msg = """## Nenhuma tool disponível para sua consulta
+        
+        no_tool_msg = """## Não foi encontrado sentido semântico entre o pedido e os dados disponíveis
 
-Não encontrei uma tool pré-programada que possa processar sua solicitação.
+Não foi possível identificar uma correspondência semântica entre sua consulta e os dados disponíveis no sistema.
 
-### Sugestões de perguntas válidas:
-
-- "Quais são as usinas hidrelétricas do DECOMP?"
-- "Quais são os limites de intercâmbio?"
-- "Quais são as restrições elétricas?"
-- "Quais são as manutenções programadas?"
-- "Quais são as gerações GNL?"
-
-### Tools disponíveis:
-
-Consulte a documentação para ver todas as tools disponíveis para análise de decks DECOMP."""
+Por favor, reformule sua pergunta ou consulte a documentação para ver os tipos de dados que podem ser consultados."""
         no_tool_msg = clean_response_text(no_tool_msg, max_emojis=2)
         return {"final_response": no_tool_msg, "visualization_data": None}
         

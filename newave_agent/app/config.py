@@ -4,82 +4,10 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 # ======================================
-# SAFE PRINT PARA WINDOWS
-# Usado em modulos que podem ser importados antes do main.py
+# LOGGING
+# Importado de shared para evitar duplicação
 # ======================================
-
-# Mapeamento de emojis para texto ASCII seguro
-_EMOJI_TO_ASCII = {
-    '✅': '[OK]',
-    '❌': '[ERRO]',
-    '⚠️': '[AVISO]',
-    '❗': '[AVISO]',
-    '❓': '[?]',
-    '🔍': '[BUSCA]',
-    '📚': '[DOCS]',
-    '📖': '[DOC]',
-    '📈': '[GRAF]',
-    '📋': '[LISTA]',
-    '🔧': '[TOOL]',
-    '💻': '[CODE]',
-    '⚡': '[EXEC]',
-    '🧠': '[AI]',
-    '🔄': '[RETRY]',
-    '🎉': '[SUCESSO]',
-    '🏭': '[USINA]',
-    '→': '->',
-    '←': '<-',
-    '↔': '<->',
-    '└': ' ',
-    '─': '-',
-    '├': ' ',
-    '│': '|',
-}
-
-def safe_print(*args, **kwargs):
-    """
-    Print seguro que substitui caracteres problematicos no Windows.
-    Evita erros de encoding (OSError: [Errno 22] Invalid argument).
-    
-    Uso:
-        from newave_agent.app.config import safe_print
-        safe_print("Mensagem com emoji ✅")  # Funciona no Windows
-    """
-    try:
-        # Primeira tentativa: substituir emojis conhecidos
-        safe_args = []
-        for arg in args:
-            s = str(arg)
-            for emoji, ascii_text in _EMOJI_TO_ASCII.items():
-                s = s.replace(emoji, ascii_text)
-            safe_args.append(s)
-        print(*safe_args, **kwargs)
-    except (UnicodeEncodeError, OSError):
-        # Fallback: converter para ASCII com substituicao
-        try:
-            safe_args = []
-            for arg in args:
-                s = str(arg)
-                # Remover todos os caracteres nao-ASCII
-                s = s.encode('ascii', errors='replace').decode('ascii')
-                safe_args.append(s)
-            print(*safe_args, **kwargs)
-        except Exception:
-            pass  # Silenciosamente ignora se ainda falhar
-
-# Debug mode - controla se prints de debug são exibidos
-DEBUG_MODE = os.getenv("DEBUG_MODE", "false").lower() == "true"
-
-def debug_print(*args, **kwargs):
-    """
-    Print condicional para debug. Só imprime se DEBUG_MODE=True.
-    
-    Uso:
-        from newave_agent.app.config import debug_print
-        debug_print("[TOOL] Mensagem de debug")  # Só imprime se DEBUG_MODE=true
-    """
-    if DEBUG_MODE:
-        safe_print(*args, **kwargs)
+from shared.utils.logging import safe_print, debug_print
 
 # Base paths
 BASE_DIR = Path(__file__).resolve().parent.parent

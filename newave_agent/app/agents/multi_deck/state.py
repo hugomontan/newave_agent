@@ -17,26 +17,9 @@ class MultiDeckState(TypedDict):
     deck_paths: Dict[str, str]  # Mapeamento nome -> caminho (ex: {"NW202501": "/path/to/deck"})
     deck_display_names: Dict[str, str]  # Mapeamento nome -> nome amigável (ex: {"NW202501": "Janeiro 2025"})
     
-    relevant_docs: List[str]
-    generated_code: str
-    execution_result: dict
     final_response: str
     error: Optional[str]
     messages: List[Any]
-    
-    # Campos para retry loop
-    retry_count: int
-    max_retries: int
-    code_history: List[str]
-    error_history: List[str]
-    
-    # Campos para RAG com Self-Reflection
-    selected_files: List[str]
-    validation_result: Optional[dict]
-    rag_status: str  # "success" ou "fallback"
-    fallback_response: Optional[str]
-    tried_files: List[str]
-    rejection_reasons: List[str]
     
     # Campos para Tools pré-programadas
     tool_route: bool  # True se tool foi executada

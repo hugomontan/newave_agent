@@ -40,9 +40,6 @@ interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
-  code?: string;
-  executionSuccess?: boolean;
-  executionOutput?: string | null;
   rawData?: Record<string, unknown>[] | null;
   retryCount?: number;
   error?: string | null;
@@ -196,12 +193,8 @@ export default function AnalysisPage() {
 
   // Streaming state
   const [agentSteps, setAgentSteps] = useState<AgentStep[]>([]);
-  const [streamingCode, setStreamingCode] = useState("");
   const [streamingResponse, setStreamingResponse] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
-  const [executionSuccess, setExecutionSuccess] = useState<boolean | null>(null);
-  const [executionError, setExecutionError] = useState<string | null>(null);
-  const [executionOutput, setExecutionOutput] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
   const [maxRetries, setMaxRetries] = useState(3);
   const [comparisonData, setComparisonData] = useState<Message["comparisonData"]>(null);
@@ -213,11 +206,7 @@ export default function AnalysisPage() {
   } | null>(null);
 
   // Refs para capturar estado durante streaming
-  const streamingCodeRef = useRef("");
   const streamingResponseRef = useRef("");
-  const executionSuccessRef = useRef<boolean | null>(null);
-  const executionErrorRef = useRef<string | null>(null);
-  const executionOutputRef = useRef<string | null>(null);
   const retryCountRef = useRef(0);
   const comparisonDataRef = useRef<Message["comparisonData"]>(null);
   const visualizationDataRef = useRef<Message["visualizationData"]>(null);
@@ -231,7 +220,7 @@ export default function AnalysisPage() {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, agentSteps, streamingCode, streamingResponse]);
+  }, [messages, agentSteps, streamingResponse]);
 
   // Carregar deck do repositório usando o novo DeckSelector
   const handleDeckSelection = async (decks: DeckInfo[]) => {
@@ -297,19 +286,11 @@ export default function AnalysisPage() {
     switch (event.type) {
       case "start":
         setAgentSteps([]);
-        setStreamingCode("");
         setStreamingResponse("");
         setIsStreaming(true);
-        setExecutionSuccess(null);
-        setExecutionError(null);
-        setExecutionOutput(null);
         setRetryCount(0);
         setComparisonData(null);
-        streamingCodeRef.current = "";
         streamingResponseRef.current = "";
-        executionSuccessRef.current = null;
-        executionErrorRef.current = null;
-        executionOutputRef.current = null;
         retryCountRef.current = 0;
         comparisonDataRef.current = null;
         visualizationDataRef.current = null;
@@ -358,119 +339,9 @@ export default function AnalysisPage() {
         }
         break;
 
-      case "code_line":
-        if (event.line !== undefined) {
-          setStreamingCode((prev) => {
-            const newCode = prev ? prev + "\n" + event.line : event.line!;
-            streamingCodeRef.current = newCode;
-            
-            // Se há uma mensagem de disambiguation em loading, atualizar código em tempo real
-            if (disambiguationMessageIdRef.current) {
-              setMessages((prevMessages) => prevMessages.map(msg => {
-                if (msg.id === disambiguationMessageIdRef.current) {
-                  return {
-                    ...msg,
-                    code: newCode,
-                  };
-                }
-                return msg;
-              }));
-            }
-            
-            return newCode;
-          });
-        }
-        break;
-
-      case "code_complete":
-        if (event.code) {
-          setStreamingCode(event.code);
-          streamingCodeRef.current = event.code;
-          
-          // Se há uma mensagem de disambiguation em loading, atualizar código
-          if (disambiguationMessageIdRef.current) {
-            setMessages((prevMessages) => prevMessages.map(msg => {
-              if (msg.id === disambiguationMessageIdRef.current) {
-                return {
-                  ...msg,
-                  code: event.code,
-                };
-              }
-              return msg;
-            }));
-          }
-        }
-        break;
 
       case "execution_result":
-        setExecutionSuccess(event.success ?? false);
-        executionSuccessRef.current = event.success ?? false;
-        if (event.stdout) {
-          setExecutionOutput(event.stdout);
-          executionOutputRef.current = event.stdout;
-          
-          // Tentar extrair rawData do output e atualizar mensagem de disambiguation em tempo real
-          if (disambiguationMessageIdRef.current) {
-            try {
-              const jsonMatch = event.stdout.match(/---JSON_DATA_START---([\s\S]*?)---JSON_DATA_END---/);
-              if (jsonMatch) {
-                const rawData = JSON.parse(jsonMatch[1].trim());
-                setMessages((prevMessages) => prevMessages.map(msg => {
-                  if (msg.id === disambiguationMessageIdRef.current) {
-                    return {
-                      ...msg,
-                      executionSuccess: event.success ?? false,
-                      executionOutput: event.stdout,
-                      rawData: rawData,
-                    };
-                  }
-                  return msg;
-                }));
-              } else {
-                // Atualizar mesmo sem rawData
-                setMessages((prevMessages) => prevMessages.map(msg => {
-                  if (msg.id === disambiguationMessageIdRef.current) {
-                    return {
-                      ...msg,
-                      executionSuccess: event.success ?? false,
-                      executionOutput: event.stdout,
-                    };
-                  }
-                  return msg;
-                }));
-              }
-            } catch {
-              // Ignora erro de parsing, mas atualiza executionOutput
-              setMessages((prevMessages) => prevMessages.map(msg => {
-                if (msg.id === disambiguationMessageIdRef.current) {
-                  return {
-                    ...msg,
-                    executionSuccess: event.success ?? false,
-                    executionOutput: event.stdout,
-                  };
-                }
-                return msg;
-              }));
-            }
-          }
-        }
-        if (event.stderr) {
-          setExecutionError(event.stderr);
-          executionErrorRef.current = event.stderr;
-          
-          // Atualizar erro na mensagem de disambiguation
-          if (disambiguationMessageIdRef.current) {
-            setMessages((prevMessages) => prevMessages.map(msg => {
-              if (msg.id === disambiguationMessageIdRef.current) {
-                return {
-                  ...msg,
-                  error: event.stderr,
-                };
-              }
-              return msg;
-            }));
-          }
-        }
+        // Evento não mais usado - código removido
         break;
 
       case "retry":
@@ -626,8 +497,6 @@ export default function AnalysisPage() {
 
       case "error":
         setIsStreaming(false);
-        setExecutionError(event.message || "Erro desconhecido");
-        executionErrorRef.current = event.message || "Erro desconhecido";
         break;
     }
   }, []);
@@ -648,7 +517,6 @@ export default function AnalysisPage() {
     setAgentSteps([]);
     setStreamingCode("");
     setStreamingResponse("");
-    streamingCodeRef.current = "";
     streamingResponseRef.current = "";
     requiresUserChoiceRef.current = false;
     alternativeTypeRef.current = undefined;
@@ -668,9 +536,11 @@ export default function AnalysisPage() {
       await new Promise(resolve => setTimeout(resolve, 100));
 
       let rawData: Record<string, unknown>[] | null = null;
-      if (executionOutputRef.current) {
-        try {
-          const jsonMatch = executionOutputRef.current.match(/---JSON_DATA_START---([\s\S]*?)---JSON_DATA_END---/);
+      let rawData: Record<string, unknown>[] | null = null;
+      try {
+          // Removido: código não mais usado
+          // Removido: código não mais usado
+          if (false) {
           if (jsonMatch) {
             rawData = JSON.parse(jsonMatch[1].trim());
           }
@@ -681,19 +551,13 @@ export default function AnalysisPage() {
 
       const hasContent = streamingResponseRef.current && streamingResponseRef.current.trim();
       const hasData = rawData && rawData.length > 0;
-      const hasCode = streamingCodeRef.current && streamingCodeRef.current.trim();
-      
-      if (hasContent || hasData || hasCode) {
+      if (hasContent || hasData) {
         const assistantMessage: Message = {
           id: (Date.now() + 1).toString(),
           role: "assistant",
           content: streamingResponseRef.current || "",
-          code: streamingCodeRef.current || undefined,
-          executionSuccess: executionSuccessRef.current ?? false,
-          executionOutput: executionOutputRef.current,
           rawData: rawData,
           retryCount: retryCountRef.current,
-          error: executionErrorRef.current,
           comparisonData: comparisonDataRef.current || undefined,
           visualizationData: visualizationDataRef.current || undefined,
           requires_user_choice: requiresUserChoiceRef.current ? true : undefined,
@@ -705,7 +569,6 @@ export default function AnalysisPage() {
       }
       
       setAgentSteps([]);
-      setStreamingCode("");
       setStreamingResponse("");
 
     } catch (err) {
@@ -720,7 +583,6 @@ export default function AnalysisPage() {
 
       setMessages((prev) => [...prev, errorMessage]);
       setAgentSteps([]);
-      setStreamingCode("");
       setStreamingResponse("");
     } finally {
       setIsLoading(false);
@@ -832,9 +694,11 @@ export default function AnalysisPage() {
       await new Promise(resolve => setTimeout(resolve, 100));
 
       let rawData: Record<string, unknown>[] | null = null;
-      if (executionOutputRef.current) {
-        try {
-          const jsonMatch = executionOutputRef.current.match(/---JSON_DATA_START---([\s\S]*?)---JSON_DATA_END---/);
+      let rawData: Record<string, unknown>[] | null = null;
+      try {
+          // Removido: código não mais usado
+          // Removido: código não mais usado
+          if (false) {
           if (jsonMatch) {
             rawData = JSON.parse(jsonMatch[1].trim());
           }
@@ -856,12 +720,8 @@ export default function AnalysisPage() {
             return {
               ...msg,
               content: streamingResponseRef.current || "",
-              code: streamingCodeRef.current || undefined,
-              executionSuccess: executionSuccessRef.current ?? false,
-              executionOutput: executionOutputRef.current,
               rawData: rawData,
               retryCount: retryCountRef.current,
-              error: executionErrorRef.current,
               comparisonData: comparisonDataRef.current || undefined,
               visualizationData: visualizationDataRef.current || undefined,
               requires_user_choice: requiresUserChoiceRef.current ? true : undefined,
@@ -878,12 +738,8 @@ export default function AnalysisPage() {
             id: (Date.now() + 1).toString(),
             role: "assistant",
             content: streamingResponseRef.current || "",
-            code: streamingCodeRef.current || undefined,
-            executionSuccess: executionSuccessRef.current ?? false,
-            executionOutput: executionOutputRef.current,
             rawData: rawData,
             retryCount: retryCountRef.current,
-            error: executionErrorRef.current,
             comparisonData: comparisonDataRef.current || undefined,
             visualizationData: visualizationDataRef.current || undefined,
             requires_user_choice: requiresUserChoiceRef.current ? true : undefined,
@@ -896,7 +752,6 @@ export default function AnalysisPage() {
       }
       
       setAgentSteps([]);
-      setStreamingCode("");
       setStreamingResponse("");
       disambiguationMessageIdRef.current = null;
 
@@ -929,7 +784,6 @@ export default function AnalysisPage() {
       }
       
       setAgentSteps([]);
-      setStreamingCode("");
       setStreamingResponse("");
       disambiguationMessageIdRef.current = null;
     } finally {
@@ -1103,7 +957,6 @@ export default function AnalysisPage() {
                 {isLoading && agentSteps.length > 0 && !messages.some(msg => msg.disambiguationData?.isLoading) && (
                   <AgentProgress
                     steps={agentSteps}
-                    currentCode={streamingCode}
                     streamingResponse={streamingResponse}
                     isStreaming={isStreaming}
                     retryCount={retryCount}

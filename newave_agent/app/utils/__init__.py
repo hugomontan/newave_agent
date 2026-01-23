@@ -1,6 +1,11 @@
-from .code_executor import execute_python_code, validate_code
+"""
+Utilitários do NEWAVE Agent.
+"""
+
+from .deck_loader import list_available_decks, get_deck_by_name, load_deck
 
 __all__ = [
-    "execute_python_code",
-    "validate_code",
+    "list_available_decks",
+    "get_deck_by_name",
+    "load_deck",
 ]

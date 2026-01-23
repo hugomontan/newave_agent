@@ -2,63 +2,26 @@
 Graph para Single Deck Agent - especializado para consultas de um único deck.
 """
 
+# Standard library imports
 import json
 import math
 import os
-import json as json_module
 from typing import Generator, Any, Optional
+
+# Third-party imports
 from langgraph.graph import StateGraph, END
+
+# Local imports
 from newave_agent.app.agents.single_deck.state import SingleDeckState
-from newave_agent.app.agents.single_deck.nodes.rag_nodes import (
-    rag_retriever_node,
-)
 from newave_agent.app.utils.observability import get_langfuse_handler
 from newave_agent.app.config import safe_print
+from shared.utils.debug import write_debug_log
+from shared.utils.json_utils import clean_nan_for_json
 
-# Função auxiliar para escrever no log de debug de forma segura
-def _write_debug_log(data: dict):
-    """Escreve no arquivo de debug, criando o diretório se necessário."""
-    try:
-        log_path = r'c:\Users\Inteli\OneDrive\Desktop\nw_multi\.cursor\debug.log'
-        log_dir = os.path.dirname(log_path)
-        # Criar diretório se não existir
-        os.makedirs(log_dir, exist_ok=True)
-        # Escrever no arquivo
-        with open(log_path, 'a', encoding='utf-8') as f:
-            f.write(json_module.dumps(data) + '\n')
-    except Exception:
-        # Silenciosamente ignorar erros de log para não interromper o fluxo
-        pass
-
-
-# Constantes
-MAX_RETRIES = 3
-
-
-def _clean_nan_for_json(obj: Any) -> Any:
-    """
-    Limpa valores NaN e Inf de um objeto antes de serializar para JSON.
-    Converte NaN e Inf para None.
-    """
-    if isinstance(obj, float):
-        if math.isnan(obj) or math.isinf(obj):
-            return None
-        return obj
-    elif isinstance(obj, dict):
-        return {key: _clean_nan_for_json(value) for key, value in obj.items()}
-    elif isinstance(obj, list):
-        return [_clean_nan_for_json(item) for item in obj]
-    else:
-        return obj
 
 
 # Descrições dos nodes para streaming
 NODE_DESCRIPTIONS = {
-    "rag": {
-        "name": "RAG Retriever",
-        "icon": "[DOCS]",
-        "description": "Buscando documentacao e validando arquivos relevantes..."
-    },
     "tool_router": {
         "name": "Tool Router",
         "icon": "[TOOL]",
@@ -83,7 +46,7 @@ def should_continue_after_tool_router(state: SingleDeckState) -> str:
     disambiguation = state.get("disambiguation")
     
     # #region agent log
-    _write_debug_log({
+    write_debug_log({
         "sessionId": "debug-session",
         "runId": "run1",
         "hypothesisId": "A",
@@ -122,7 +85,6 @@ def create_single_deck_agent() -> StateGraph:
     workflow = StateGraph(SingleDeckState)
     
     # Nodes disponíveis
-    workflow.add_node("rag", rag_retriever_node)  # Mantido para uso futuro/fallback
     workflow.add_node("tool_router", tool_router_node)
     workflow.add_node("interpreter", interpreter_node)
     
@@ -166,29 +128,18 @@ def get_initial_state(query: str, deck_path: str) -> dict:
     return {
         "query": query,
         "deck_path": deck_path,
-        "relevant_docs": [],
-        "generated_code": "",
-        "execution_result": {},
         "final_response": "",
         "error": None,
         "messages": [],
-        "retry_count": 0,
-        "max_retries": MAX_RETRIES,
-        "code_history": [],
-        "error_history": [],
-        # Campos para RAG com Self-Reflection
-        "selected_files": [],
-        "validation_result": None,
-        "rag_status": "success",
-        "fallback_response": None,
-        "tried_files": [],
-        "rejection_reasons": [],
         # Campos para Tools
         "tool_route": False,
         "tool_result": None,
         "tool_used": None,
         # Campos para Disambiguation
         "disambiguation": None,
+        # Campos para Visualização
+        "comparison_data": None,
+        "visualization_data": None,
         # Campos para escolha do usuário (requires_user_choice)
         "requires_user_choice": None,
         "alternative_type": None
@@ -266,7 +217,6 @@ def run_query_stream(query: str, deck_path: str, session_id: Optional[str] = Non
     yield f"data: {json.dumps({'type': 'start', 'message': 'Iniciando processamento...'})}\n\n"
     
     current_retry = 0
-    is_fallback = False
     has_disambiguation = False
     
     try:
@@ -285,23 +235,7 @@ def run_query_stream(query: str, deck_path: str, session_id: Optional[str] = Non
                     yield f"data: {json.dumps({'type': 'node_start', 'node': node_name, 'info': node_info, 'retry': current_retry})}\n\n"
                 
                 # Detalhes específicos de cada node
-                if node_name == "rag":
-                    rag_status = node_output.get("rag_status", "success")
-                    selected_files = node_output.get("selected_files") or []
-                    tried_files = node_output.get("tried_files") or []
-                    validation_result = node_output.get("validation_result") or {}
-                    
-                    if rag_status == "fallback":
-                        is_fallback = True
-                        yield f"data: {json.dumps({'type': 'node_detail', 'node': node_name, 'detail': f'⚠️ Arquivos testados ({len(tried_files)}): {", ".join(tried_files)} - Nenhum adequado para a pergunta'})}\n\n"
-                    elif selected_files:
-                        colunas = validation_result.get("colunas_relevantes", []) if validation_result else []
-                        detail = f'✅ Arquivo validado: {selected_files[0].upper()}' 
-                        if colunas:
-                            detail += f' | Colunas: {", ".join(colunas[:5])}'
-                        yield f"data: {json.dumps({'type': 'node_detail', 'node': node_name, 'detail': detail})}\n\n"
-                
-                elif node_name == "tool_router":
+                if node_name == "tool_router":
                     tool_route = node_output.get("tool_route", False)
                     disambiguation = node_output.get("disambiguation")
                     from_disambiguation = node_output.get("from_disambiguation", False)
@@ -309,7 +243,7 @@ def run_query_stream(query: str, deck_path: str, session_id: Optional[str] = Non
                     tool_result = node_output.get("tool_result", {})
                     
                     # #region agent log
-                    _write_debug_log({
+                    write_debug_log({
                         "sessionId": "debug-session",
                         "runId": "run1",
                         "hypothesisId": "E",
@@ -341,7 +275,7 @@ def run_query_stream(query: str, deck_path: str, session_id: Optional[str] = Non
                         safe_print(f"[GRAPH] Interpreter retornou visualization_data: {visualization_data.get('visualization_type', 'N/A')}")
                     
                     # #region agent log
-                    _write_debug_log({
+                    write_debug_log({
                         "sessionId": "debug-session",
                         "runId": "run1",
                         "hypothesisId": "D",
@@ -360,7 +294,7 @@ def run_query_stream(query: str, deck_path: str, session_id: Optional[str] = Non
                     
                     if response and response.strip():
                         safe_print(f"[GRAPH] Emitindo resposta do interpreter ({len(response)} caracteres)")
-                        yield f"data: {json.dumps({'type': 'response_start', 'is_fallback': is_fallback})}\n\n"
+                        yield f"data: {json.dumps({'type': 'response_start'})}\n\n"
                         chunk_size = 50
                         for i in range(0, len(response), chunk_size):
                             yield f"data: {json.dumps({'type': 'response_chunk', 'chunk': response[i:i + chunk_size]})}\n\n"
@@ -369,13 +303,13 @@ def run_query_stream(query: str, deck_path: str, session_id: Optional[str] = Non
                         response_complete_data = {'type': 'response_complete', 'response': response}
                         if visualization_data:
                             # Limpar NaN/Inf antes de serializar
-                            cleaned_visualization_data = _clean_nan_for_json(visualization_data)
+                            cleaned_visualization_data = clean_nan_for_json(visualization_data)
                             response_complete_data['visualization_data'] = cleaned_visualization_data
                         
                         yield f"data: {json.dumps(response_complete_data, allow_nan=False)}\n\n"
                         
                         # #region agent log
-                        _write_debug_log({
+                        write_debug_log({
                             "sessionId": "debug-session",
                             "runId": "run1",
                             "hypothesisId": "D",
@@ -394,9 +328,9 @@ def run_query_stream(query: str, deck_path: str, session_id: Optional[str] = Non
                     yield f"data: {json.dumps({'type': 'node_complete', 'node': node_name})}\n\n"
         
         if not has_disambiguation:
-            yield f"data: {json.dumps({'type': 'complete', 'message': 'Processamento concluído!', 'total_retries': current_retry, 'was_fallback': is_fallback})}\n\n"
+            yield f"data: {json.dumps({'type': 'complete', 'message': 'Processamento concluído!'})}\n\n"
         else:
-            yield f"data: {json.dumps({'type': 'complete', 'message': '', 'total_retries': current_retry, 'was_fallback': is_fallback})}\n\n"
+            yield f"data: {json.dumps({'type': 'complete', 'message': ''})}\n\n"
         
         # Fazer flush do Langfuse após streaming
         if langfuse_handler:

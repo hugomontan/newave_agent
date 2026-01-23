@@ -26,21 +26,8 @@ from newave_agent.app.config import (
     DISAMBIGUATION_MIN_SCORE,
     safe_print
 )
+from shared.utils.debug import write_debug_log
 
-# Função auxiliar para escrever no log de debug de forma segura
-def _write_debug_log(data: dict):
-    """Escreve no arquivo de debug, criando o diretório se necessário."""
-    try:
-        log_path = r'c:\Users\Inteli\OneDrive\Desktop\nw_multi\.cursor\debug.log'
-        log_dir = os.path.dirname(log_path)
-        # Criar diretório se não existir
-        os.makedirs(log_dir, exist_ok=True)
-        # Escrever no arquivo
-        with open(log_path, 'a', encoding='utf-8') as f:
-            f.write(json_module.dumps(data) + '\n')
-    except Exception:
-        # Silenciosamente ignorar erros de log para não interromper o fluxo
-        pass
 
 # Mapeamento de descrições curtas fixas para cada tool
 # Usado nas opções de disambiguation
@@ -325,7 +312,7 @@ def comparison_tool_router_node(state: MultiDeckState) -> dict:
                 safe_print(f"[TOOL ROUTER]   [COMPARISON] Executando em ambos os decks...")
                 
                 # #region agent log
-                _write_debug_log({
+                write_debug_log({
                     "sessionId": "debug-session",
                     "runId": "run1",
                     "hypothesisId": "G",
@@ -465,7 +452,7 @@ def comparison_tool_router_node(state: MultiDeckState) -> dict:
             )
             
             # #region agent log
-            _write_debug_log({
+            write_debug_log({
                 "sessionId": "debug-session",
                 "runId": "run1",
                 "hypothesisId": "E",
@@ -484,7 +471,7 @@ def comparison_tool_router_node(state: MultiDeckState) -> dict:
                 safe_print(f"[TOOL ROUTER]   Total de tools retornadas: {len(semantic_results)}")
                 
                 # #region agent log
-                _write_debug_log({
+                write_debug_log({
                     "sessionId": "debug-session",
                     "runId": "run1",
                     "hypothesisId": "D",
@@ -503,7 +490,7 @@ def comparison_tool_router_node(state: MultiDeckState) -> dict:
                     safe_print(f"[TOOL ROUTER]   Query que sera usada na tool: {original_query_for_tool}")
                     safe_print(f"[TOOL ROUTER]   [COMPARISON] Executando em ambos os decks...")
                     # #region agent log
-                    _write_debug_log({
+                    write_debug_log({
                         "sessionId": "debug-session",
                         "runId": "run1",
                         "hypothesisId": "D",
@@ -545,7 +532,7 @@ def comparison_tool_router_node(state: MultiDeckState) -> dict:
                     safe_print(f"[TOOL ROUTER]   Status: [OK] Score >= {SEMANTIC_MATCH_MIN_SCORE:.3f} (tool sera executada)")
                     safe_print(f"[TOOL ROUTER]   [COMPARISON] Executando em ambos os decks...")
                     # #region agent log
-                    _write_debug_log({
+                    write_debug_log({
                         "sessionId": "debug-session",
                         "runId": "run1",
                         "hypothesisId": "D",
@@ -558,7 +545,7 @@ def comparison_tool_router_node(state: MultiDeckState) -> dict:
                     return _execute_tool_comparison(top_tool.__class__, tool_name)
                 else:
                     safe_print(f"[TOOL ROUTER] ⚠️ Match semântico: melhor score {top_score:.4f} < {SEMANTIC_MATCH_MIN_SCORE:.3f}")
-                    safe_print(f"[TOOL ROUTER]   → Nenhuma tool será executada, fluxo normal (coder/executor) assumirá")
+                    safe_print(f"[TOOL ROUTER]   → Nenhuma tool será executada")
                     if USE_HYBRID_MATCHING:
                         safe_print("[TOOL ROUTER]   → Continuando para keyword matching (fallback)...")
             else:
@@ -581,7 +568,7 @@ def comparison_tool_router_node(state: MultiDeckState) -> dict:
                             safe_print(f"[TOOL ROUTER]   Query que sera usada na tool: {original_query_for_tool}")
                             safe_print(f"[TOOL ROUTER]   [COMPARISON] Executando em ambos os decks...")
                             # #region agent log
-                            _write_debug_log({
+                            write_debug_log({
                                 "sessionId": "debug-session",
                                 "runId": "run1",
                                 "hypothesisId": "D",
@@ -598,39 +585,14 @@ def comparison_tool_router_node(state: MultiDeckState) -> dict:
                         safe_print(f"[TOOL ROUTER] ⚠️ Erro no fallback com threshold 0.0: {e}")
                 
                 safe_print(f"[TOOL ROUTER] ⚠️ Match semântico: nenhuma tool encontrada acima do threshold")
-                safe_print(f"[TOOL ROUTER]   → Nenhuma tool será executada, fluxo normal (coder/executor) assumirá")
-                if USE_HYBRID_MATCHING:
-                    safe_print("[TOOL ROUTER]   → Continuando para keyword matching (fallback)...")
+                safe_print(f"[TOOL ROUTER]   → Nenhuma tool será executada")
         except Exception as e:
             safe_print(f"[TOOL ROUTER] ⚠️ Erro no match semântico: {e}")
             import traceback
             traceback.print_exc()
-            if USE_HYBRID_MATCHING:
-                safe_print("[TOOL ROUTER]   → Continuando para keyword matching (fallback após erro)...")
     
-    # Fallback para keyword matching
-    # Usar lista filtrada para evitar que tools desativadas sejam selecionadas automaticamente
-    if USE_HYBRID_MATCHING or not SEMANTIC_MATCHING_ENABLED:
-        safe_print("[TOOL ROUTER] Verificando qual tool pode processar a query (keyword matching)...")
-        for tool in tools_for_semantic_matching:  # Usar lista filtrada
-            tool_name = tool.get_name()
-            safe_print(f"[TOOL ROUTER] Testando tool: {tool_name}")
-            
-            try:
-                if tool.can_handle(query):
-                    safe_print(f"[TOOL ROUTER] [OK] Tool {tool_name} pode processar a query!")
-                    safe_print(f"[TOOL ROUTER]   [COMPARISON] Executando em ambos os decks...")
-                    return _execute_tool_comparison(tool.__class__, tool_name)
-                else:
-                    safe_print(f"[TOOL ROUTER] [X] Tool {tool_name} nao pode processar")
-            except Exception as e:
-                safe_print(f"[TOOL ROUTER] ❌ Erro ao testar/executar tool {tool_name}: {e}")
-                import traceback
-                traceback.print_exc()
-                continue
-    
-    # Nenhuma tool pode processar, continuar fluxo normal
-    safe_print("[TOOL ROUTER] ⚠️ Nenhuma tool pode processar, continuando fluxo normal")
+    # Nenhuma tool encontrada pelo semantic matching - terminar fluxo
+    safe_print("[TOOL ROUTER] ⚠️ Nenhuma tool encontrada pelo semantic matching")
     safe_print("[TOOL ROUTER] ===== FIM: comparison_tool_router_node (retornando tool_route=False) =====")
     return {
         "tool_route": False

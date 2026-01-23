@@ -3,12 +3,16 @@ Graph para Multi-Deck Agent DECOMP - especializado para comparações entre deck
 Suporta N decks para comparação dinâmica.
 """
 
+# Standard library imports
 import json
 import math
 import os
-import json as json_module
 from typing import Generator, Any, Optional, List, Dict
+
+# Third-party imports
 from langgraph.graph import StateGraph, END
+
+# Local imports
 from decomp_agent.app.agents.multi_deck.state import MultiDeckState
 from shared.utils.observability import get_langfuse_handler
 from decomp_agent.app.config import safe_print
@@ -17,36 +21,9 @@ from decomp_agent.app.utils.deck_loader import (
     get_deck_display_names_dict,
     list_available_decks,
 )
+from shared.utils.debug import write_debug_log
+from shared.utils.json_utils import clean_nan_for_json
 
-# Função auxiliar para escrever no log de debug de forma segura
-def _write_debug_log(data: dict):
-    """Escreve no arquivo de debug, criando o diretório se necessário."""
-    try:
-        log_path = r'c:\Users\Inteli\OneDrive\Desktop\nw_multi\.cursor\debug.log'
-        log_dir = os.path.dirname(log_path)
-        os.makedirs(log_dir, exist_ok=True)
-        with open(log_path, 'a', encoding='utf-8') as f:
-            f.write(json_module.dumps(data) + '\n')
-    except Exception:
-        pass
-
-
-# Constantes
-MAX_RETRIES = 3
-
-
-def _clean_nan_for_json(obj: Any) -> Any:
-    """Limpa valores NaN e Inf de um objeto antes de serializar para JSON."""
-    if isinstance(obj, float):
-        if math.isnan(obj) or math.isinf(obj):
-            return None
-        return obj
-    elif isinstance(obj, dict):
-        return {key: _clean_nan_for_json(value) for key, value in obj.items()}
-    elif isinstance(obj, list):
-        return [_clean_nan_for_json(item) for item in obj]
-    else:
-        return obj
 
 
 # Descrições dos nodes para streaming
@@ -181,27 +158,18 @@ def get_initial_state(
         "selected_decks": selected_decks,
         "deck_paths": deck_paths,
         "deck_display_names": deck_display_names,
-        "relevant_docs": [],
-        "generated_code": "",
-        "execution_result": {},
         "final_response": "",
         "error": None,
         "messages": [],
-        "retry_count": 0,
-        "max_retries": MAX_RETRIES,
-        "code_history": [],
-        "error_history": [],
-        "selected_files": [],
-        "validation_result": None,
-        "rag_status": "success",
-        "fallback_response": None,
-        "tried_files": [],
-        "rejection_reasons": [],
+        # Campos para Tools
         "tool_route": False,
         "tool_result": None,
         "tool_used": None,
+        # Campos para Disambiguation
         "disambiguation": None,
+        # Campos para Comparação
         "comparison_data": None,
+        # Campos para escolha do usuário (requires_user_choice)
         "requires_user_choice": None,
         "alternative_type": None
     }
@@ -264,7 +232,6 @@ def run_query_stream(
     yield f"data: {json.dumps({'type': 'start', 'message': 'Iniciando processamento...', 'selected_decks': decks_info})}\n\n"
     
     current_retry = 0
-    is_fallback = False
     has_disambiguation = False
     
     try:
@@ -288,21 +255,21 @@ def run_query_stream(
                     comparison_data = node_output.get("comparison_data") if node_output else None
                     
                     if response and response.strip():
-                        yield f"data: {json.dumps({'type': 'response_start', 'is_fallback': is_fallback})}\n\n"
+                        yield f"data: {json.dumps({'type': 'response_start'})}\n\n"
                         chunk_size = 50
                         for i in range(0, len(response), chunk_size):
                             yield f"data: {json.dumps({'type': 'response_chunk', 'chunk': response[i:i + chunk_size]})}\n\n"
                         
-                        cleaned_comparison_data = _clean_nan_for_json(comparison_data) if comparison_data else None
+                        cleaned_comparison_data = clean_nan_for_json(comparison_data) if comparison_data else None
                         yield f"data: {json.dumps({'type': 'response_complete', 'response': response, 'comparison_data': cleaned_comparison_data}, allow_nan=False)}\n\n"
                 
                 if not (node_name == "comparison_tool_router" and node_output.get("disambiguation")):
                     yield f"data: {json.dumps({'type': 'node_complete', 'node': node_name})}\n\n"
         
         if not has_disambiguation:
-            yield f"data: {json.dumps({'type': 'complete', 'message': 'Processamento concluído!', 'total_retries': current_retry, 'was_fallback': is_fallback})}\n\n"
+            yield f"data: {json.dumps({'type': 'complete', 'message': 'Processamento concluído!'})}\n\n"
         else:
-            yield f"data: {json.dumps({'type': 'complete', 'message': '', 'total_retries': current_retry, 'was_fallback': is_fallback})}\n\n"
+            yield f"data: {json.dumps({'type': 'complete', 'message': ''})}\n\n"
         
         if langfuse_handler:
             try:

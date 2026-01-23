@@ -51,21 +51,12 @@ def comparison_interpreter_node(state: MultiDeckState) -> dict:
                 "comparison_data": tool_result.get("comparison_data")
             }
     
-    # Se não há tool_result, retornar mensagem
+    # Se não há tool_result, retornar mensagem genérica
     safe_print(f"[COMPARISON INTERPRETER DECOMP] Nenhuma tool disponível para processar a consulta de comparação")
-    no_tool_msg = """## Nenhuma tool disponível para sua consulta de comparação
+    no_tool_msg = """## Não foi encontrado sentido semântico entre o pedido e os dados disponíveis
 
-Não encontrei uma tool pré-programada que possa processar sua solicitação de comparação.
+Não foi possível identificar uma correspondência semântica entre sua consulta e os dados disponíveis no sistema.
 
-### Sugestões de perguntas válidas:
-
-- "Compare a carga ANDE entre dezembro e janeiro"
-- "Quais são as diferenças nos limites de intercâmbio?"
-- "Compare as restrições elétricas entre os períodos"
-- "Compare as gerações GNL entre os decks"
-
-### Tools disponíveis:
-
-Consulte a documentação para ver todas as tools disponíveis para comparação de decks DECOMP."""
+Por favor, reformule sua pergunta ou consulte a documentação para ver os tipos de dados que podem ser consultados."""
     no_tool_msg = clean_response_text(no_tool_msg, max_emojis=2)
     return {"final_response": no_tool_msg, "comparison_data": None}
