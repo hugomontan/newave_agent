@@ -53,10 +53,18 @@ def get_formatter_for_tool(
     Returns:
         Formatador apropriado (ou formatter genérico como fallback)
     """
-    candidates = [
-        f for f in FORMATTERS 
-        if f.can_format(tool_name, result_structure)
-    ]
+    from decomp_agent.app.config import safe_print
+    safe_print(f"[GET FORMATTER FOR TOOL] Buscando formatter para tool_name: {tool_name}")
+    safe_print(f"[GET FORMATTER FOR TOOL] Total de formatters disponíveis: {len(FORMATTERS)}")
+    
+    candidates = []
+    for formatter in FORMATTERS:
+        can_format_result = formatter.can_format(tool_name, result_structure)
+        safe_print(f"[GET FORMATTER FOR TOOL] {formatter.__class__.__name__}.can_format({tool_name}) = {can_format_result}")
+        if can_format_result:
+            candidates.append(formatter)
+    
+    safe_print(f"[GET FORMATTER FOR TOOL] Candidatos encontrados: {len(candidates)} - {[c.__class__.__name__ for c in candidates]}")
     
     if candidates:
         # Se houver múltiplos candidatos, priorizar:
@@ -65,24 +73,33 @@ def get_formatter_for_tool(
         max_priority = max(f.get_priority() for f in candidates)
         priority_candidates = [f for f in candidates if f.get_priority() == max_priority]
         
+        safe_print(f"[GET FORMATTER FOR TOOL] Prioridade máxima: {max_priority}")
+        safe_print(f"[GET FORMATTER FOR TOOL] Candidatos com prioridade máxima: {len(priority_candidates)} - {[c.__class__.__name__ for c in priority_candidates]}")
+        
         # Se há empate de prioridade, verificar qual corresponde melhor ao tool_name
         if len(priority_candidates) > 1:
             tool_name_lower = tool_name.lower() if tool_name else ""
+            safe_print(f"[GET FORMATTER FOR TOOL] Múltiplos candidatos com mesma prioridade, verificando match por nome...")
             # Verificar se algum candidato corresponde explicitamente ao tool_name
             for candidate in priority_candidates:
                 candidate_name = candidate.__class__.__name__.lower()
                 # GLComparisonFormatter para GL tools
                 if "glcomparison" in candidate_name and ("gl" in tool_name_lower or "gnl" in tool_name_lower):
+                    safe_print(f"[GET FORMATTER FOR TOOL] ✅ Selecionado {candidate.__class__.__name__} por match GL/GNL")
                     return candidate
                 # RestricoesVazaoHQComparisonFormatter para vazao tools
                 if "vazao" in candidate_name and ("vazao" in tool_name_lower or "hq" in tool_name_lower):
+                    safe_print(f"[GET FORMATTER FOR TOOL] ✅ Selecionado {candidate.__class__.__name__} por match vazao/HQ")
                     return candidate
         
         # Retornar o primeiro candidato com maior prioridade (ordem na lista importa)
-        return priority_candidates[0]
+        selected = priority_candidates[0]
+        safe_print(f"[GET FORMATTER FOR TOOL] ✅ Selecionado {selected.__class__.__name__} (primeiro com prioridade máxima)")
+        return selected
     
     # TODO: Criar LLMFreeFormatter como fallback
     # Por enquanto, retornar None e tratar no código chamador
+    safe_print(f"[GET FORMATTER FOR TOOL] ❌ Nenhum formatter encontrado para {tool_name}")
     return None
 
 
@@ -205,9 +222,24 @@ def format_comparison_response(
     
     tool_name_to_use = tool_used
     if "tool_name" in tool_result:
-        tool_name_to_use = tool_result.get("tool_name", tool_used)
+        tool_name_from_result = tool_result.get("tool_name", tool_used)
+        safe_print(f"[FORMATTER REGISTRY] tool_name encontrado no resultado: {tool_name_from_result}")
+        tool_name_to_use = tool_name_from_result
     
-    formatter = get_formatter_for_tool(tool_name_to_use, decks_data[0].result if decks_data else {})
+    # Preparar result_structure para can_format
+    # Pode ser o resultado de um deck individual OU a estrutura completa do tool_result
+    result_structure_for_check = {}
+    if decks_data and len(decks_data) > 0:
+        # Usar o resultado do primeiro deck (que tem os dados GL)
+        result_structure_for_check = decks_data[0].result
+        safe_print(f"[FORMATTER REGISTRY] Usando result_structure do primeiro deck. Keys: {list(result_structure_for_check.keys()) if isinstance(result_structure_for_check, dict) else 'not a dict'}")
+    elif "decks" in tool_result:
+        # Se não há decks_data mas há decks no tool_result, usar a estrutura completa
+        result_structure_for_check = tool_result
+        safe_print(f"[FORMATTER REGISTRY] Usando tool_result completo como result_structure. Keys: {list(result_structure_for_check.keys()) if isinstance(result_structure_for_check, dict) else 'not a dict'}")
+    
+    safe_print(f"[FORMATTER REGISTRY] Buscando formatter - tool_name_to_use: {tool_name_to_use}, tool_used: {tool_used}")
+    formatter = get_formatter_for_tool(tool_name_to_use, result_structure_for_check)
     
     safe_print(f"[FORMATTER REGISTRY] Formatter selecionado: {formatter.__class__.__name__ if formatter else 'None'}")
     safe_print(f"[FORMATTER REGISTRY] tool_name_to_use: {tool_name_to_use}, tool_used: {tool_used}")

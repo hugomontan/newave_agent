@@ -27,7 +27,7 @@ export function GLComparisonTable({
     <div className="bg-card border border-border rounded-lg p-3.5 sm:p-4.5 max-w-full">
       <div className="flex items-center justify-between mb-4">
         <h4 className="text-base sm:text-lg font-semibold text-card-foreground">
-          Geração Total por Deck/Data
+          Série Temporal de Gerações GNL por Patamar
         </h4>
         {hasMoreRows && (
           <Button
@@ -54,16 +54,19 @@ export function GLComparisonTable({
         <table className="w-full border-collapse table-auto min-w-full">
           <colgroup>
             <col style={{ minWidth: '120px' }} />
+            <col style={{ minWidth: '80px' }} />
             <col style={{ minWidth: '180px' }} />
             <col style={{ minWidth: '140px' }} />
             <col style={{ minWidth: '140px' }} />
             <col style={{ minWidth: '140px' }} />
-            <col style={{ minWidth: '100px' }} />
           </colgroup>
           <thead>
             <tr className="border-b border-border bg-background/50">
               <th className="px-3.5 sm:px-4.5 py-2.5 text-left text-xs font-semibold text-card-foreground uppercase tracking-wider whitespace-nowrap">
                 Data
+              </th>
+              <th className="px-3.5 sm:px-4.5 py-2.5 text-left text-xs font-semibold text-card-foreground uppercase tracking-wider whitespace-nowrap">
+                Semana
               </th>
               <th className="px-3.5 sm:px-4.5 py-2.5 text-left text-xs font-semibold text-card-foreground uppercase tracking-wider whitespace-nowrap">
                 Deck
@@ -77,9 +80,6 @@ export function GLComparisonTable({
               <th className="px-3.5 sm:px-4.5 py-2.5 text-right text-xs font-semibold text-card-foreground uppercase tracking-wider whitespace-nowrap">
                 Geração Pat. 3 (LEVE) (MW)
               </th>
-              <th className="px-3.5 sm:px-4.5 py-2.5 text-right text-xs font-semibold text-card-foreground uppercase tracking-wider whitespace-nowrap">
-                Total Registros
-              </th>
             </tr>
           </thead>
           <tbody>
@@ -91,32 +91,29 @@ export function GLComparisonTable({
                   className="border-b border-border/50 hover:bg-background/30 transition-colors"
                 >
                   <td className="px-3.5 sm:px-4.5 py-2.5 text-sm text-card-foreground whitespace-nowrap">
-                    {rowData.data || "-"}
+                    {rowData.data_display || rowData.data || "-"}
+                  </td>
+                  <td className="px-3.5 sm:px-4.5 py-2.5 text-sm text-muted-foreground whitespace-nowrap">
+                    {rowData.semana || rowData.estagio || "-"}
                   </td>
                   <td className="px-3.5 sm:px-4.5 py-2.5 text-sm text-muted-foreground whitespace-nowrap">
                     {rowData.display_name || rowData.deck || "-"}
                   </td>
                   <td className="px-3.5 sm:px-4.5 py-2.5 text-sm text-card-foreground text-right whitespace-nowrap">
-                    {rowData.geracao_pat_1_total !== null && rowData.geracao_pat_1_total !== undefined 
-                      ? formatNumber(rowData.geracao_pat_1_total)
+                    {rowData.geracao_pat_1 !== null && rowData.geracao_pat_1 !== undefined 
+                      ? formatNumber(rowData.geracao_pat_1)
                       : "-"
                     }
                   </td>
                   <td className="px-3.5 sm:px-4.5 py-2.5 text-sm text-card-foreground text-right whitespace-nowrap">
-                    {rowData.geracao_pat_2_total !== null && rowData.geracao_pat_2_total !== undefined 
-                      ? formatNumber(rowData.geracao_pat_2_total)
+                    {rowData.geracao_pat_2 !== null && rowData.geracao_pat_2 !== undefined 
+                      ? formatNumber(rowData.geracao_pat_2)
                       : "-"
                     }
                   </td>
                   <td className="px-3.5 sm:px-4.5 py-2.5 text-sm text-card-foreground text-right whitespace-nowrap">
-                    {rowData.geracao_pat_3_total !== null && rowData.geracao_pat_3_total !== undefined 
-                      ? formatNumber(rowData.geracao_pat_3_total)
-                      : "-"
-                    }
-                  </td>
-                  <td className="px-3.5 sm:px-4.5 py-2.5 text-sm text-card-foreground text-right whitespace-nowrap">
-                    {rowData.total_registros !== null && rowData.total_registros !== undefined 
-                      ? rowData.total_registros
+                    {rowData.geracao_pat_3 !== null && rowData.geracao_pat_3 !== undefined 
+                      ? formatNumber(rowData.geracao_pat_3)
                       : "-"
                     }
                   </td>

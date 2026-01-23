@@ -8,7 +8,6 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  Legend,
   ResponsiveContainer,
 } from "recharts";
 import type { ChartData } from "../shared/types";
@@ -37,16 +36,24 @@ export function GLComparisonChart({
   }
 
   // Transformar dados para formato Recharts
+  // Filtrar valores null para evitar problemas na renderização
   const chartData = data.labels.map((label, index) => {
     const point: Record<string, any> = {
       data: label,
     };
     
     data.datasets.forEach((dataset) => {
-      point[dataset.label] = dataset.data[index];
+      const value = dataset.data[index];
+      // Só adicionar se não for null/undefined
+      if (value !== null && value !== undefined) {
+        point[dataset.label] = value;
+      }
     });
     
     return point;
+  }).filter(point => {
+    // Manter apenas pontos que têm pelo menos um valor (além de "data")
+    return Object.keys(point).length > 1;
   });
 
   // Definir espaçamento dinâmico entre ticks do eixo X
@@ -84,7 +91,7 @@ export function GLComparisonChart({
               className="text-xs"
               tick={{ fill: "currentColor" }}
               label={{ 
-                value: config?.y_axis || "Geração Total (MW)", 
+                value: config?.y_axis || "Geração (MW)", 
                 angle: -90, 
                 position: "insideLeft",
                 style: { textAnchor: "middle", fill: "currentColor" }
@@ -97,7 +104,6 @@ export function GLComparisonChart({
                 borderRadius: "0.5rem"
               }}
             />
-            <Legend />
             {data.datasets.map((dataset, index) => {
               // Extrair cor do dataset se disponível
               const strokeColor = (dataset as any).borderColor || 
@@ -110,9 +116,9 @@ export function GLComparisonChart({
                   dataKey={dataset.label}
                   stroke={strokeColor}
                   strokeWidth={2}
-                  dot={{ r: 4 }}
-                  activeDot={{ r: 6 }}
-                  connectNulls={false}
+                  dot={false}
+                  activeDot={false}
+                  connectNulls={true}
                 />
               );
             })}

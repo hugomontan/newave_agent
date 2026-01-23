@@ -43,7 +43,10 @@ export function ComparisonRouter({ comparison }: ComparisonRouterProps) {
       visualization_type: normalizedVizType,
       chart_config_tool_name: (chart_config as any)?.tool_name,
       hasTableData: comparison_table && comparison_table.length > 0,
-      hasChartData: chart_data && chart_data.labels && chart_data.labels.length > 0
+      hasChartData: chart_data && chart_data.labels && chart_data.labels.length > 0,
+      is_multi_deck: comparison.is_multi_deck,
+      has_charts_by_patamar: !!(comparison.charts_by_patamar && Object.keys(comparison.charts_by_patamar).length > 0),
+      charts_by_patamar_keys: comparison.charts_by_patamar ? Object.keys(comparison.charts_by_patamar) : []
     });
   }
   
@@ -72,9 +75,21 @@ export function ComparisonRouter({ comparison }: ComparisonRouterProps) {
     normalizedVizType === "gl_comparison"
   );
   
-  if (isGLTool && comparison.is_multi_deck) {
+  // Para GL, verificar se é multi-deck OU se tem visualization_type "gl_comparison" OU se tem charts_by_patamar
+  const isGLComparison = isGLTool && (
+    comparison.is_multi_deck || 
+    normalizedVizType === "gl_comparison" ||
+    (comparison.charts_by_patamar && Object.keys(comparison.charts_by_patamar).length > 0)
+  );
+  
+  if (isGLComparison) {
     if (process.env.NODE_ENV === 'development') {
-      console.log('[ComparisonRouter] ✅ Usando GLComparisonView para GL tool (detectado antes do switch)');
+      console.log('[ComparisonRouter] ✅ Usando GLComparisonView para GL tool', {
+        tool_name: normalizedToolName,
+        visualization_type: normalizedVizType,
+        is_multi_deck: comparison.is_multi_deck,
+        has_charts_by_patamar: !!(comparison.charts_by_patamar && Object.keys(comparison.charts_by_patamar).length > 0)
+      });
     }
     return <GLComparisonView comparison={comparison} />;
   }
