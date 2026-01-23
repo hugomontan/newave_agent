@@ -3,8 +3,9 @@
 import React, { useState } from "react";
 import { formatNumber } from "../shared/formatters";
 import type { TableRow } from "../shared/types";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronUp, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { exportToCSV } from "../shared/csvExport";
 
 interface CVUComparisonTableProps {
   data: TableRow[];
@@ -25,32 +26,63 @@ export function CVUComparisonTable({
   const hasMoreRows = data.length > INITIAL_ROWS;
   const displayedData = isExpanded ? data : data.slice(0, INITIAL_ROWS);
 
+  const handleDownloadCSV = () => {
+    const csvData = data.map((row) => {
+      const rowData = row as any;
+      return {
+        Semana: rowData.semana_operativa ?? "",
+        Data: rowData.data ?? rowData.date ?? "",
+        Deck: rowData.display_name ?? rowData.deck ?? "",
+        "CVU Pesada (R$/MWh)": rowData.cvu_pesada !== null && rowData.cvu_pesada !== undefined 
+          ? rowData.cvu_pesada 
+          : null,
+        "CVU Média (R$/MWh)": rowData.cvu_media !== null && rowData.cvu_media !== undefined 
+          ? rowData.cvu_media 
+          : null,
+        "CVU Leve (R$/MWh)": rowData.cvu_leve !== null && rowData.cvu_leve !== undefined 
+          ? rowData.cvu_leve 
+          : null,
+      };
+    });
+    exportToCSV(csvData, "cvu-comparison");
+  };
+
   return (
     <div className="bg-card border border-border rounded-lg p-3.5 sm:p-4.5 max-w-full">
       <div className="flex items-center justify-between mb-4">
         <h4 className="text-base sm:text-lg font-semibold text-card-foreground">
           CVU por Semana Operativa
         </h4>
-        {hasMoreRows && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setIsExpanded(!isExpanded)}
-            className="text-sm text-muted-foreground hover:text-card-foreground"
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleDownloadCSV}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-card-foreground bg-background/50 hover:bg-background/70 border border-border rounded-lg transition-colors"
+            title="Baixar como CSV"
           >
-            {isExpanded ? (
-              <>
-                <ChevronUp className="w-4 h-4 mr-1" />
-                Minimizar
-              </>
-            ) : (
-              <>
-                <ChevronDown className="w-4 h-4 mr-1" />
-                Ver todos ({data.length})
-              </>
-            )}
-          </Button>
-        )}
+            <Download className="w-4 h-4" />
+            CSV
+          </button>
+          {hasMoreRows && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsExpanded(!isExpanded)}
+              className="text-sm text-muted-foreground hover:text-card-foreground"
+            >
+              {isExpanded ? (
+                <>
+                  <ChevronUp className="w-4 h-4 mr-1" />
+                  Minimizar
+                </>
+              ) : (
+                <>
+                  <ChevronDown className="w-4 h-4 mr-1" />
+                  Ver todos ({data.length})
+                </>
+              )}
+            </Button>
+          )}
+        </div>
       </div>
       <div className="w-full">
         <table className="w-full border-collapse table-auto">
