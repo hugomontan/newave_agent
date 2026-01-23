@@ -9,6 +9,7 @@ import os
 import pandas as pd
 import re
 from typing import Dict, Any, Optional
+from newave_agent.app.config import debug_print, safe_print
 
 class CadicTool(NEWAVETool):
     """
@@ -95,7 +96,7 @@ class CadicTool(NEWAVETool):
                     })
         
         if not subsistemas_disponiveis:
-            print("[TOOL] ⚠️ Nenhum subsistema disponível para busca")
+            debug_print("[TOOL] ⚠️ Nenhum subsistema disponível para busca")
             return None
         
         # ETAPA 1: Tentar extrair número explícito
@@ -130,7 +131,7 @@ class CadicTool(NEWAVETool):
             nome_sub_lower = nome_sub.lower().strip()
             
             if nome_sub_lower and nome_sub_lower in query_lower:
-                print(f"[TOOL] ✅ Código {codigo_sub} encontrado por nome completo '{nome_sub}'")
+                debug_print(f"[TOOL] ✅ Código {codigo_sub} encontrado por nome completo '{nome_sub}'")
                 return codigo_sub
             
             # Verificar palavras-chave
@@ -138,10 +139,10 @@ class CadicTool(NEWAVETool):
             palavras_comuns = ['do', 'da', 'de', 'para', 'por', 'com', 'sem', 'em', 'na', 'no']
             for palavra in palavras_nome:
                 if len(palavra) >= 3 and palavra not in palavras_comuns and palavra in query_lower:
-                    print(f"[TOOL] ✅ Código {codigo_sub} encontrado por palavra '{palavra}' do nome '{nome_sub}'")
+                    debug_print(f"[TOOL] ✅ Código {codigo_sub} encontrado por palavra '{palavra}' do nome '{nome_sub}'")
                     return codigo_sub
         
-        print("[TOOL] ⚠️ Nenhum subsistema específico detectado na query")
+        debug_print("[TOOL] ⚠️ Nenhum subsistema específico detectado na query")
         return None
     
     def _extract_periodo_from_query(self, query: str) -> Optional[Dict[str, Any]]:
@@ -207,10 +208,10 @@ class CadicTool(NEWAVETool):
                         razoes_disponiveis.append(razao_str)
         
         if not razoes_disponiveis:
-            print("[TOOL] ⚠️ Nenhuma razão disponível para busca")
+            debug_print("[TOOL] ⚠️ Nenhuma razão disponível para busca")
             return None
         
-        print(f"[TOOL] Razões disponíveis no arquivo: {razoes_disponiveis}")
+        debug_print(f"[TOOL] Razões disponíveis no arquivo: {razoes_disponiveis}")
         
         # Buscar por match exato ou parcial
         for razao in razoes_disponiveis:
@@ -218,7 +219,7 @@ class CadicTool(NEWAVETool):
             
             # Match exato (case-insensitive)
             if razao_lower in query_lower:
-                print(f"[TOOL] ✅ Razão '{razao}' encontrada na query (match exato)")
+                debug_print(f"[TOOL] ✅ Razão '{razao}' encontrada na query (match exato)")
                 return razao
             
             # Match parcial (para "ande" encontrar "ANDE", "cons.itaipu" encontrar "CONS.ITAIPU", etc.)
@@ -229,10 +230,10 @@ class CadicTool(NEWAVETool):
                     # Verificar se não é palavra muito comum
                     palavras_comuns = ['de', 'da', 'do', 'para', 'por', 'com', 'sem', 'em', 'na', 'no', 'se']
                     if palavra not in palavras_comuns:
-                        print(f"[TOOL] ✅ Razão '{razao}' encontrada por palavra '{palavra}' na query")
+                        debug_print(f"[TOOL] ✅ Razão '{razao}' encontrada por palavra '{palavra}' na query")
                         return razao
         
-        print("[TOOL] ⚠️ Nenhuma razão específica detectada na query")
+        debug_print("[TOOL] ⚠️ Nenhuma razão específica detectada na query")
         return None
     
     def _extract_tipo_carga(self, query: str) -> Optional[str]:
@@ -265,44 +266,44 @@ class CadicTool(NEWAVETool):
         4. Aplica filtros (subsistema, período, tipo)
         5. Processa e retorna dados
         """
-        print(f"[TOOL] {self.get_name()}: Iniciando execução...")
-        print(f"[TOOL] Query: {query[:100]}")
-        print(f"[TOOL] Deck path: {self.deck_path}")
+        debug_print(f"[TOOL] {self.get_name()}: Iniciando execução...")
+        debug_print(f"[TOOL] Query: {query[:100]}")
+        debug_print(f"[TOOL] Deck path: {self.deck_path}")
         
         try:
             # ETAPA 1: Verificar arquivo
-            print("[TOOL] ETAPA 1: Verificando existência do arquivo C_ADIC.DAT...")
+            debug_print("[TOOL] ETAPA 1: Verificando existência do arquivo C_ADIC.DAT...")
             cadic_path = os.path.join(self.deck_path, "C_ADIC.DAT")
             
             if not os.path.exists(cadic_path):
                 cadic_path = os.path.join(self.deck_path, "c_adic.dat")
             
             if not os.path.exists(cadic_path):
-                print(f"[TOOL] ❌ Arquivo C_ADIC.DAT não encontrado")
+                safe_print(f"[TOOL] ❌ Arquivo C_ADIC.DAT não encontrado")
                 return {
                     "success": False,
                     "error": f"Arquivo C_ADIC.DAT não encontrado em {self.deck_path}",
                     "tool": self.get_name()
                 }
             
-            print(f"[TOOL] ✅ Arquivo encontrado: {cadic_path}")
+            debug_print(f"[TOOL] ✅ Arquivo encontrado: {cadic_path}")
             
             # ETAPA 2: Ler arquivo
-            print("[TOOL] ETAPA 2: Lendo arquivo com inewave...")
+            debug_print("[TOOL] ETAPA 2: Lendo arquivo com inewave...")
             cadic = Cadic.read(cadic_path)
-            print("[TOOL] ✅ Arquivo lido com sucesso")
+            debug_print("[TOOL] ✅ Arquivo lido com sucesso")
             
             # ETAPA 3: Verificar se há dados
             if cadic.cargas is None or len(cadic.cargas) == 0:
-                print("[TOOL] ⚠️ DataFrame de cargas vazio ou None")
+                debug_print("[TOOL] ⚠️ DataFrame de cargas vazio ou None")
                 return {
                     "success": False,
                     "error": "Nenhuma carga adicional encontrada no arquivo C_ADIC.DAT",
                     "tool": self.get_name()
                 }
             
-            print(f"[TOOL] ✅ DataFrame obtido: {len(cadic.cargas)} registros")
-            print(f"[TOOL] Colunas: {list(cadic.cargas.columns)}")
+            debug_print(f"[TOOL] ✅ DataFrame obtido: {len(cadic.cargas)} registros")
+            debug_print(f"[TOOL] Colunas: {list(cadic.cargas.columns)}")
             
             # ETAPA 4: Ler Sistema.DAT para obter lista de subsistemas (para busca por nome)
             sistema = None
@@ -312,12 +313,12 @@ class CadicTool(NEWAVETool):
                     sistema_path = os.path.join(self.deck_path, "sistema.dat")
                 if os.path.exists(sistema_path):
                     sistema = Sistema.read(sistema_path)
-                    print("[TOOL] ✅ SISTEMA.DAT lido para auxiliar busca de subsistemas")
+                    debug_print("[TOOL] ✅ SISTEMA.DAT lido para auxiliar busca de subsistemas")
             except Exception as e:
-                print(f"[TOOL] ⚠️ Não foi possível ler SISTEMA.DAT: {e}")
+                debug_print(f"[TOOL] ⚠️ Não foi possível ler SISTEMA.DAT: {e}")
             
             # ETAPA 5: Extrair filtros da query
-            print("[TOOL] ETAPA 5: Extraindo filtros da query...")
+            debug_print("[TOOL] ETAPA 5: Extraindo filtros da query...")
             df = cadic.cargas.copy()
             
             # Extrair todos os filtros
@@ -328,15 +329,15 @@ class CadicTool(NEWAVETool):
             
             # Aplicar filtro de razão primeiro (mais específico)
             if razao is not None:
-                print(f"[TOOL] ✅ Filtro por razão: {razao}")
+                debug_print(f"[TOOL] ✅ Filtro por razão: {razao}")
                 df = df[df['razao'] == razao]
             
             if codigo_subsistema is not None:
-                print(f"[TOOL] ✅ Filtro por subsistema: {codigo_subsistema}")
+                debug_print(f"[TOOL] ✅ Filtro por subsistema: {codigo_subsistema}")
                 df = df[df['codigo_submercado'] == codigo_subsistema]
             
             if periodo:
-                print(f"[TOOL] ✅ Filtro por período: {periodo}")
+                debug_print(f"[TOOL] ✅ Filtro por período: {periodo}")
                 if 'ano' in periodo:
                     # Extrair ano da coluna data
                     if 'data' in df.columns:
@@ -356,10 +357,10 @@ class CadicTool(NEWAVETool):
                         df = df[df['mes'] == periodo['mes']]
             
             if tipo_carga == "carga":
-                print("[TOOL] ✅ Filtro: apenas cargas adicionais (valores positivos)")
+                debug_print("[TOOL] ✅ Filtro: apenas cargas adicionais (valores positivos)")
                 df = df[df['valor'] > 0]
             elif tipo_carga == "oferta":
-                print("[TOOL] ✅ Filtro: apenas ofertas adicionais (valores negativos)")
+                debug_print("[TOOL] ✅ Filtro: apenas ofertas adicionais (valores negativos)")
                 df = df[df['valor'] < 0]
             
             if df.empty:
@@ -369,27 +370,27 @@ class CadicTool(NEWAVETool):
                     "tool": self.get_name()
                 }
             
-            print(f"[TOOL] ✅ {len(df)} registros após aplicar filtros")
+            debug_print(f"[TOOL] ✅ {len(df)} registros após aplicar filtros")
             
             # ETAPA 6: Processar dados
-            print("[TOOL] ETAPA 6: Processando dados...")
+            debug_print("[TOOL] ETAPA 6: Processando dados...")
             
             # Criar colunas auxiliares se necessário
             # PRIMEIRO: Verificar se data é datetime, se não, converter (igual CargaMensalTool)
             if 'data' in df.columns:
                 if not pd.api.types.is_datetime64_any_dtype(df['data']):
-                    print("[TOOL] ⚠️ Coluna 'data' não é datetime, tentando converter...")
+                    debug_print("[TOOL] ⚠️ Coluna 'data' não é datetime, tentando converter...")
                     try:
                         df['data'] = pd.to_datetime(df['data'], errors='coerce')
-                        print("[TOOL] ✅ Coluna 'data' convertida para datetime")
+                        debug_print("[TOOL] ✅ Coluna 'data' convertida para datetime")
                     except Exception as e:
-                        print(f"[TOOL] ⚠️ Não foi possível converter 'data' para datetime: {e}")
+                        debug_print(f"[TOOL] ⚠️ Não foi possível converter 'data' para datetime: {e}")
                 
                 # Agora criar ano e mes se data for datetime
                 if pd.api.types.is_datetime64_any_dtype(df['data']):
                     df['ano'] = df['data'].dt.year
                     df['mes'] = df['data'].dt.month
-                    print("[TOOL] ✅ Colunas auxiliares criadas a partir de 'data'")
+                    debug_print("[TOOL] ✅ Colunas auxiliares criadas a partir de 'data'")
             
             # Converter para lista de dicts
             dados = df.to_dict(orient="records")
@@ -409,7 +410,7 @@ class CadicTool(NEWAVETool):
                             pass
             
             # ETAPA 7: Calcular estatísticas
-            print("[TOOL] ETAPA 7: Calculando estatísticas...")
+            debug_print("[TOOL] ETAPA 7: Calculando estatísticas...")
             
             summary = {
                 'total_registros': len(df),
@@ -455,7 +456,7 @@ class CadicTool(NEWAVETool):
             if tipo_carga:
                 filtro_info['tipo'] = tipo_carga
             
-            print(f"[TOOL] ✅ Processamento concluído: {len(dados)} registros formatados")
+            debug_print(f"[TOOL] ✅ Processamento concluído: {len(dados)} registros formatados")
             
             return {
                 "success": True,
@@ -468,14 +469,14 @@ class CadicTool(NEWAVETool):
             }
             
         except FileNotFoundError as e:
-            print(f"[TOOL] ❌ Erro FileNotFoundError: {e}")
+            safe_print(f"[TOOL] ❌ Erro FileNotFoundError: {e}")
             return {
                 "success": False,
                 "error": f"Arquivo não encontrado: {str(e)}",
                 "tool": self.get_name()
             }
         except Exception as e:
-            print(f"[TOOL] ❌ Erro ao processar: {type(e).__name__}: {e}")
+            safe_print(f"[TOOL] ❌ Erro ao processar: {type(e).__name__}: {e}")
             import traceback
             traceback.print_exc()
             return {

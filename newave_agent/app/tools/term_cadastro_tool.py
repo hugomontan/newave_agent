@@ -10,6 +10,7 @@ from typing import Dict, Any, Optional
 from difflib import SequenceMatcher
 import sys
 from pathlib import Path
+from newave_agent.app.config import debug_print, safe_print
 
 # Adicionar shared ao path para importar o matcher
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent / "shared"))
@@ -118,7 +119,7 @@ class TermCadastroTool(NEWAVETool):
                     codigo = int(match.group(1))
                     if 'codigo_usina' in term_data.columns:
                         if codigo in term_data['codigo_usina'].values:
-                            print(f"[TOOL] ✅ Código {codigo} encontrado por padrão numérico")
+                            debug_print(f"[TOOL] ✅ Código {codigo} encontrado por padrão numérico")
                             return codigo
                 except ValueError:
                     continue
@@ -144,7 +145,7 @@ class TermCadastroTool(NEWAVETool):
                     # Encontrar código correspondente ao nome encontrado
                     for codigo, nome in codigo_to_nome.items():
                         if normalize_usina_name(nome) == normalize_usina_name(matched_name):
-                            print(f"[TOOL] ✅ Código {codigo} encontrado via matcher centralizado: '{nome}' → '{normalize_usina_name(nome)}' (score: {score:.2f})")
+                            debug_print(f"[TOOL] ✅ Código {codigo} encontrado via matcher centralizado: '{nome}' → '{normalize_usina_name(nome)}' (score: {score:.2f})")
                             return codigo
             
             # Fallback: busca original se matcher não encontrou nada
@@ -187,7 +188,7 @@ class TermCadastroTool(NEWAVETool):
                 if candidatos:
                     candidatos.sort(key=lambda x: x[2], reverse=True)
                     melhor_codigo, melhor_nome, melhor_score = candidatos[0]
-                    print(f"[TOOL] ✅ Código {melhor_codigo} encontrado (fallback): '{melhor_nome}' (score: {melhor_score:.2f})")
+                    debug_print(f"[TOOL] ✅ Código {melhor_codigo} encontrado (fallback): '{melhor_nome}' (score: {melhor_score:.2f})")
                     return melhor_codigo
         
         return None
@@ -216,7 +217,7 @@ class TermCadastroTool(NEWAVETool):
             DataFrame com dados ou None se erro
         """
         try:
-            print(f"[TOOL] Lendo arquivo TERM.DAT: {term_path}")
+            debug_print(f"[TOOL] Lendo arquivo TERM.DAT: {term_path}")
             
             # Ler como texto fixo
             with open(term_path, 'r', encoding='latin-1') as f:
@@ -246,7 +247,7 @@ class TermCadastroTool(NEWAVETool):
                         data_lines.append(line)
             
             if not data_lines:
-                print("[TOOL] ⚠️ Nenhuma linha de dados encontrada após o cabeçalho")
+                debug_print("[TOOL] ⚠️ Nenhuma linha de dados encontrada após o cabeçalho")
                 # Tentar ler todas as linhas que começam com número
                 for line in lines:
                     line_stripped = line.strip()
@@ -254,10 +255,10 @@ class TermCadastroTool(NEWAVETool):
                         data_lines.append(line)
             
             if not data_lines:
-                print("[TOOL] ❌ Nenhuma linha de dados encontrada")
+                safe_print(f"[TOOL] ❌ Nenhuma linha de dados encontrada")
                 return None
             
-            print(f"[TOOL] ✅ {len(data_lines)} linhas de dados encontradas")
+            debug_print(f"[TOOL] ✅ {len(data_lines)} linhas de dados encontradas")
             
             # Parsear linhas
             records = []
@@ -267,7 +268,7 @@ class TermCadastroTool(NEWAVETool):
             for line_idx, line in enumerate(data_lines):
                 # Garantir que a linha tenha tamanho mínimo
                 if len(line) < 44:
-                    print(f"[TOOL] ⚠️ Linha {line_idx + 1} muito curta, pulando")
+                    debug_print(f"[TOOL] ⚠️ Linha {line_idx + 1} muito curta, pulando")
                     continue
                 
                 try:
@@ -320,8 +321,8 @@ class TermCadastroTool(NEWAVETool):
                             continue
                     
                     if numeric_start_idx == -1:
-                        print(f"[TOOL] ⚠️ Não foi possível encontrar potência (número >= 100) na linha {line_idx + 1}")
-                        print(f"[TOOL]    Linha: {line[:80]}")
+                        debug_print(f"[TOOL] ⚠️ Não foi possível encontrar potência (número >= 100) na linha {line_idx + 1}")
+                        debug_print(f"[TOOL]    Linha: {line[:80]}")
                         continue
                     
                     # Nome da usina é todas as palavras antes da potência
@@ -383,24 +384,24 @@ class TermCadastroTool(NEWAVETool):
                     records.append(record)
                     
                 except (ValueError, IndexError) as e:
-                    print(f"[TOOL] ⚠️ Erro ao parsear linha {line_idx + 1}: {e}")
-                    print(f"[TOOL]    Linha: {line[:80]}")
+                    debug_print(f"[TOOL] ⚠️ Erro ao parsear linha {line_idx + 1}: {e}")
+                    debug_print(f"[TOOL]    Linha: {line[:80]}")
                     continue
             
             if records:
                 df = pd.DataFrame(records)
-                print(f"[TOOL] ✅ DataFrame criado com {len(df)} registros")
-                print(f"[TOOL]    Colunas: {list(df.columns)}")
+                debug_print(f"[TOOL] ✅ DataFrame criado com {len(df)} registros")
+                debug_print(f"[TOOL]    Colunas: {list(df.columns)}")
                 return df
             else:
-                print("[TOOL] ❌ Nenhum registro válido encontrado")
+                safe_print(f"[TOOL] ❌ Nenhum registro válido encontrado")
                 return None
                 
         except FileNotFoundError:
-            print(f"[TOOL] ❌ Arquivo não encontrado: {term_path}")
+            safe_print(f"[TOOL] ❌ Arquivo não encontrado: {term_path}")
             return None
         except Exception as e:
-            print(f"[TOOL] ❌ Erro ao ler TERM.DAT: {type(e).__name__}: {e}")
+            safe_print(f"[TOOL] ❌ Erro ao ler TERM.DAT: {type(e).__name__}: {e}")
             import traceback
             traceback.print_exc()
             return None
@@ -415,13 +416,13 @@ class TermCadastroTool(NEWAVETool):
         3. Identifica usina se mencionada
         4. Retorna dados cadastrais
         """
-        print(f"[TOOL] {self.get_name()}: Iniciando execução...")
-        print(f"[TOOL] Query: {query[:100]}")
-        print(f"[TOOL] Deck path: {self.deck_path}")
+        debug_print(f"[TOOL] {self.get_name()}: Iniciando execução...")
+        debug_print(f"[TOOL] Query: {query[:100]}")
+        debug_print(f"[TOOL] Deck path: {self.deck_path}")
         
         try:
             # ETAPA 1: Verificar existência do arquivo
-            print("[TOOL] ETAPA 1: Verificando existência do arquivo TERM.DAT...")
+            debug_print("[TOOL] ETAPA 1: Verificando existência do arquivo TERM.DAT...")
             term_path = os.path.join(self.deck_path, "TERM.DAT")
             
             if not os.path.exists(term_path):
@@ -429,36 +430,36 @@ class TermCadastroTool(NEWAVETool):
                 if os.path.exists(term_path_lower):
                     term_path = term_path_lower
                 else:
-                    print(f"[TOOL] ❌ Arquivo TERM.DAT não encontrado")
+                    safe_print(f"[TOOL] ❌ Arquivo TERM.DAT não encontrado")
                     return {
                         "success": False,
                         "error": f"Arquivo TERM.DAT não encontrado em {self.deck_path}",
                         "tool": self.get_name()
                     }
             
-            print(f"[TOOL] ✅ Arquivo encontrado: {term_path}")
+            debug_print(f"[TOOL] ✅ Arquivo encontrado: {term_path}")
             
             # ETAPA 2: Ler arquivo
-            print("[TOOL] ETAPA 2: Lendo arquivo TERM.DAT...")
+            debug_print("[TOOL] ETAPA 2: Lendo arquivo TERM.DAT...")
             term_data = self._read_term_file(term_path)
             
             if term_data is None or term_data.empty:
-                print("[TOOL] ❌ Nenhum dado encontrado no arquivo")
+                safe_print(f"[TOOL] ❌ Nenhum dado encontrado no arquivo")
                 return {
                     "success": False,
                     "error": "Nenhum dado encontrado no arquivo TERM.DAT",
                     "tool": self.get_name()
                 }
             
-            print(f"[TOOL] ✅ DataFrame obtido: {len(term_data)} registros")
+            debug_print(f"[TOOL] ✅ DataFrame obtido: {len(term_data)} registros")
             
             # ETAPA 3: Extrair usina da query (se mencionada)
-            print("[TOOL] ETAPA 3: Extraindo usina da query...")
+            debug_print("[TOOL] ETAPA 3: Extraindo usina da query...")
             codigo_usina = self._extract_usina_from_query(query, term_data)
             
             # ETAPA 4: Filtrar dados
             if codigo_usina is not None:
-                print(f"[TOOL] Filtrando por usina {codigo_usina}...")
+                debug_print(f"[TOOL] Filtrando por usina {codigo_usina}...")
                 dados_filtrados = term_data[term_data['codigo_usina'] == codigo_usina].copy()
                 if dados_filtrados.empty:
                     return {
@@ -466,9 +467,9 @@ class TermCadastroTool(NEWAVETool):
                         "error": f"Usina {codigo_usina} não encontrada no TERM.DAT",
                         "tool": self.get_name()
                     }
-                print(f"[TOOL] ✅ {len(dados_filtrados)} registro(s) encontrado(s) para usina {codigo_usina}")
+                debug_print(f"[TOOL] ✅ {len(dados_filtrados)} registro(s) encontrado(s) para usina {codigo_usina}")
             else:
-                print("[TOOL] Nenhuma usina específica mencionada, retornando todas as usinas")
+                debug_print("[TOOL] Nenhuma usina específica mencionada, retornando todas as usinas")
                 dados_filtrados = term_data.copy()
             
             # ETAPA 5: Converter para lista de dicionários
@@ -492,14 +493,14 @@ class TermCadastroTool(NEWAVETool):
             }
             
         except FileNotFoundError as e:
-            print(f"[TOOL] ❌ Erro FileNotFoundError: {e}")
+            safe_print(f"[TOOL] ❌ Erro FileNotFoundError: {e}")
             return {
                 "success": False,
                 "error": f"Arquivo não encontrado: {str(e)}",
                 "tool": self.get_name()
             }
         except Exception as e:
-            print(f"[TOOL] ❌ Erro ao processar: {type(e).__name__}: {e}")
+            safe_print(f"[TOOL] ❌ Erro ao processar: {type(e).__name__}: {e}")
             import traceback
             traceback.print_exc()
             return {

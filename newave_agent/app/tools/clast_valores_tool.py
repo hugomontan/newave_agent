@@ -9,6 +9,7 @@ import os
 import pandas as pd
 import re
 from typing import Dict, Any, Optional
+from newave_agent.app.config import debug_print, safe_print
 
 class ClastValoresTool(NEWAVETool):
     """
@@ -125,7 +126,7 @@ class ClastValoresTool(NEWAVETool):
                     if clast.usinas is not None:
                         codigos_validos = clast.usinas['codigo_usina'].unique()
                         if codigo in codigos_validos:
-                            print(f"[TOOL] ✅ Código {codigo} encontrado por padrão numérico")
+                            debug_print(f"[TOOL] ✅ Código {codigo} encontrado por padrão numérico")
                             return codigo
                 except ValueError:
                     continue
@@ -137,7 +138,7 @@ class ClastValoresTool(NEWAVETool):
             classes_unicas = clast.usinas[['codigo_usina', 'nome_usina']].drop_duplicates()
             classes_unicas = classes_unicas.sort_values('codigo_usina')
             
-            print(f"[TOOL] Classes disponíveis no arquivo:")
+            debug_print(f"[TOOL] Classes disponíveis no arquivo:")
             for _, row in classes_unicas.iterrows():
                 codigo = int(row.get('codigo_usina'))
                 nome = str(row.get('nome_usina', '')).strip()
@@ -149,7 +150,7 @@ class ClastValoresTool(NEWAVETool):
             # Extrair palavras significativas da query (remover palavras comuns)
             palavras_query = [p for p in query_lower.split() if len(p) > 2 and p not in palavras_ignorar]
             
-            print(f"[TOOL] Palavras significativas extraídas da query: {palavras_query}")
+            debug_print(f"[TOOL] Palavras significativas extraídas da query: {palavras_query}")
             
             # Lista de candidatos com pontuação
             candidatos = []
@@ -167,12 +168,12 @@ class ClastValoresTool(NEWAVETool):
                 
                 # PRIORIDADE 1: Match exato do nome completo
                 if nome_classe_lower in query_lower:
-                    print(f"[TOOL] ✅ Código {codigo_classe} encontrado por nome completo '{nome_classe}' na query")
+                    debug_print(f"[TOOL] ✅ Código {codigo_classe} encontrado por nome completo '{nome_classe}' na query")
                     return codigo_classe
                 
                 # PRIORIDADE 2: Match exato de todas as palavras significativas
                 if palavras_nome and all(palavra in query_lower for palavra in palavras_nome):
-                    print(f"[TOOL] ✅ Código {codigo_classe} encontrado: todas as palavras significativas de '{nome_classe}' estão na query")
+                    debug_print(f"[TOOL] ✅ Código {codigo_classe} encontrado: todas as palavras significativas de '{nome_classe}' estão na query")
                     return codigo_classe
                 
                 # PRIORIDADE 3: Similaridade de string (para matches parciais)
@@ -194,10 +195,10 @@ class ClastValoresTool(NEWAVETool):
                 # Ordenar por tipo de match (similarity primeiro) e depois por score
                 candidatos.sort(key=lambda x: (x[3] == 'similarity', x[2]), reverse=True)
                 melhor = candidatos[0]
-                print(f"[TOOL] ✅ Código {melhor[0]} encontrado por {melhor[3]} (score: {melhor[2]:.2f}) - '{melhor[1]}'")
+                debug_print(f"[TOOL] ✅ Código {melhor[0]} encontrado por {melhor[3]} (score: {melhor[2]:.2f}) - '{melhor[1]}'")
                 return melhor[0]
         
-        print("[TOOL] ⚠️ Nenhuma classe específica detectada na query")
+        debug_print("[TOOL] ⚠️ Nenhuma classe específica detectada na query")
         return None
     
     def _extract_tipo_combustivel(self, query: str) -> Optional[str]:
@@ -239,13 +240,13 @@ class ClastValoresTool(NEWAVETool):
         4. Identifica filtros (classe, tipo de combustível)
         5. Processa e retorna dados
         """
-        print(f"[TOOL] {self.get_name()}: Iniciando execução...")
-        print(f"[TOOL] Query: {query[:100]}")
-        print(f"[TOOL] Deck path: {self.deck_path}")
+        debug_print(f"[TOOL] {self.get_name()}: Iniciando execução...")
+        debug_print(f"[TOOL] Query: {query[:100]}")
+        debug_print(f"[TOOL] Deck path: {self.deck_path}")
         
         try:
             # ETAPA 1: Verificar existência do arquivo
-            print("[TOOL] ETAPA 1: Verificando existência do arquivo CLAST.DAT...")
+            debug_print("[TOOL] ETAPA 1: Verificando existência do arquivo CLAST.DAT...")
             clast_path = os.path.join(self.deck_path, "CLAST.DAT")
             
             if not os.path.exists(clast_path):
@@ -253,39 +254,39 @@ class ClastValoresTool(NEWAVETool):
                 if os.path.exists(clast_path_lower):
                     clast_path = clast_path_lower
                 else:
-                    print(f"[TOOL] ❌ Arquivo CLAST.DAT não encontrado")
+                    safe_print(f"[TOOL] ❌ Arquivo CLAST.DAT não encontrado")
                     return {
                         "success": False,
                         "error": f"Arquivo CLAST.DAT não encontrado em {self.deck_path}",
                         "tool": self.get_name()
                     }
             
-            print(f"[TOOL] ✅ Arquivo encontrado: {clast_path}")
+            debug_print(f"[TOOL] ✅ Arquivo encontrado: {clast_path}")
             
             # ETAPA 2: Ler arquivo usando inewave
-            print("[TOOL] ETAPA 2: Lendo arquivo com inewave...")
+            debug_print("[TOOL] ETAPA 2: Lendo arquivo com inewave...")
             clast = Clast.read(clast_path)
-            print("[TOOL] ✅ Arquivo lido com sucesso")
+            debug_print("[TOOL] ✅ Arquivo lido com sucesso")
             
             # ETAPA 3: Verificar se é query de CVU (sempre retornar todos os anos)
             is_cvu = self._is_cvu_query(query)
             if is_cvu:
-                print("[TOOL] ✅ Query de CVU detectada - retornando TODOS OS ANOS (sem filtro por ano)")
+                debug_print("[TOOL] ✅ Query de CVU detectada - retornando TODOS OS ANOS (sem filtro por ano)")
             
             # ETAPA 4: Identificar tipo de valor solicitado
-            print("[TOOL] ETAPA 4: Identificando tipo de valor solicitado...")
+            debug_print("[TOOL] ETAPA 4: Identificando tipo de valor solicitado...")
             tipo_valor = self._extract_tipo_valor(query)
-            print(f"[TOOL] Tipo de valor identificado: {tipo_valor or 'ambos (estrutural e conjuntural)'}")
+            debug_print(f"[TOOL] Tipo de valor identificado: {tipo_valor or 'ambos (estrutural e conjuntural)'}")
             
             # ETAPA 5: Identificar filtros
-            print("[TOOL] ETAPA 5: Identificando filtros...")
+            debug_print("[TOOL] ETAPA 5: Identificando filtros...")
             codigo_classe = self._extract_classe_from_query(query, clast)
             tipo_combustivel = self._extract_tipo_combustivel(query)
             
             if codigo_classe is not None:
-                print(f"[TOOL] ✅ Filtro por classe: {codigo_classe}")
+                debug_print(f"[TOOL] ✅ Filtro por classe: {codigo_classe}")
             if tipo_combustivel is not None:
-                print(f"[TOOL] ✅ Filtro por tipo de combustível: {tipo_combustivel}")
+                debug_print(f"[TOOL] ✅ Filtro por tipo de combustível: {tipo_combustivel}")
             
             # IMPORTANTE: Para CVU, NUNCA filtrar por ano, mesmo que a query mencione um ano
             # Isso garante que todos os anos sejam sempre retornados para consultas de CVU
@@ -295,7 +296,7 @@ class ClastValoresTool(NEWAVETool):
             stats_estrutural = None
             
             if tipo_valor is None or tipo_valor == "estrutural":
-                print("[TOOL] ETAPA 6: Processando valores estruturais...")
+                debug_print("[TOOL] ETAPA 6: Processando valores estruturais...")
                 
                 if clast.usinas is not None:
                     df_estrutural = clast.usinas.copy()
@@ -303,11 +304,11 @@ class ClastValoresTool(NEWAVETool):
                     # Aplicar filtros (classe e tipo de combustível)
                     if codigo_classe is not None:
                         df_estrutural = df_estrutural[df_estrutural['codigo_usina'] == codigo_classe]
-                        print(f"[TOOL] ✅ Dados filtrados por classe {codigo_classe}: {len(df_estrutural)} registros")
+                        debug_print(f"[TOOL] ✅ Dados filtrados por classe {codigo_classe}: {len(df_estrutural)} registros")
                     
                     if tipo_combustivel is not None:
                         df_estrutural = df_estrutural[df_estrutural['tipo_combustivel'] == tipo_combustivel]
-                        print(f"[TOOL] ✅ Dados filtrados por tipo {tipo_combustivel}: {len(df_estrutural)} registros")
+                        debug_print(f"[TOOL] ✅ Dados filtrados por tipo {tipo_combustivel}: {len(df_estrutural)} registros")
                     
                     # IMPORTANTE: Para CVU, garantir que TODOS OS ANOS sejam retornados
                     # Não aplicar nenhum filtro por ano, mesmo que mencionado na query
@@ -315,11 +316,11 @@ class ClastValoresTool(NEWAVETool):
                         # Garantir que não há filtro por ano aplicado
                         if 'indice_ano_estudo' in df_estrutural.columns:
                             anos_disponiveis = sorted(df_estrutural['indice_ano_estudo'].unique().tolist())
-                            print(f"[TOOL] ✅ CVU: Retornando dados de TODOS OS ANOS disponíveis: {anos_disponiveis}")
-                            print(f"[TOOL] ✅ CVU: Total de registros (todos os anos): {len(df_estrutural)}")
-                            print(f"[TOOL] ✅ CVU: Garantindo que nenhum filtro por ano foi aplicado")
+                            debug_print(f"[TOOL] ✅ CVU: Retornando dados de TODOS OS ANOS disponíveis: {anos_disponiveis}")
+                            debug_print(f"[TOOL] ✅ CVU: Total de registros (todos os anos): {len(df_estrutural)}")
+                            debug_print(f"[TOOL] ✅ CVU: Garantindo que nenhum filtro por ano foi aplicado")
                         else:
-                            print(f"[TOOL] ⚠️ CVU: Coluna 'indice_ano_estudo' não encontrada no DataFrame")
+                            debug_print(f"[TOOL] ⚠️ CVU: Coluna 'indice_ano_estudo' não encontrada no DataFrame")
                     
                     # Converter para lista de dicts
                     dados_estruturais = df_estrutural.to_dict(orient="records")
@@ -356,16 +357,16 @@ class ClastValoresTool(NEWAVETool):
                                 })
                             stats_estrutural['stats_por_tipo'] = stats_por_tipo
                     
-                    print(f"[TOOL] ✅ {len(dados_estruturais)} registros estruturais processados")
+                    debug_print(f"[TOOL] ✅ {len(dados_estruturais)} registros estruturais processados")
                 else:
-                    print("[TOOL] ⚠️ Nenhum dado estrutural disponível (clast.usinas é None)")
+                    debug_print("[TOOL] ⚠️ Nenhum dado estrutural disponível (clast.usinas é None)")
             
             # ETAPA 7: Processar dados conjunturais
             dados_conjunturais = None
             stats_conjuntural = None
             
             if tipo_valor is None or tipo_valor == "conjuntural":
-                print("[TOOL] ETAPA 7: Processando valores conjunturais...")
+                debug_print("[TOOL] ETAPA 7: Processando valores conjunturais...")
                 
                 if clast.modificacoes is not None:
                     df_conjuntural = clast.modificacoes.copy()
@@ -403,12 +404,12 @@ class ClastValoresTool(NEWAVETool):
                                 df_conjuntural.loc[mask_vazio, 'nome_usina'] = df_conjuntural.loc[mask_vazio, 'nome_usina_novo']
                                 df_conjuntural = df_conjuntural.drop(columns=['nome_usina_novo'], errors='ignore')
                             
-                            print(f"[TOOL] ✅ Nome da usina adicionado/preenchido nos dados conjunturais via join")
+                            debug_print(f"[TOOL] ✅ Nome da usina adicionado/preenchido nos dados conjunturais via join")
                     
                     # Aplicar filtros
                     if codigo_classe is not None:
                         df_conjuntural = df_conjuntural[df_conjuntural['codigo_usina'] == codigo_classe]
-                        print(f"[TOOL] ✅ Modificações filtradas por classe {codigo_classe}: {len(df_conjuntural)} registros")
+                        debug_print(f"[TOOL] ✅ Modificações filtradas por classe {codigo_classe}: {len(df_conjuntural)} registros")
                     
                     # Converter datas para string
                     dados_conjunturais = df_conjuntural.to_dict(orient="records")
@@ -429,16 +430,16 @@ class ClastValoresTool(NEWAVETool):
                             'custo_max': float(df_conjuntural['custo'].max()) if 'custo' in df_conjuntural.columns else 0,
                         }
                     
-                    print(f"[TOOL] ✅ {len(dados_conjunturais)} registros conjunturais processados")
+                    debug_print(f"[TOOL] ✅ {len(dados_conjunturais)} registros conjunturais processados")
                 else:
-                    print("[TOOL] ⚠️ Nenhum dado conjuntural disponível (clast.modificacoes é None)")
+                    debug_print("[TOOL] ⚠️ Nenhum dado conjuntural disponível (clast.modificacoes é None)")
             
             # ETAPA 8: Formatar resultado
-            print("[TOOL] ETAPA 8: Formatando resultado...")
+            debug_print("[TOOL] ETAPA 8: Formatando resultado...")
             
             # Adicionar flag indicando que é CVU (para garantir que todos os anos foram retornados)
             if is_cvu:
-                print("[TOOL] ✅ Flag CVU: Garantindo que todos os anos foram incluídos na resposta")
+                debug_print("[TOOL] ✅ Flag CVU: Garantindo que todos os anos foram incluídos na resposta")
             
             # Informações sobre filtros aplicados
             filtro_info = {}
@@ -468,14 +469,14 @@ class ClastValoresTool(NEWAVETool):
             }
             
         except FileNotFoundError as e:
-            print(f"[TOOL] ❌ Erro FileNotFoundError: {e}")
+            safe_print(f"[TOOL] ❌ Erro FileNotFoundError: {e}")
             return {
                 "success": False,
                 "error": f"Arquivo não encontrado: {str(e)}",
                 "tool": self.get_name()
             }
         except Exception as e:
-            print(f"[TOOL] ❌ Erro ao processar: {type(e).__name__}: {e}")
+            safe_print(f"[TOOL] ❌ Erro ao processar: {type(e).__name__}: {e}")
             import traceback
             traceback.print_exc()
             return {

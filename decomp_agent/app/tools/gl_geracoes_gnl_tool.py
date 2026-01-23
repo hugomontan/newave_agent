@@ -12,7 +12,7 @@ from pathlib import Path
 
 # Importar Dadgnl
 from decomp_agent.app.utils.dadgnl import Dadgnl
-from registrocl import GL
+from decomp_agent.registrocl import GL
 
 
 class GLGeracoesGNLTool(DECOMPTool):

@@ -8,6 +8,7 @@ import os
 import pandas as pd
 import re
 from typing import Dict, Any, List, Optional
+from newave_agent.app.config import debug_print, safe_print
 from newave_agent.app.utils.deck_loader import (
     list_available_decks,
     load_multiple_decks,
@@ -61,7 +62,7 @@ class MudancasGeracoesTermicasTool(NEWAVETool):
                     for name in self.selected_decks
                 }
             except Exception as e:
-                print(f"[TOOL] ⚠️ Erro ao carregar decks: {e}")
+                debug_print(f"[TOOL] ⚠️ Erro ao carregar decks: {e}")
     
     def get_name(self) -> str:
         return "MudancasGeracoesTermicasTool"
@@ -118,13 +119,13 @@ class MudancasGeracoesTermicasTool(NEWAVETool):
         5. Ordena mudanças por magnitude
         6. Retorna dados formatados
         """
-        print(f"[TOOL] {self.get_name()}: Iniciando análise de mudanças de GTMIN...")
-        print(f"[TOOL] Query: {query[:100]}")
-        print(f"[TOOL] Decks selecionados: {self.selected_decks}")
+        debug_print(f"[TOOL] {self.get_name()}: Iniciando análise de mudanças de GTMIN...")
+        debug_print(f"[TOOL] Query: {query[:100]}")
+        debug_print(f"[TOOL] Decks selecionados: {self.selected_decks}")
         
         try:
             # ETAPA 1: Verificar decks disponíveis
-            print("[TOOL] ETAPA 1: Verificando decks...")
+            debug_print("[TOOL] ETAPA 1: Verificando decks...")
             
             if not self.deck_paths or len(self.deck_paths) < 2:
                 return {
@@ -135,7 +136,7 @@ class MudancasGeracoesTermicasTool(NEWAVETool):
             
             # Verificar se há mais de 2 decks - usar matriz de comparação
             if len(self.selected_decks) > 2:
-                print(f"[TOOL] ✅ {len(self.selected_decks)} decks detectados - usando matriz de comparação")
+                debug_print(f"[TOOL] ✅ {len(self.selected_decks)} decks detectados - usando matriz de comparação")
                 return self._execute_multi_deck_matrix(query)
             
             # Para compatibilidade, usar primeiro e último deck (2 decks)
@@ -144,11 +145,11 @@ class MudancasGeracoesTermicasTool(NEWAVETool):
             deck_december_name = self.deck_display_names.get(self.selected_decks[0], "Deck Anterior")
             deck_january_name = self.deck_display_names.get(self.selected_decks[-1], "Deck Atual")
             
-            print(f"[TOOL] ✅ Deck Anterior: {deck_december_path} ({deck_december_name})")
-            print(f"[TOOL] ✅ Deck Atual: {deck_january_path} ({deck_january_name})")
+            debug_print(f"[TOOL] ✅ Deck Anterior: {deck_december_path} ({deck_december_name})")
+            debug_print(f"[TOOL] ✅ Deck Atual: {deck_january_path} ({deck_january_name})")
             
             # ETAPA 2: Ler EXPT.DAT de ambos os decks
-            print("[TOOL] ETAPA 2: Lendo arquivos EXPT.DAT...")
+            debug_print("[TOOL] ETAPA 2: Lendo arquivos EXPT.DAT...")
             expt_dec = self._read_expt_file(deck_december_path)
             expt_jan = self._read_expt_file(deck_january_path)
             
@@ -167,21 +168,21 @@ class MudancasGeracoesTermicasTool(NEWAVETool):
                 }
             
             # ETAPA 3: Criar mapeamento código -> nome das usinas
-            print("[TOOL] ETAPA 3: Criando mapeamento código -> nome das usinas...")
+            debug_print("[TOOL] ETAPA 3: Criando mapeamento código -> nome das usinas...")
             mapeamento_codigo_nome = self._create_codigo_nome_mapping(expt_dec, expt_jan)
-            print(f"[TOOL] ✅ Mapeamento criado: {len(mapeamento_codigo_nome)} usinas mapeadas")
+            debug_print(f"[TOOL] ✅ Mapeamento criado: {len(mapeamento_codigo_nome)} usinas mapeadas")
             
             # ETAPA 3.5: Extrair usina da query (NOVO)
-            print("[TOOL] ETAPA 3.5: Verificando se há filtro por usina na query...")
+            debug_print("[TOOL] ETAPA 3.5: Verificando se há filtro por usina na query...")
             codigo_usina_filtro = self._extract_usina_from_query(query, expt_dec, expt_jan, mapeamento_codigo_nome)
             if codigo_usina_filtro is not None:
                 nome_usina_filtro = mapeamento_codigo_nome.get(codigo_usina_filtro, f"Usina {codigo_usina_filtro}")
-                print(f"[TOOL] ✅ Filtro por usina detectado: {codigo_usina_filtro} - {nome_usina_filtro}")
+                debug_print(f"[TOOL] ✅ Filtro por usina detectado: {codigo_usina_filtro} - {nome_usina_filtro}")
             else:
-                print("[TOOL] ℹ️ Nenhum filtro por usina detectado - retornando todas as mudanças")
+                debug_print("[TOOL] ℹ️ Nenhum filtro por usina detectado - retornando todas as mudanças")
             
             # ETAPA 4: Filtrar apenas registros de GTMIN
-            print("[TOOL] ETAPA 4: Filtrando registros de GTMIN...")
+            debug_print("[TOOL] ETAPA 4: Filtrando registros de GTMIN...")
             gtmin_dec = self._extract_gtmin_records(expt_dec)
             gtmin_jan = self._extract_gtmin_records(expt_jan)
             
@@ -189,19 +190,19 @@ class MudancasGeracoesTermicasTool(NEWAVETool):
             if codigo_usina_filtro is not None:
                 gtmin_dec = gtmin_dec[gtmin_dec['codigo_usina'] == codigo_usina_filtro]
                 gtmin_jan = gtmin_jan[gtmin_jan['codigo_usina'] == codigo_usina_filtro]
-                print(f"[TOOL] ✅ Dados filtrados por usina {codigo_usina_filtro}")
+                debug_print(f"[TOOL] ✅ Dados filtrados por usina {codigo_usina_filtro}")
             
-            print(f"[TOOL] ✅ Registros GTMIN Dezembro: {len(gtmin_dec)}")
-            print(f"[TOOL] ✅ Registros GTMIN Janeiro: {len(gtmin_jan)}")
+            debug_print(f"[TOOL] ✅ Registros GTMIN Dezembro: {len(gtmin_dec)}")
+            debug_print(f"[TOOL] ✅ Registros GTMIN Janeiro: {len(gtmin_jan)}")
             
             # ETAPA 5: Comparar e identificar mudanças
-            print("[TOOL] ETAPA 5: Identificando mudanças...")
+            debug_print("[TOOL] ETAPA 5: Identificando mudanças...")
             mudancas = self._identify_changes(gtmin_dec, gtmin_jan, deck_december_name, deck_january_name, mapeamento_codigo_nome)
             
-            print(f"[TOOL] ✅ Total de mudanças identificadas: {len(mudancas)}")
+            debug_print(f"[TOOL] ✅ Total de mudanças identificadas: {len(mudancas)}")
             
             # ETAPA 6: Ordenar por tipo e magnitude
-            print("[TOOL] ETAPA 6: Ordenando mudanças por tipo e magnitude...")
+            debug_print("[TOOL] ETAPA 6: Ordenando mudanças por tipo e magnitude...")
             ordem_tipo = {"aumento": 0, "queda": 1, "remocao": 2, "novo": 3}
             mudancas_ordenadas = sorted(mudancas, key=lambda x: (
                 ordem_tipo.get(x.get('tipo_mudanca', 'N/A'), 99),
@@ -258,7 +259,7 @@ class MudancasGeracoesTermicasTool(NEWAVETool):
             }
             
         except Exception as e:
-            print(f"[TOOL] ❌ Erro ao processar: {type(e).__name__}: {e}")
+            safe_print(f"[TOOL] ❌ Erro ao processar: {type(e).__name__}: {e}")
             import traceback
             traceback.print_exc()
             return {
@@ -278,11 +279,11 @@ class MudancasGeracoesTermicasTool(NEWAVETool):
         Returns:
             Dicionário com dados formatados para matriz de comparação
         """
-        print("[TOOL] Executando análise de matriz para múltiplos decks...")
+        debug_print("[TOOL] Executando análise de matriz para múltiplos decks...")
         
         try:
             # ETAPA 1: Ler EXPT.DAT de todos os decks
-            print("[TOOL] ETAPA 1: Lendo arquivos EXPT.DAT de todos os decks...")
+            debug_print("[TOOL] ETAPA 1: Lendo arquivos EXPT.DAT de todos os decks...")
             decks_expt = {}
             decks_gtmin = {}
             deck_names = []
@@ -294,13 +295,13 @@ class MudancasGeracoesTermicasTool(NEWAVETool):
                 
                 expt = self._read_expt_file(deck_path)
                 if expt is None:
-                    print(f"[TOOL] ⚠️ Arquivo EXPT.DAT não encontrado em {deck_path}")
+                    debug_print(f"[TOOL] ⚠️ Arquivo EXPT.DAT não encontrado em {deck_path}")
                     continue
                 
                 decks_expt[deck_display_name] = expt
                 gtmin = self._extract_gtmin_records(expt)
                 decks_gtmin[deck_display_name] = gtmin
-                print(f"[TOOL] ✅ Deck {deck_display_name}: {len(gtmin)} registros GTMIN")
+                debug_print(f"[TOOL] ✅ Deck {deck_display_name}: {len(gtmin)} registros GTMIN")
             
             if len(decks_expt) < 2:
                 return {
@@ -310,18 +311,18 @@ class MudancasGeracoesTermicasTool(NEWAVETool):
                 }
             
             # ETAPA 2: Criar mapeamento código -> nome das usinas (usar primeiro deck como base)
-            print("[TOOL] ETAPA 2: Criando mapeamento código -> nome das usinas...")
+            debug_print("[TOOL] ETAPA 2: Criando mapeamento código -> nome das usinas...")
             first_expt = list(decks_expt.values())[0]
             last_expt = list(decks_expt.values())[-1]
             mapeamento_codigo_nome = self._create_codigo_nome_mapping(first_expt, last_expt)
-            print(f"[TOOL] ✅ Mapeamento criado: {len(mapeamento_codigo_nome)} usinas mapeadas")
+            debug_print(f"[TOOL] ✅ Mapeamento criado: {len(mapeamento_codigo_nome)} usinas mapeadas")
             
             # ETAPA 3: Extrair usina da query (opcional)
-            print("[TOOL] ETAPA 3: Verificando se há filtro por usina na query...")
+            debug_print("[TOOL] ETAPA 3: Verificando se há filtro por usina na query...")
             codigo_usina_filtro = self._extract_usina_from_query(query, first_expt, last_expt, mapeamento_codigo_nome)
             if codigo_usina_filtro is not None:
                 nome_usina_filtro = mapeamento_codigo_nome.get(codigo_usina_filtro, f"Usina {codigo_usina_filtro}")
-                print(f"[TOOL] ✅ Filtro por usina detectado: {codigo_usina_filtro} - {nome_usina_filtro}")
+                debug_print(f"[TOOL] ✅ Filtro por usina detectado: {codigo_usina_filtro} - {nome_usina_filtro}")
                 # Aplicar filtro
                 for deck_name in decks_gtmin:
                     decks_gtmin[deck_name] = decks_gtmin[deck_name][
@@ -329,7 +330,7 @@ class MudancasGeracoesTermicasTool(NEWAVETool):
                     ]
             
             # ETAPA 4: Criar estrutura de dados para matriz
-            print("[TOOL] ETAPA 4: Criando estrutura de matriz de comparação...")
+            debug_print("[TOOL] ETAPA 4: Criando estrutura de matriz de comparação...")
             
             # Coletar todas as chaves únicas (codigo_usina, periodo_inicio, periodo_fim)
             def create_key(row):
@@ -343,7 +344,7 @@ class MudancasGeracoesTermicasTool(NEWAVETool):
                 for _, row in gtmin_df.iterrows():
                     all_keys.add(create_key(row))
             
-            print(f"[TOOL] ✅ Total de chaves únicas: {len(all_keys)}")
+            debug_print(f"[TOOL] ✅ Total de chaves únicas: {len(all_keys)}")
             
             # ETAPA 5: Construir matriz de comparação
             matrix_data = []
@@ -414,7 +415,7 @@ class MudancasGeracoesTermicasTool(NEWAVETool):
                 
                 matrix_data.append(matrix_row)
             
-            print(f"[TOOL] ✅ Matriz criada: {len(matrix_data)} registros com variações")
+            debug_print(f"[TOOL] ✅ Matriz criada: {len(matrix_data)} registros com variações")
             
             # ETAPA 6: Calcular estatísticas
             stats = {
@@ -435,7 +436,7 @@ class MudancasGeracoesTermicasTool(NEWAVETool):
             }
             
         except Exception as e:
-            print(f"[TOOL] ❌ Erro ao processar: {type(e).__name__}: {e}")
+            safe_print(f"[TOOL] ❌ Erro ao processar: {type(e).__name__}: {e}")
             import traceback
             traceback.print_exc()
             return {
@@ -461,14 +462,14 @@ class MudancasGeracoesTermicasTool(NEWAVETool):
             if os.path.exists(expt_path_lower):
                 expt_path = expt_path_lower
             else:
-                print(f"[TOOL] ⚠️ Arquivo EXPT.DAT não encontrado em {deck_path}")
+                debug_print(f"[TOOL] ⚠️ Arquivo EXPT.DAT não encontrado em {deck_path}")
                 return None
         
         try:
             expt = Expt.read(expt_path)
             return expt
         except Exception as e:
-            print(f"[TOOL] ❌ Erro ao ler EXPT.DAT: {e}")
+            safe_print(f"[TOOL] ❌ Erro ao ler EXPT.DAT: {e}")
             return None
     
     def _create_codigo_nome_mapping(self, expt_dec: Expt, expt_jan: Expt) -> Dict[int, str]:
@@ -496,7 +497,7 @@ class MudancasGeracoesTermicasTool(NEWAVETool):
                     # Verificar se nome é válido (não vazio, não NaN, não None)
                     if nome and nome != 'nan' and nome.lower() != 'none' and nome != '' and not pd.isna(row.get('nome_usina')):
                         mapeamento[codigo] = nome
-                        print(f"[TOOL] Mapeamento: {codigo} -> {nome}")
+                        debug_print(f"[TOOL] Mapeamento: {codigo} -> {nome}")
         
         # Processar deck de janeiro (sobrescreve se houver nome melhor ou se não existia)
         if expt_jan.expansoes is not None and not expt_jan.expansoes.empty:
@@ -509,7 +510,7 @@ class MudancasGeracoesTermicasTool(NEWAVETool):
                         # Sobrescrever se não existia ou se o nome é mais completo
                         if codigo not in mapeamento or (len(nome) > len(mapeamento.get(codigo, ''))):
                             mapeamento[codigo] = nome
-                            print(f"[TOOL] Mapeamento: {codigo} -> {nome}")
+                            debug_print(f"[TOOL] Mapeamento: {codigo} -> {nome}")
         
         # Se ainda faltam nomes, tentar cruzar com TERM.DAT (usando deck de dezembro como referência)
         codigos_sem_nome = []
@@ -520,7 +521,7 @@ class MudancasGeracoesTermicasTool(NEWAVETool):
         codigos_sem_nome = list(set(codigos_sem_nome))
         
         if codigos_sem_nome:
-            print(f"[TOOL] ⚠️ {len(codigos_sem_nome)} usinas sem nome no EXPT, tentando TERM.DAT...")
+            debug_print(f"[TOOL] ⚠️ {len(codigos_sem_nome)} usinas sem nome no EXPT, tentando TERM.DAT...")
             try:
                 from inewave.newave import Term
                 deck_path_ref = get_december_deck_path()
@@ -537,9 +538,9 @@ class MudancasGeracoesTermicasTool(NEWAVETool):
                                 nome_term = str(term_row.get('nome', '')).strip()
                                 if nome_term and nome_term != 'nan' and nome_term.lower() != 'none' and nome_term != '':
                                     mapeamento[codigo_term] = nome_term
-                                    print(f"[TOOL] ✅ Nome do TERM.DAT: {codigo_term} -> {nome_term}")
+                                    debug_print(f"[TOOL] ✅ Nome do TERM.DAT: {codigo_term} -> {nome_term}")
             except Exception as e:
-                print(f"[TOOL] ⚠️ Erro ao ler TERM.DAT para nomes: {e}")
+                debug_print(f"[TOOL] ⚠️ Erro ao ler TERM.DAT para nomes: {e}")
         
         return mapeamento
     
@@ -588,16 +589,16 @@ class MudancasGeracoesTermicasTool(NEWAVETool):
                 try:
                     codigo = int(match.group(1))
                     if codigo in codigos_validos:
-                        print(f"[TOOL] ✅ Código {codigo} encontrado por padrão numérico")
+                        debug_print(f"[TOOL] ✅ Código {codigo} encontrado por padrão numérico")
                         return codigo
                 except ValueError:
                     continue
         
         # ETAPA 2: Buscar por nome da usina usando o mapeamento
-        print(f"[TOOL] Buscando usina por nome na query: '{query}'")
+        debug_print(f"[TOOL] Buscando usina por nome na query: '{query}'")
         
         if not mapeamento_codigo_nome:
-            print("[TOOL] ⚠️ Mapeamento de nomes não disponível")
+            debug_print("[TOOL] ⚠️ Mapeamento de nomes não disponível")
             return None
         
         # Criar mapeamento reverso nome -> código (ordenado por tamanho do nome, maior primeiro)
@@ -622,7 +623,7 @@ class MudancasGeracoesTermicasTool(NEWAVETool):
             
             # Match exato do nome completo
             if nome_lower == query_lower.strip():
-                print(f"[TOOL] ✅ Código {codigo} encontrado por match exato '{nome_original}'")
+                debug_print(f"[TOOL] ✅ Código {codigo} encontrado por match exato '{nome_original}'")
                 return codigo
             
             # Match exato do nome completo dentro da query (com word boundaries)
@@ -632,7 +633,7 @@ class MudancasGeracoesTermicasTool(NEWAVETool):
                     # Verificar se está como palavra completa (não parte de outra palavra)
                     pattern = r'\b' + re.escape(nome_lower) + r'\b'
                     if re.search(pattern, query_lower):
-                        print(f"[TOOL] ✅ Código {codigo} encontrado por nome completo '{nome_original}' na query")
+                        debug_print(f"[TOOL] ✅ Código {codigo} encontrado por nome completo '{nome_original}' na query")
                         return codigo
         
         # ETAPA 2.2: Buscar por palavras-chave do nome (apenas se match exato não encontrou)
@@ -663,10 +664,10 @@ class MudancasGeracoesTermicasTool(NEWAVETool):
             # Ordenar por pontuação (maior primeiro)
             candidatos.sort(key=lambda x: x[2], reverse=True)
             melhor_candidato = candidatos[0]
-            print(f"[TOOL] ✅ Código {melhor_candidato[0]} encontrado por palavras-chave '{melhor_candidato[1]}' (score: {melhor_candidato[2]})")
+            debug_print(f"[TOOL] ✅ Código {melhor_candidato[0]} encontrado por palavras-chave '{melhor_candidato[1]}' (score: {melhor_candidato[2]})")
             return melhor_candidato[0]
         
-        print("[TOOL] ⚠️ Nenhuma usina encontrada na query")
+        debug_print("[TOOL] ⚠️ Nenhuma usina encontrada na query")
         return None
     
     def _extract_gtmin_records(self, expt: Expt) -> pd.DataFrame:

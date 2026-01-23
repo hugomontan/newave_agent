@@ -8,6 +8,7 @@ import os
 import pandas as pd
 import re
 from typing import Dict, Any, Optional
+from newave_agent.app.config import debug_print, safe_print
 
 class LimitesIntercambioTool(NEWAVETool):
     """
@@ -118,7 +119,7 @@ class LimitesIntercambioTool(NEWAVETool):
                     sub_para = int(match.group(2))
                     codigos_validos = [s['codigo'] for s in subsistemas_disponiveis]
                     if sub_de in codigos_validos and sub_para in codigos_validos:
-                        print(f"[TOOL] ✅ Códigos {sub_de} → {sub_para} encontrados por padrão numérico")
+                        debug_print(f"[TOOL] ✅ Códigos {sub_de} → {sub_para} encontrados por padrão numérico")
                         return (sub_de, sub_para)
                 except (ValueError, IndexError):
                     continue
@@ -141,7 +142,7 @@ class LimitesIntercambioTool(NEWAVETool):
                 nome_sub_lower = subsistema['nome'].lower().strip()
                 if nome_sub_lower and nome_sub_lower in nome_1:
                     sub_de = subsistema['codigo']
-                    print(f"[TOOL] ✅ Código {sub_de} encontrado como origem (padrão 'entre X e Y'): '{subsistema['nome']}'")
+                    debug_print(f"[TOOL] ✅ Código {sub_de} encontrado como origem (padrão 'entre X e Y'): '{subsistema['nome']}'")
                     break
             
             for subsistema in subsistemas_ordenados:
@@ -149,7 +150,7 @@ class LimitesIntercambioTool(NEWAVETool):
                 if nome_sub_lower and nome_sub_lower in nome_2:
                     if subsistema['codigo'] != sub_de:
                         sub_para = subsistema['codigo']
-                        print(f"[TOOL] ✅ Código {sub_para} encontrado como destino (padrão 'entre X e Y'): '{subsistema['nome']}'")
+                        debug_print(f"[TOOL] ✅ Código {sub_para} encontrado como destino (padrão 'entre X e Y'): '{subsistema['nome']}'")
                         break
             
             if sub_de is not None and sub_para is not None:
@@ -170,7 +171,7 @@ class LimitesIntercambioTool(NEWAVETool):
                 
                 if pos_para == -1 and pos_arrow == -1:
                     sub_de = codigo_sub
-                    print(f"[TOOL] ✅ Código {codigo_sub} encontrado como origem: '{nome_sub}'")
+                    debug_print(f"[TOOL] ✅ Código {codigo_sub} encontrado como origem: '{nome_sub}'")
                     break
         
         # Buscar segundo submercado (destino)
@@ -188,7 +189,7 @@ class LimitesIntercambioTool(NEWAVETool):
                 if (pos_para != -1 and pos_nome > pos_para) or (pos_arrow != -1 and pos_nome > pos_arrow):
                     if codigo_sub != sub_de:  # Não pode ser o mesmo
                         sub_para = codigo_sub
-                        print(f"[TOOL] ✅ Código {codigo_sub} encontrado como destino: '{nome_sub}'")
+                        debug_print(f"[TOOL] ✅ Código {codigo_sub} encontrado como destino: '{nome_sub}'")
                         break
         
         if sub_de is not None and sub_para is not None:
@@ -196,9 +197,9 @@ class LimitesIntercambioTool(NEWAVETool):
         
         # Se encontrou apenas um, retornar None (precisa de par)
         if sub_de is not None or sub_para is not None:
-            print("[TOOL] ⚠️ Apenas um submercado identificado, mas intercâmbio requer par")
+            debug_print("[TOOL] ⚠️ Apenas um submercado identificado, mas intercâmbio requer par")
         
-        print("[TOOL] ⚠️ Nenhum par de submercados específico detectado na query")
+        debug_print("[TOOL] ⚠️ Nenhum par de submercados específico detectado na query")
         return (None, None)
     
     def execute(self, query: str, **kwargs) -> Dict[str, Any]:
@@ -211,13 +212,13 @@ class LimitesIntercambioTool(NEWAVETool):
         3. Acessa propriedade limites_intercambio
         4. Processa e retorna dados
         """
-        print(f"[TOOL] {self.get_name()}: Iniciando execução...")
-        print(f"[TOOL] Query: {query[:100]}")
-        print(f"[TOOL] Deck path: {self.deck_path}")
+        debug_print(f"[TOOL] {self.get_name()}: Iniciando execução...")
+        debug_print(f"[TOOL] Query: {query[:100]}")
+        debug_print(f"[TOOL] Deck path: {self.deck_path}")
         
         try:
             # ETAPA 1: Verificar existência do arquivo
-            print("[TOOL] ETAPA 1: Verificando existência do arquivo SISTEMA.DAT...")
+            debug_print("[TOOL] ETAPA 1: Verificando existência do arquivo SISTEMA.DAT...")
             sistema_path = os.path.join(self.deck_path, "SISTEMA.DAT")
             
             if not os.path.exists(sistema_path):
@@ -225,37 +226,37 @@ class LimitesIntercambioTool(NEWAVETool):
                 if os.path.exists(sistema_path_lower):
                     sistema_path = sistema_path_lower
                 else:
-                    print(f"[TOOL] ❌ Arquivo SISTEMA.DAT não encontrado")
+                    safe_print(f"[TOOL] ❌ Arquivo SISTEMA.DAT não encontrado")
                     return {
                         "success": False,
                         "error": f"Arquivo SISTEMA.DAT não encontrado em {self.deck_path}",
                         "tool": self.get_name()
                     }
             
-            print(f"[TOOL] ✅ Arquivo encontrado: {sistema_path}")
+            debug_print(f"[TOOL] ✅ Arquivo encontrado: {sistema_path}")
             
             # ETAPA 2: Ler arquivo usando inewave
-            print("[TOOL] ETAPA 2: Lendo arquivo com inewave...")
+            debug_print("[TOOL] ETAPA 2: Lendo arquivo com inewave...")
             sistema = Sistema.read(sistema_path)
-            print("[TOOL] ✅ Arquivo lido com sucesso")
+            debug_print("[TOOL] ✅ Arquivo lido com sucesso")
             
             # ETAPA 3: Acessar propriedade limites_intercambio
-            print("[TOOL] ETAPA 3: Acessando propriedade limites_intercambio...")
+            debug_print("[TOOL] ETAPA 3: Acessando propriedade limites_intercambio...")
             df_limites = sistema.limites_intercambio
             
             if df_limites is None or df_limites.empty:
-                print("[TOOL] ❌ DataFrame vazio ou None")
+                safe_print(f"[TOOL] ❌ DataFrame vazio ou None")
                 return {
                     "success": False,
                     "error": "Dados de limites de intercâmbio não encontrados no arquivo",
                     "tool": self.get_name()
                 }
             
-            print(f"[TOOL] ✅ DataFrame obtido: {len(df_limites)} registros")
-            print(f"[TOOL] Colunas: {list(df_limites.columns)}")
+            debug_print(f"[TOOL] ✅ DataFrame obtido: {len(df_limites)} registros")
+            debug_print(f"[TOOL] Colunas: {list(df_limites.columns)}")
             
             # ETAPA 4: Identificar filtros da query
-            print("[TOOL] ETAPA 4: Identificando filtros...")
+            debug_print("[TOOL] ETAPA 4: Identificando filtros...")
             submercado_de, submercado_para = self._extract_submercados_from_query(query, sistema)
             
             # Detectar tipo de limite solicitado
@@ -263,25 +264,25 @@ class LimitesIntercambioTool(NEWAVETool):
             filtro_sentido = None
             if any(kw in query_lower for kw in ["minimo", "mínimo", "obrigatorio", "obrigatório"]):
                 filtro_sentido = 1  # Intercâmbio mínimo obrigatório
-                print("[TOOL] ✅ Filtro: Intercâmbio mínimo obrigatório")
+                debug_print("[TOOL] ✅ Filtro: Intercâmbio mínimo obrigatório")
             elif any(kw in query_lower for kw in ["maximo", "máximo", "limite"]):
                 filtro_sentido = 0  # Limite de intercâmbio
-                print("[TOOL] ✅ Filtro: Limite máximo de intercâmbio")
+                debug_print("[TOOL] ✅ Filtro: Limite máximo de intercâmbio")
             
             # Aplicar filtros
             df_filtrado = df_limites.copy()
             
             if submercado_de is not None:
                 df_filtrado = df_filtrado[df_filtrado['submercado_de'] == submercado_de]
-                print(f"[TOOL] ✅ Filtrado por submercado de origem: {submercado_de}")
+                debug_print(f"[TOOL] ✅ Filtrado por submercado de origem: {submercado_de}")
             
             if submercado_para is not None:
                 df_filtrado = df_filtrado[df_filtrado['submercado_para'] == submercado_para]
-                print(f"[TOOL] ✅ Filtrado por submercado de destino: {submercado_para}")
+                debug_print(f"[TOOL] ✅ Filtrado por submercado de destino: {submercado_para}")
             
             if filtro_sentido is not None:
                 df_filtrado = df_filtrado[df_filtrado['sentido'] == filtro_sentido]
-                print(f"[TOOL] ✅ Filtrado por sentido: {filtro_sentido}")
+                debug_print(f"[TOOL] ✅ Filtrado por sentido: {filtro_sentido}")
             
             if df_filtrado.empty:
                 return {
@@ -291,7 +292,7 @@ class LimitesIntercambioTool(NEWAVETool):
                 }
             
             # ETAPA 5: Processar dados
-            print("[TOOL] ETAPA 5: Processando dados...")
+            debug_print("[TOOL] ETAPA 5: Processando dados...")
             
             # Adicionar colunas auxiliares
             if 'data' in df_filtrado.columns:
@@ -299,7 +300,7 @@ class LimitesIntercambioTool(NEWAVETool):
                     try:
                         df_filtrado['data'] = pd.to_datetime(df_filtrado['data'], errors='coerce')
                     except Exception as e:
-                        print(f"[TOOL] ⚠️ Erro ao converter data: {e}")
+                        debug_print(f"[TOOL] ⚠️ Erro ao converter data: {e}")
                 
                 if pd.api.types.is_datetime64_any_dtype(df_filtrado['data']):
                     df_filtrado['ano'] = df_filtrado['data'].dt.year
@@ -348,7 +349,7 @@ class LimitesIntercambioTool(NEWAVETool):
                     })
             
             # ETAPA 6: Formatar resultado
-            print("[TOOL] ETAPA 6: Formatando resultado...")
+            debug_print("[TOOL] ETAPA 6: Formatando resultado...")
             
             # Converter DataFrame para lista de dicts
             result_data = df_filtrado.to_dict(orient="records")
@@ -397,14 +398,14 @@ class LimitesIntercambioTool(NEWAVETool):
             }
             
         except FileNotFoundError as e:
-            print(f"[TOOL] ❌ Erro FileNotFoundError: {e}")
+            safe_print(f"[TOOL] ❌ Erro FileNotFoundError: {e}")
             return {
                 "success": False,
                 "error": f"Arquivo não encontrado: {str(e)}",
                 "tool": self.get_name()
             }
         except Exception as e:
-            print(f"[TOOL] ❌ Erro ao processar: {type(e).__name__}: {e}")
+            safe_print(f"[TOOL] ❌ Erro ao processar: {type(e).__name__}: {e}")
             import traceback
             traceback.print_exc()
             return {

@@ -101,18 +101,18 @@ def format_tool_response(tool_result: dict, tool_used: str) -> dict:
     
     # Roteamento para formatação específica de cada tool
     if tool_used == "CargaMensalTool":
-        from .specific_formatters import format_carga_mensal_response
+        from newave_agent.app.agents.shared.helpers.tool_formatting.specific_formatters import format_carga_mensal_response
         return format_carga_mensal_response(tool_result, tool_used)
     elif tool_used == "ClastValoresTool":
-        from .specific_formatters import format_clast_valores_response
+        from newave_agent.app.agents.shared.helpers.tool_formatting.specific_formatters import format_clast_valores_response
         # Passar query para detectar se é CVU e gerar gráfico
         query = tool_result.get("query", "")
         return format_clast_valores_response(tool_result, tool_used, query)
     elif tool_used == "ExptOperacaoTool":
-        from .specific_formatters import format_expt_operacao_response
+        from newave_agent.app.agents.shared.helpers.tool_formatting.specific_formatters import format_expt_operacao_response
         return format_expt_operacao_response(tool_result, tool_used)
     elif tool_used == "ModifOperacaoTool":
-        from .specific_formatters import format_modif_operacao_response
+        from newave_agent.app.agents.shared.helpers.tool_formatting.specific_formatters import format_modif_operacao_response
         return format_modif_operacao_response(tool_result, tool_used)
     
     # Formatação genérica para outras tools - NÃO retornar dados crus

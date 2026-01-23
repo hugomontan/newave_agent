@@ -5,8 +5,15 @@ Suporta N decks para comparação dinâmica.
 """
 import math
 import re
+from collections import Counter
 from typing import Dict, Any, List, Optional, Tuple
 from newave_agent.app.agents.multi_deck.formatting.base import ComparisonFormatter, DeckData
+from newave_agent.app.agents.multi_deck.formatting.data_formatters.helpers import (
+    extract_data_from_all_decks,
+    get_unique_periods,
+    index_data_by_period,
+    get_period_key_from_record
+)
 
 
 class ClastComparisonFormatter(ComparisonFormatter):
@@ -112,7 +119,6 @@ class ClastComparisonFormatter(ComparisonFormatter):
         dec_indexed = self._index_estruturais(dados_estruturais_dec)
         jan_indexed = self._index_estruturais(dados_estruturais_jan)
         
-        # Construir tabela comparativa
         comparison_table = []
         chart_labels = []
         chart_series = {}  # {classe_nome: {dec: [...], jan: [...]}}
@@ -591,16 +597,14 @@ class ClastComparisonFormatter(ComparisonFormatter):
                 "error": "São necessários pelo menos 2 decks para comparação"
             }
         
-        # Extrair dados estruturais de todos os decks
         decks_info = []
-        all_dados_estruturais = []
+        all_dados_estruturais = extract_data_from_all_decks(decks_data, "dados_estruturais")
         
         for deck in decks_data:
             result = deck.result
             deck_info = self._get_year_and_month_from_deck(result)
             
             if deck_info is None:
-                # Fallback: tentar extrair do nome do deck
                 import re
                 deck_name = deck.name
                 match = re.search(r'NW(\d{4})(\d{2})', deck_name)
@@ -609,13 +613,11 @@ class ClastComparisonFormatter(ComparisonFormatter):
                     mes = int(match.group(2))
                     deck_info = (ano, mes)
                 else:
-                    # Último fallback
                     import datetime
                     ano_atual = datetime.datetime.now().year
                     deck_info = (ano_atual, 1)
             
             dados_estruturais = result.get("dados_estruturais", [])
-            all_dados_estruturais.extend(dados_estruturais)
             
             decks_info.append({
                 "deck": deck,
@@ -626,20 +628,18 @@ class ClastComparisonFormatter(ComparisonFormatter):
             })
         
         # Identificar a classe principal (mais frequente nos dados de todos os decks)
-        classes_count = {}
-        classe_nome_map = {}
-        for record in all_dados_estruturais:
-            classe = record.get("codigo_usina")
-            nome_usina = record.get("nome_usina", "")
-            if classe is not None:
-                classes_count[classe] = classes_count.get(classe, 0) + 1
-                if classe not in classe_nome_map and nome_usina:
-                    classe_nome_map[classe] = nome_usina
+        classes_list = [r.get("codigo_usina") for r in all_dados_estruturais if r.get("codigo_usina") is not None]
+        classes_count = Counter(classes_list)
+        classe_nome_map = {
+            r.get("codigo_usina"): r.get("nome_usina", "")
+            for r in all_dados_estruturais
+            if r.get("codigo_usina") is not None and r.get("nome_usina")
+        }
         
         classe_principal = None
         nome_classe_principal = None
         if classes_count:
-            classe_principal = max(classes_count.items(), key=lambda x: x[1])[0]
+            classe_principal = classes_count.most_common(1)[0][0]
             nome_classe_principal = classe_nome_map.get(classe_principal, f"Classe {classe_principal}")
         
         # Agrupar dados por deck e indice_ano_estudo
@@ -683,7 +683,6 @@ class ClastComparisonFormatter(ComparisonFormatter):
         # Ordenar anos
         sorted_years = sorted(comparison_by_year.keys())
         
-        # Função auxiliar para arredondar
         def safe_round(value):
             if value is None:
                 return None
@@ -779,18 +778,6 @@ class ClastComparisonFormatter(ComparisonFormatter):
         ]
         
         return self._format_cvu_simplified_multi(decks_data, "ClastValoresTool", "")
-    
-    def _sanitize_number(self, value) -> Optional[float]:
-        """Sanitiza valor numérico."""
-        if value is None:
-            return None
-        try:
-            float_val = float(value)
-            if math.isnan(float_val) or math.isinf(float_val):
-                return None
-            return float_val
-        except (ValueError, TypeError):
-            return None
 
 
 class CargaComparisonFormatter(ComparisonFormatter):
@@ -1056,7 +1043,6 @@ class CargaComparisonFormatter(ComparisonFormatter):
                 "error": "São necessários pelo menos 2 decks para comparação"
             }
         
-        # Extrair dados de todos os decks
         decks_info = []
         all_periods = set()
         
@@ -1064,7 +1050,6 @@ class CargaComparisonFormatter(ComparisonFormatter):
             result = deck.result
             data = result.get("data", [])
             
-            # Se há dados_por_submercado, usar apenas o primeiro submercado (ou o filtrado)
             if result.get("dados_por_submercado"):
                 dados_por_sub = result.get("dados_por_submercado", {})
                 if len(dados_por_sub) == 1:
@@ -1076,17 +1061,13 @@ class CargaComparisonFormatter(ComparisonFormatter):
                     if isinstance(first_sub, dict) and "dados" in first_sub:
                         data = first_sub["dados"]
             
-            # Indexar por período (ano-mês)
-            deck_by_period = {}  # {periodo_key: valor}
-            
-            for record in data:
-                periodo_key = self._get_period_key(record)
-                if periodo_key:
-                    valor = self._sanitize_number(record.get("valor"))
-                    if valor is not None:
-                        if periodo_key not in deck_by_period:
-                            deck_by_period[periodo_key] = valor
-                            all_periods.add(periodo_key)
+            deck_by_period = index_data_by_period(
+                data,
+                self._get_period_key,
+                value_key="valor",
+                sanitize_func=self._sanitize_number
+            )
+            all_periods.update(deck_by_period.keys())
             
             decks_info.append({
                 "deck": deck,
@@ -1094,10 +1075,8 @@ class CargaComparisonFormatter(ComparisonFormatter):
                 "by_period": deck_by_period
             })
         
-        # Ordenar períodos
         sorted_periods = sorted(all_periods)
         
-        # Função auxiliar para arredondar
         def safe_round(value):
             if value is None:
                 return None
@@ -1155,11 +1134,6 @@ class CargaComparisonFormatter(ComparisonFormatter):
                 # Adicionar ao dataset do gráfico
                 chart_datasets[deck_idx]["data"].append(value)
             
-            # Debug: verificar se valores foram adicionados
-            from newave_agent.app.config import safe_print
-            safe_print(f"[CargaComparisonFormatter] Linha tabela para {periodo_key}: {list(table_row.keys())}")
-            safe_print(f"[CargaComparisonFormatter] Valores: {[table_row.get(f'deck_{i+1}') for i in range(len(decks_info))]}")
-            
             comparison_table.append(table_row)
             chart_labels.append(periodo_label)
         
@@ -1176,18 +1150,6 @@ class CargaComparisonFormatter(ComparisonFormatter):
         else:
             title = "Carga Mensal"
             y_axis = "Carga (MWméd)"
-        
-        # Debug: verificar estrutura final da tabela
-        from newave_agent.app.config import safe_print
-        if comparison_table:
-            first_row = comparison_table[0]
-            safe_print(f"[CargaComparisonFormatter] ✅ Tabela gerada - Total de linhas: {len(comparison_table)}")
-            safe_print(f"[CargaComparisonFormatter] ✅ Primeira linha - Chaves: {list(first_row.keys())}")
-            deck_keys = [k for k in first_row.keys() if k.startswith('deck_')]
-            safe_print(f"[CargaComparisonFormatter] ✅ Colunas de deck encontradas: {deck_keys}")
-            safe_print(f"[CargaComparisonFormatter] ✅ Número de decks esperado: {len(decks_data)}")
-            if len(deck_keys) != len(decks_data):
-                safe_print(f"[CargaComparisonFormatter] ⚠️ AVISO: Número de colunas de deck ({len(deck_keys)}) não corresponde ao número de decks ({len(decks_data)})")
         
         return {
             "comparison_table": comparison_table,
@@ -1312,10 +1274,6 @@ class CargaComparisonFormatter(ComparisonFormatter):
                 table_row[deck_key] = round(media, 2) if media is not None else None
             
             # Debug: verificar se valores foram adicionados
-            from newave_agent.app.config import safe_print
-            safe_print(f"[CargaComparisonFormatter] Linha tabela por submercado {nome_sub}: {list(table_row.keys())}")
-            safe_print(f"[CargaComparisonFormatter] Valores: {[table_row.get(f'deck_{i+1}') for i in range(len(decks_info))]}")
-            
             summary_table.append(table_row)
         
         return {
@@ -1414,14 +1372,6 @@ class CargaComparisonFormatter(ComparisonFormatter):
         data_dec = result_dec.get("data", [])
         data_jan = result_jan.get("data", [])
         
-        # Debug: verificar dados recebidos
-        import sys
-        print(f"[FORMATTER] [CARGA_SIMPLIFIED] {tool_name} - dados_dec: {len(data_dec)}, dados_jan: {len(data_jan)}", file=sys.stderr)
-        if data_dec:
-            print(f"[FORMATTER] [CARGA_SIMPLIFIED] {tool_name} - exemplo record_dec: {data_dec[0]}", file=sys.stderr)
-            print(f"[FORMATTER] [CARGA_SIMPLIFIED] {tool_name} - keys record_dec: {list(data_dec[0].keys()) if data_dec else []}", file=sys.stderr)
-        if data_jan:
-            print(f"[FORMATTER] [CARGA_SIMPLIFIED] {tool_name} - exemplo record_jan: {data_jan[0]}", file=sys.stderr)
         
         # Se há dados_por_submercado, usar apenas o primeiro submercado (ou o filtrado)
         # (a tool já filtra por submercado quando solicitado)
@@ -1453,23 +1403,14 @@ class CargaComparisonFormatter(ComparisonFormatter):
         jan_by_period = {}  # {ano_mes: valor}
         
         # Processar dados de dezembro
-        import sys
-        records_sem_periodo = 0
-        for idx, record in enumerate(data_dec):
+        for record in data_dec:
             periodo_key = self._get_period_key(record)
-            if not periodo_key:
-                records_sem_periodo += 1
-                # Debug: verificar por que não encontrou período (apenas primeiros 3)
-                if records_sem_periodo <= 3:
-                    print(f"[FORMATTER] [CARGA_SIMPLIFIED] {tool_name} - record[{idx}] sem período: keys={list(record.keys())}, ano={record.get('ano')}, mes={record.get('mes')}, data={record.get('data')}, tipo_data={type(record.get('data'))}", file=sys.stderr)
             if periodo_key:
                 valor = self._sanitize_number(record.get("valor"))
                 if valor is not None:
                     # Se já existe valor para este período, manter o primeiro
                     if periodo_key not in dec_by_period:
                         dec_by_period[periodo_key] = valor
-        if records_sem_periodo > 0:
-            print(f"[FORMATTER] [CARGA_SIMPLIFIED] {tool_name} - total records sem período em dezembro: {records_sem_periodo}/{len(data_dec)}", file=sys.stderr)
         
         # Processar dados de janeiro
         for record in data_jan:
@@ -1480,17 +1421,8 @@ class CargaComparisonFormatter(ComparisonFormatter):
                     if periodo_key not in jan_by_period:
                         jan_by_period[periodo_key] = valor
         
-        # Debug: verificar períodos encontrados
-        import sys
-        print(f"[FORMATTER] [CARGA_SIMPLIFIED] {tool_name} - períodos_dec: {len(dec_by_period)}, períodos_jan: {len(jan_by_period)}", file=sys.stderr)
-        if len(dec_by_period) > 0:
-            print(f"[FORMATTER] [CARGA_SIMPLIFIED] {tool_name} - exemplo período_dec: {list(dec_by_period.keys())[:3]}", file=sys.stderr)
-        if len(jan_by_period) > 0:
-            print(f"[FORMATTER] [CARGA_SIMPLIFIED] {tool_name} - exemplo período_jan: {list(jan_by_period.keys())[:3]}", file=sys.stderr)
-        
         # Obter todos os períodos únicos e ordenar
         all_periods = sorted(set(list(dec_by_period.keys()) + list(jan_by_period.keys())))
-        print(f"[FORMATTER] [CARGA_SIMPLIFIED] {tool_name} - total períodos únicos: {len(all_periods)}", file=sys.stderr)
         
         # Construir tabela comparativa simplificada
         comparison_table = []
@@ -1567,10 +1499,6 @@ class CargaComparisonFormatter(ComparisonFormatter):
             dec_values.append(safe_round(val_dec))
             jan_values.append(safe_round(val_jan))
         
-        # Debug: verificar chart_labels antes de criar chart_data
-        import sys
-        print(f"[FORMATTER] [CARGA_SIMPLIFIED] {tool_name} - chart_labels: {len(chart_labels)}, dec_values: {len(dec_values)}, jan_values: {len(jan_values)}", file=sys.stderr)
-        
         # Construir chart_data (uma linha por deck - mesmo formato do CVU)
         chart_data = {
             "labels": chart_labels,
@@ -1586,7 +1514,6 @@ class CargaComparisonFormatter(ComparisonFormatter):
             ]
         } if chart_labels else None
         
-        print(f"[FORMATTER] [CARGA_SIMPLIFIED] {tool_name} - chart_data gerado: {chart_data is not None}", file=sys.stderr)
         
         # Determinar título e eixo Y baseado na tool
         if tool_name == "CadicTool":
@@ -1608,27 +1535,6 @@ class CargaComparisonFormatter(ComparisonFormatter):
             }
         }
     
-    def _format_period_label(self, periodo_key: str) -> str:
-        """
-        Formata chave de período (ex: "2025-12") para label legível (ex: "Dez/2025").
-        """
-        try:
-            if "-" in periodo_key:
-                parts = periodo_key.split("-")
-                if len(parts) == 2:
-                    ano = parts[0]
-                    mes = int(parts[1])
-                    meses_nomes = {
-                        1: "Jan", 2: "Fev", 3: "Mar", 4: "Abr",
-                        5: "Mai", 6: "Jun", 7: "Jul", 8: "Ago",
-                        9: "Set", 10: "Out", 11: "Nov", 12: "Dez"
-                    }
-                    mes_nome = meses_nomes.get(mes, f"M{mes}")
-                    return f"{mes_nome}/{ano}"
-            return periodo_key
-        except (ValueError, IndexError):
-            return periodo_key
-    
     def _group_by_submercado(self, data: List[Dict]) -> Dict[str, Dict]:
         """Agrupa dados por submercado."""
         grouped = {}
@@ -1639,52 +1545,6 @@ class CargaComparisonFormatter(ComparisonFormatter):
                     grouped[sub] = {"codigo": sub, "nome": f"Subsistema {sub}", "dados": []}
                 grouped[sub]["dados"].append(record)
         return grouped
-    
-    def _get_period_key(self, record: Dict) -> Optional[str]:
-        """Obtém chave de período (ano-mês)."""
-        # Tentar ano e mes primeiro
-        ano = record.get("ano")
-        mes = record.get("mes")
-        
-        # Verificar se são válidos (não None, não NaN)
-        if ano is not None and mes is not None:
-            try:
-                # Converter para int, tratando casos onde podem ser float ou string
-                ano_int = int(float(ano)) if isinstance(ano, (int, float, str)) else None
-                mes_int = int(float(mes)) if isinstance(mes, (int, float, str)) else None
-                if ano_int is not None and mes_int is not None:
-                    return f"{ano_int:04d}-{mes_int:02d}"
-            except (ValueError, TypeError):
-                pass
-        
-        # Tentar campo data
-        data = record.get("data")
-        if data:
-            # Se data é string ISO, extrair ano-mês
-            if isinstance(data, str):
-                # Formato ISO: "2025-12-01T00:00:00" ou "2025-12-01"
-                if len(data) >= 7 and "-" in data:
-                    return data[:7]  # YYYY-MM
-            # Se data é datetime object, converter
-            elif hasattr(data, 'year') and hasattr(data, 'month'):
-                try:
-                    return f"{data.year:04d}-{data.month:02d}"
-                except (AttributeError, ValueError):
-                    pass
-        
-        return None
-    
-    def _sanitize_number(self, value) -> Optional[float]:
-        """Sanitiza valor numérico."""
-        if value is None:
-            return None
-        try:
-            float_val = float(value)
-            if math.isnan(float_val) or math.isinf(float_val):
-                return None
-            return float_val
-        except (ValueError, TypeError):
-            return None
 
 
 class VazoesComparisonFormatter(ComparisonFormatter):
@@ -1962,18 +1822,6 @@ class VazoesComparisonFormatter(ComparisonFormatter):
             if key in record:
                 return self._sanitize_number(record[key])
         return None
-    
-    def _sanitize_number(self, value) -> Optional[float]:
-        """Sanitiza valor numérico."""
-        if value is None:
-            return None
-        try:
-            float_val = float(value)
-            if math.isnan(float_val) or math.isinf(float_val):
-                return None
-            return float_val
-        except (ValueError, TypeError):
-            return None
 
 
 class UsinasNaoSimuladasFormatter(ComparisonFormatter):
@@ -2496,29 +2344,6 @@ class UsinasNaoSimuladasFormatter(ComparisonFormatter):
             "is_multi_deck": len(decks_data) > 2,
             "tool_name": "UsinasNaoSimuladasTool"  # Garantir que tool_name está presente
         }
-    
-    def _get_period_key(self, record: Dict) -> Optional[str]:
-        """Obtém chave de período."""
-        ano = record.get("ano")
-        mes = record.get("mes")
-        if ano is not None and mes is not None:
-            return f"{int(ano):04d}-{int(mes):02d}"
-        data = record.get("data")
-        if data and isinstance(data, str) and len(data) >= 7:
-            return data[:7]
-        return None
-    
-    def _sanitize_number(self, value) -> Optional[float]:
-        """Sanitiza valor numérico."""
-        if value is None:
-            return None
-        try:
-            float_val = float(value)
-            if math.isnan(float_val) or math.isinf(float_val):
-                return None
-            return float_val
-        except (ValueError, TypeError):
-            return None
 
 
 class LimitesIntercambioComparisonFormatter(ComparisonFormatter):
@@ -2639,7 +2464,7 @@ class LimitesIntercambioComparisonFormatter(ComparisonFormatter):
                     })
                 
                 # Labels formatados para o gráfico
-                par_labels = [self._format_period_label(periodo) for periodo in all_periodos]
+                par_labels = [self._format_period_label_numeric(periodo) for periodo in all_periodos]
                 
                 # Criar chart_data para este par
                 par_chart_data = {
@@ -2661,7 +2486,7 @@ class LimitesIntercambioComparisonFormatter(ComparisonFormatter):
                 
                 # Construir tabela (todos os períodos, com N colunas)
                 for periodo in all_periodos:
-                    periodo_formatted = self._format_period_label(periodo)
+                    periodo_formatted = self._format_period_label_numeric(periodo)
                     
                     table_row = {
                         "data": periodo_formatted,
@@ -2688,18 +2513,6 @@ class LimitesIntercambioComparisonFormatter(ComparisonFormatter):
         
         # Resumo
         pares_afetados = len(set(row["par_key"] for row in comparison_table)) if comparison_table else 0
-        
-        # Debug: verificar estrutura final da tabela
-        from newave_agent.app.config import safe_print
-        if comparison_table:
-            first_row = comparison_table[0]
-            safe_print(f"[LimitesIntercambioFormatter] ✅ Tabela gerada - Total de linhas: {len(comparison_table)}")
-            safe_print(f"[LimitesIntercambioFormatter] ✅ Primeira linha - Chaves: {list(first_row.keys())}")
-            deck_keys = [k for k in first_row.keys() if k.startswith('deck_')]
-            safe_print(f"[LimitesIntercambioFormatter] ✅ Colunas de deck encontradas: {deck_keys}")
-            safe_print(f"[LimitesIntercambioFormatter] ✅ Número de decks esperado: {len(decks_data)}")
-            if len(deck_keys) != len(decks_data):
-                safe_print(f"[LimitesIntercambioFormatter] ⚠️ AVISO: Número de colunas de deck ({len(deck_keys)}) não corresponde ao número de decks ({len(decks_data)})")
         
         return {
             "comparison_table": comparison_table,
@@ -2758,20 +2571,10 @@ class LimitesIntercambioComparisonFormatter(ComparisonFormatter):
         all_pares = set(dec_indexed.keys()) | set(jan_indexed.keys())
         
         # ETAPA NOVA: Detectar se a query especifica um par específico
-        from newave_agent.app.config import safe_print
-        safe_print(f"[FORMATTER] [DEBUG] format_comparison - Query recebida: '{query}'")
-        safe_print(f"[FORMATTER] [DEBUG] format_comparison - Total de pares encontrados antes do filtro: {len(all_pares)}")
-        for par_key in sorted(all_pares):
-            safe_print(f"[FORMATTER] [DEBUG]   Par encontrado: {par_key}")
-        
         par_filtrado = self._extract_par_from_query(query, result_dec, result_jan)
-        safe_print(f"[FORMATTER] [DEBUG] format_comparison - Par filtrado retornado: {par_filtrado}")
         
         # Se um par específico foi detectado, filtrar apenas esse par
         if par_filtrado is not None:
-            # par_filtrado é uma tupla (sub_de, sub_para) ou (sub_de, sub_para, sentido)
-            # Filtrar all_pares para incluir apenas os que correspondem ao par detectado
-            safe_print(f"[FORMATTER] [DEBUG] format_comparison - Filtrando pares com: {par_filtrado}")
             pares_filtrados = set()
             for par_key in all_pares:
                 parts = par_key.split("-")
@@ -2780,35 +2583,18 @@ class LimitesIntercambioComparisonFormatter(ComparisonFormatter):
                     sub_para_key = parts[1]
                     sentido_key = parts[2] if len(parts) >= 3 else None
                     
-                    safe_print(f"[FORMATTER] [DEBUG]   Verificando par_key '{par_key}': sub_de={sub_de_key}, sub_para={sub_para_key}, sentido={sentido_key}")
-                    
                     # Verificar se corresponde ao par filtrado
                     if len(par_filtrado) == 2:
-                        # Apenas sub_de e sub_para foram especificados
                         if str(par_filtrado[0]) == sub_de_key and str(par_filtrado[1]) == sub_para_key:
-                            safe_print(f"[FORMATTER] [DEBUG]     ✅ Par corresponde (sem sentido)")
                             pares_filtrados.add(par_key)
-                        else:
-                            safe_print(f"[FORMATTER] [DEBUG]     ❌ Par não corresponde")
                     elif len(par_filtrado) == 3:
-                        # sub_de, sub_para e sentido foram especificados
                         if (str(par_filtrado[0]) == sub_de_key and 
                             str(par_filtrado[1]) == sub_para_key and
                             sentido_key is not None and str(par_filtrado[2]) == sentido_key):
-                            safe_print(f"[FORMATTER] [DEBUG]     ✅ Par corresponde (com sentido)")
                             pares_filtrados.add(par_key)
-                        else:
-                            safe_print(f"[FORMATTER] [DEBUG]     ❌ Par não corresponde")
-            
-            safe_print(f"[FORMATTER] [DEBUG] format_comparison - Pares filtrados encontrados: {len(pares_filtrados)}")
-            for par_key in sorted(pares_filtrados):
-                safe_print(f"[FORMATTER] [DEBUG]   Par filtrado: {par_key}")
             
             if pares_filtrados:
                 all_pares = pares_filtrados
-                safe_print(f"[FORMATTER] [DEBUG] format_comparison - Usando {len(all_pares)} pares filtrados")
-            else:
-                safe_print(f"[FORMATTER] [DEBUG] format_comparison - ⚠️ Nenhum par correspondeu ao filtro, usando todos os pares")
         
         # Construir tabela comparativa (todos os registros) e charts_by_par
         comparison_table = []
@@ -2850,12 +2636,12 @@ class LimitesIntercambioComparisonFormatter(ComparisonFormatter):
                     par_dec_values.append(self._safe_round(val_dec))
                     par_jan_values.append(self._safe_round(val_jan))
                     
-                    # Formatar período como mês-ano (ex: "Dez/2025") para labels do gráfico
-                    periodo_formatted = self._format_period_label(periodo)
+                    # Formatar período como mês-ano (ex: "12/2025") para labels do gráfico
+                    periodo_formatted = self._format_period_label_numeric(periodo)
                     par_labels.append(periodo_formatted)
                     
                     # Incluir TODOS os registros na tabela, independente de serem iguais ou não
-                    periodo_formatted_table = self._format_period_label(periodo)
+                    periodo_formatted_table = self._format_period_label_numeric(periodo)
                     
                     comparison_table.append({
                         "data": periodo_formatted_table,  # Formato mês-ano
@@ -2984,9 +2770,10 @@ class LimitesIntercambioComparisonFormatter(ComparisonFormatter):
         # Fallback: usar código
         return f"Subsistema {codigo}"
     
-    def _format_period_label(self, periodo_key: str) -> str:
+    def _format_period_label_numeric(self, periodo_key: str) -> str:
         """
-        Formata chave de período (ex: "2025-12") para label legível (ex: "12/2025").
+        Formata chave de período (ex: "2025-12") para label numérico (ex: "12/2025").
+        Variação específica para LimitesIntercambioComparisonFormatter.
         """
         try:
             if "-" in periodo_key:
@@ -2998,34 +2785,6 @@ class LimitesIntercambioComparisonFormatter(ComparisonFormatter):
             return periodo_key
         except (ValueError, IndexError):
             return periodo_key
-    
-    def _safe_round(self, value) -> Optional[float]:
-        """Arredonda valor com tratamento de NaN/None, sem decimais quando inteiro."""
-        if value is None:
-            return None
-        try:
-            rounded = round(value, 2)
-            # Verificar se o resultado é NaN ou Inf
-            if math.isnan(rounded) or math.isinf(rounded):
-                return None
-            # Se for número inteiro, retornar sem decimais
-            if rounded == int(rounded):
-                return int(rounded)
-            return rounded
-        except (ValueError, TypeError):
-            return None
-    
-    def _sanitize_number(self, value) -> Optional[float]:
-        """Sanitiza valor numérico."""
-        if value is None:
-            return None
-        try:
-            float_val = float(value)
-            if math.isnan(float_val) or math.isinf(float_val):
-                return None
-            return float_val
-        except (ValueError, TypeError):
-            return None
     
     def _extract_par_from_query(self, query: str, result_dec: Dict[str, Any], result_jan: Dict[str, Any]) -> Optional[Tuple]:
         """
@@ -3040,17 +2799,12 @@ class LimitesIntercambioComparisonFormatter(ComparisonFormatter):
         Returns:
             Tupla (sub_de, sub_para) ou (sub_de, sub_para, sentido) ou None
         """
-        from newave_agent.app.config import safe_print
-        
         query_lower = query.lower()
-        safe_print(f"[FORMATTER] [DEBUG] _extract_par_from_query - Query original: '{query}'")
-        safe_print(f"[FORMATTER] [DEBUG] _extract_par_from_query - Query lower: '{query_lower}'")
         
         # Obter lista de submercados disponíveis dos resultados
         subsistemas_disponiveis = []
         for result in [result_dec, result_jan]:
             data = result.get("data", [])
-            safe_print(f"[FORMATTER] [DEBUG] Processando {len(data)} registros de dados")
             for record in data:
                 sub_de = record.get("submercado_de")
                 nome_de = record.get("nome_submercado_de")
@@ -3077,12 +2831,7 @@ class LimitesIntercambioComparisonFormatter(ComparisonFormatter):
                     seen.add(key)
                     subsistemas_unicos.append(s)
         
-        safe_print(f"[FORMATTER] [DEBUG] Subsistemas únicos encontrados: {len(subsistemas_unicos)}")
-        for s in subsistemas_unicos:
-            safe_print(f"[FORMATTER] [DEBUG]   - Código {s['codigo']}: '{s['nome']}'")
-        
         if not subsistemas_unicos:
-            safe_print(f"[FORMATTER] [DEBUG] Nenhum subsistema encontrado, retornando None")
             return None
         
         # ETAPA 1: Tentar extrair números explícitos
@@ -3094,17 +2843,13 @@ class LimitesIntercambioComparisonFormatter(ComparisonFormatter):
             r'entre\s*submercado\s*(\d+)\s*e\s*submercado\s*(\d+)',
         ]
         
-        safe_print(f"[FORMATTER] [DEBUG] ETAPA 1: Tentando padrões numéricos...")
-        for i, pattern in enumerate(patterns):
+        for pattern in patterns:
             match = re.search(pattern, query_lower)
             if match:
-                safe_print(f"[FORMATTER] [DEBUG]   Padrão {i+1} '{pattern}' encontrou match: {match.groups()}")
                 try:
                     sub_de = int(match.group(1))
                     sub_para = int(match.group(2))
                     codigos_validos = [s['codigo'] for s in subsistemas_unicos if s['codigo'] is not None]
-                    safe_print(f"[FORMATTER] [DEBUG]   Códigos extraídos: {sub_de} -> {sub_para}")
-                    safe_print(f"[FORMATTER] [DEBUG]   Códigos válidos disponíveis: {codigos_validos}")
                     if sub_de in codigos_validos and sub_para in codigos_validos:
                         # Verificar se há filtro de sentido
                         sentido = None
@@ -3114,25 +2859,14 @@ class LimitesIntercambioComparisonFormatter(ComparisonFormatter):
                             sentido = 0
                         
                         if sentido is not None:
-                            safe_print(f"[FORMATTER] [DEBUG] ✅ Retornando par com sentido: ({sub_de}, {sub_para}, {sentido})")
                             return (sub_de, sub_para, sentido)
-                        safe_print(f"[FORMATTER] [DEBUG] ✅ Retornando par sem sentido: ({sub_de}, {sub_para})")
                         return (sub_de, sub_para)
-                    else:
-                        safe_print(f"[FORMATTER] [DEBUG]   Códigos não estão na lista de válidos")
-                except (ValueError, IndexError) as e:
-                    safe_print(f"[FORMATTER] [DEBUG]   Erro ao processar match: {e}")
-                    continue
-            else:
-                safe_print(f"[FORMATTER] [DEBUG]   Padrão {i+1} '{pattern}' não encontrou match")
+                except (ValueError, IndexError):
+                    pass
         
         # ETAPA 2: Buscar por nomes de submercados
         # Ordenar por tamanho do nome (mais específico primeiro)
         subsistemas_ordenados = sorted(subsistemas_unicos, key=lambda x: len(x['nome']), reverse=True)
-        safe_print(f"[FORMATTER] [DEBUG] ETAPA 2: Buscando por nomes de submercados...")
-        safe_print(f"[FORMATTER] [DEBUG]   Subsistemas ordenados (por tamanho de nome):")
-        for s in subsistemas_ordenados:
-            safe_print(f"[FORMATTER] [DEBUG]     - '{s['nome']}' (código {s['codigo']})")
         
         sub_de = None
         sub_para = None
@@ -3142,14 +2876,12 @@ class LimitesIntercambioComparisonFormatter(ComparisonFormatter):
         if pattern_entre:
             nome_1 = pattern_entre.group(1).strip()
             nome_2 = pattern_entre.group(2).strip()
-            safe_print(f"[FORMATTER] [DEBUG]   Padrão 'entre X e Y' encontrado: '{nome_1}' e '{nome_2}'")
             
             # Buscar submercados que correspondem aos nomes
             for subsistema in subsistemas_ordenados:
                 nome_sub_lower = subsistema['nome'].lower().strip()
                 if nome_sub_lower and nome_sub_lower in nome_1:
                     sub_de = subsistema['codigo']
-                    safe_print(f"[FORMATTER] [DEBUG]     ✅ Origem encontrada: '{subsistema['nome']}' (código {sub_de}) em '{nome_1}'")
                     break
             
             for subsistema in subsistemas_ordenados:
@@ -3157,7 +2889,6 @@ class LimitesIntercambioComparisonFormatter(ComparisonFormatter):
                 if nome_sub_lower and nome_sub_lower in nome_2:
                     if subsistema['codigo'] != sub_de:
                         sub_para = subsistema['codigo']
-                        safe_print(f"[FORMATTER] [DEBUG]     ✅ Destino encontrado: '{subsistema['nome']}' (código {sub_para}) em '{nome_2}'")
                         break
             
             if sub_de is not None and sub_para is not None:
@@ -3169,16 +2900,10 @@ class LimitesIntercambioComparisonFormatter(ComparisonFormatter):
                     sentido = 0
                 
                 if sentido is not None:
-                    safe_print(f"[FORMATTER] [DEBUG] ✅ Retornando par 'entre X e Y' com sentido: ({sub_de}, {sub_para}, {sentido})")
                     return (sub_de, sub_para, sentido)
-                safe_print(f"[FORMATTER] [DEBUG] ✅ Retornando par 'entre X e Y' sem sentido: ({sub_de}, {sub_para})")
                 return (sub_de, sub_para)
-            else:
-                safe_print(f"[FORMATTER] [DEBUG]   Padrão 'entre X e Y' não encontrou par completo (sub_de={sub_de}, sub_para={sub_para})")
         
-        # Padrão: "X para Y" ou "X → Y" - NOVA LÓGICA SIMPLIFICADA
-        # Identificar todos os nomes de submercados na query e ordenar por posição cronológica
-        safe_print(f"[FORMATTER] [DEBUG]   Padrão 'X para Y': Buscando todos os submercados na query...")
+        # Padrão: "X para Y" ou "X → Y" - Identificar todos os nomes de submercados na query e ordenar por posição cronológica
         
         submercados_encontrados = []
         for subsistema in subsistemas_ordenados:
@@ -3198,14 +2923,10 @@ class LimitesIntercambioComparisonFormatter(ComparisonFormatter):
                         'nome': nome_sub,
                         'posicao': pos
                     })
-                    safe_print(f"[FORMATTER] [DEBUG]     Encontrado '{nome_sub}' (código {codigo_sub}) na posição {pos}")
                     pos += 1
         
         # Ordenar por posição na query (ordem cronológica)
         submercados_encontrados.sort(key=lambda x: x['posicao'])
-        safe_print(f"[FORMATTER] [DEBUG]   Submercados encontrados em ordem cronológica:")
-        for i, sub in enumerate(submercados_encontrados):
-            safe_print(f"[FORMATTER] [DEBUG]     {i+1}. '{sub['nome']}' (código {sub['codigo']}) na posição {sub['posicao']}")
         
         # Se encontrou pelo menos 2 submercados diferentes, usar os 2 primeiros
         if len(submercados_encontrados) >= 2:
@@ -3220,9 +2941,6 @@ class LimitesIntercambioComparisonFormatter(ComparisonFormatter):
             if len(submercados_unicos) >= 2:
                 sub_de = submercados_unicos[0]['codigo']
                 sub_para = submercados_unicos[1]['codigo']
-                safe_print(f"[FORMATTER] [DEBUG]   ✅ Par identificado por ordem cronológica:")
-                safe_print(f"[FORMATTER] [DEBUG]     Origem: '{submercados_unicos[0]['nome']}' (código {sub_de})")
-                safe_print(f"[FORMATTER] [DEBUG]     Destino: '{submercados_unicos[1]['nome']}' (código {sub_para})")
                 
                 # Verificar se há filtro de sentido
                 sentido = None
@@ -3232,16 +2950,9 @@ class LimitesIntercambioComparisonFormatter(ComparisonFormatter):
                     sentido = 0
                 
                 if sentido is not None:
-                    safe_print(f"[FORMATTER] [DEBUG] ✅ Retornando par 'X para Y' com sentido: ({sub_de}, {sub_para}, {sentido})")
                     return (sub_de, sub_para, sentido)
-                safe_print(f"[FORMATTER] [DEBUG] ✅ Retornando par 'X para Y' sem sentido: ({sub_de}, {sub_para})")
                 return (sub_de, sub_para)
-            else:
-                safe_print(f"[FORMATTER] [DEBUG]   Apenas {len(submercados_unicos)} submercado(s) único(s) encontrado(s)")
-        else:
-            safe_print(f"[FORMATTER] [DEBUG]   Apenas {len(submercados_encontrados)} submercado(s) encontrado(s) na query")
         
-        safe_print(f"[FORMATTER] [DEBUG] ❌ Nenhum par detectado, retornando None")
         return None
 
 

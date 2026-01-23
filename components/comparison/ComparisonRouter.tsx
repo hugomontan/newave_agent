@@ -25,6 +25,22 @@ interface ComparisonRouterProps {
   comparison: ComparisonData;
 }
 
+// Mapeamento estático de tool_name para componente (casos diretos)
+const TOOL_COMPONENT_MAP: Record<string, React.ComponentType<{comparison: ComparisonData}>> = {
+  'ClastValoresTool': CVUView,
+  'CargaMensalTool': CargaMensalView,
+  'CadicTool': CargaMensalView,
+  'VazoesTool': UsinasNaoSimuladasView,
+  'DsvaguaTool': UsinasNaoSimuladasView,
+  'RestricaoEletricaTool': RestricaoEletricaView,
+};
+
+// Função auxiliar para verificar se tool_name corresponde a um padrão
+function matchesToolPattern(toolName: string, patterns: string[]): boolean {
+  const normalized = toolName.toLowerCase();
+  return patterns.some(pattern => normalized.includes(pattern.toLowerCase()));
+}
+
 export function ComparisonRouter({ comparison }: ComparisonRouterProps) {
   const { visualization_type, tool_name, comparison_table, chart_data, chart_config } = comparison;
 
@@ -194,8 +210,9 @@ export function ComparisonRouter({ comparison }: ComparisonRouterProps) {
     case "table_with_line_chart":
       // Tools que compartilham table_with_line_chart
       // IMPORTANTE: UsinasNaoSimuladasTool e InflexibilidadeTool já foram tratados acima, não devem chegar aqui
-      if (normalizedToolName === "CargaMensalTool" || normalizedToolName === "CadicTool") {
-        return <CargaMensalView comparison={comparison} />;
+      const directComponent = TOOL_COMPONENT_MAP[normalizedToolName];
+      if (directComponent) {
+        return React.createElement(directComponent, { comparison });
       }
       if (normalizedToolName === "ClastValoresTool") {
         return <CVUView comparison={comparison} />;
@@ -332,14 +349,14 @@ export function ComparisonRouter({ comparison }: ComparisonRouterProps) {
     case "desconhecido":
       // Tentar renderizar com base no tool_name e dados disponíveis
       // IMPORTANTE: UsinasNaoSimuladasTool já foi tratado acima, não deve chegar aqui
-      if (normalizedToolName === "ClastValoresTool" && (hasTableData || hasChartData)) {
-        return <CVUView comparison={comparison} />;
-      }
-      if ((normalizedToolName === "CargaMensalTool" || normalizedToolName === "CadicTool") && (hasTableData || hasChartData)) {
-        return <CargaMensalView comparison={comparison} />;
-      }
-      if ((normalizedToolName === "VazoesTool" || normalizedToolName === "DsvaguaTool") && (hasTableData || hasChartData)) {
-        return <UsinasNaoSimuladasView comparison={comparison} />;
+      if (hasTableData || hasChartData) {
+        const fallbackComponent = TOOL_COMPONENT_MAP[normalizedToolName];
+        if (fallbackComponent) {
+          return React.createElement(fallbackComponent, { comparison });
+        }
+        if (normalizedToolName === "ClastValoresTool") {
+          return <CVUView comparison={comparison} />;
+        }
       }
       if (normalizedToolName === "RestricaoEletricaTool" && (hasTableData || comparison.charts_by_restricao)) {
         return <RestricaoEletricaView comparison={comparison} />;
@@ -368,14 +385,14 @@ export function ComparisonRouter({ comparison }: ComparisonRouterProps) {
     default:
       // Fallback: tentar renderizar com base em tool_name e dados disponíveis
       // IMPORTANTE: UsinasNaoSimuladasTool já foi tratado acima, não deve chegar aqui
-      if (normalizedToolName === "ClastValoresTool" && (hasTableData || hasChartData)) {
-        return <CVUView comparison={comparison} />;
-      }
-      if ((normalizedToolName === "CargaMensalTool" || normalizedToolName === "CadicTool") && (hasTableData || hasChartData)) {
-        return <CargaMensalView comparison={comparison} />;
-      }
-      if ((normalizedToolName === "VazoesTool" || normalizedToolName === "DsvaguaTool") && (hasTableData || hasChartData)) {
-        return <UsinasNaoSimuladasView comparison={comparison} />;
+      if (hasTableData || hasChartData) {
+        const defaultComponent = TOOL_COMPONENT_MAP[normalizedToolName];
+        if (defaultComponent) {
+          return React.createElement(defaultComponent, { comparison });
+        }
+        if (normalizedToolName === "ClastValoresTool") {
+          return <CVUView comparison={comparison} />;
+        }
       }
       if (normalizedToolName === "RestricaoEletricaTool" && (hasTableData || comparison.charts_by_restricao)) {
         return <RestricaoEletricaView comparison={comparison} />;

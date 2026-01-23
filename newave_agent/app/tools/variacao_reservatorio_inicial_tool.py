@@ -8,6 +8,7 @@ import os
 import pandas as pd
 import re
 from typing import Dict, Any, Optional
+from newave_agent.app.config import debug_print, safe_print
 
 class VariacaoReservatorioInicialTool(NEWAVETool):
     """
@@ -74,7 +75,7 @@ class VariacaoReservatorioInicialTool(NEWAVETool):
                     if confhd.usinas is not None:
                         codigos_validos = confhd.usinas['codigo_usina'].unique()
                         if codigo in codigos_validos:
-                            print(f"[TOOL] ✅ Código {codigo} encontrado por padrão numérico")
+                            debug_print(f"[TOOL] ✅ Código {codigo} encontrado por padrão numérico")
                             return codigo
                 except ValueError:
                     continue
@@ -105,7 +106,7 @@ class VariacaoReservatorioInicialTool(NEWAVETool):
                 
                 # PRIORIDADE 1: Match exato do nome completo
                 if nome_usina_lower in query_lower:
-                    print(f"[TOOL] ✅ Código {codigo_usina} encontrado por nome completo '{nome_usina}' na query")
+                    debug_print(f"[TOOL] ✅ Código {codigo_usina} encontrado por nome completo '{nome_usina}' na query")
                     return codigo_usina
                 
                 # PRIORIDADE 2: Similaridade de string
@@ -117,10 +118,10 @@ class VariacaoReservatorioInicialTool(NEWAVETool):
             if candidatos:
                 candidatos.sort(key=lambda x: x[2], reverse=True)
                 melhor = candidatos[0]
-                print(f"[TOOL] ✅ Código {melhor[0]} encontrado por similaridade (score: {melhor[2]:.2f}) - '{melhor[1]}'")
+                debug_print(f"[TOOL] ✅ Código {melhor[0]} encontrado por similaridade (score: {melhor[2]:.2f}) - '{melhor[1]}'")
                 return melhor[0]
         
-        print("[TOOL] ⚠️ Nenhuma usina específica detectada na query")
+        debug_print("[TOOL] ⚠️ Nenhuma usina específica detectada na query")
         return None
     
     def execute(self, query: str, **kwargs) -> Dict[str, Any]:
@@ -133,13 +134,13 @@ class VariacaoReservatorioInicialTool(NEWAVETool):
         3. Identifica filtros (usina específica)
         4. Processa e retorna dados brutos
         """
-        print(f"[TOOL] {self.get_name()}: Iniciando execução...")
-        print(f"[TOOL] Query: {query[:100]}")
-        print(f"[TOOL] Deck path: {self.deck_path}")
+        debug_print(f"[TOOL] {self.get_name()}: Iniciando execução...")
+        debug_print(f"[TOOL] Query: {query[:100]}")
+        debug_print(f"[TOOL] Deck path: {self.deck_path}")
         
         try:
             # ETAPA 1: Verificar existência do arquivo
-            print("[TOOL] ETAPA 1: Verificando existência do arquivo CONFHD.DAT...")
+            debug_print("[TOOL] ETAPA 1: Verificando existência do arquivo CONFHD.DAT...")
             confhd_path = os.path.join(self.deck_path, "CONFHD.DAT")
             
             if not os.path.exists(confhd_path):
@@ -147,29 +148,29 @@ class VariacaoReservatorioInicialTool(NEWAVETool):
                 if os.path.exists(confhd_path_lower):
                     confhd_path = confhd_path_lower
                 else:
-                    print(f"[TOOL] ❌ Arquivo CONFHD.DAT não encontrado")
+                    safe_print(f"[TOOL] ❌ Arquivo CONFHD.DAT não encontrado")
                     return {
                         "success": False,
                         "error": f"Arquivo CONFHD.DAT não encontrado em {self.deck_path}",
                         "tool": self.get_name()
                     }
             
-            print(f"[TOOL] ✅ Arquivo encontrado: {confhd_path}")
+            debug_print(f"[TOOL] ✅ Arquivo encontrado: {confhd_path}")
             
             # ETAPA 2: Ler arquivo usando inewave
-            print("[TOOL] ETAPA 2: Lendo arquivo com inewave...")
+            debug_print("[TOOL] ETAPA 2: Lendo arquivo com inewave...")
             confhd = Confhd.read(confhd_path)
-            print("[TOOL] ✅ Arquivo lido com sucesso")
+            debug_print("[TOOL] ✅ Arquivo lido com sucesso")
             
             # ETAPA 3: Identificar filtros
-            print("[TOOL] ETAPA 3: Identificando filtros...")
+            debug_print("[TOOL] ETAPA 3: Identificando filtros...")
             codigo_usina = self._extract_usina_from_query(query, confhd)
             
             if codigo_usina is not None:
-                print(f"[TOOL] ✅ Filtro por usina: {codigo_usina}")
+                debug_print(f"[TOOL] ✅ Filtro por usina: {codigo_usina}")
             
             # ETAPA 4: Processar dados de volume inicial
-            print("[TOOL] ETAPA 4: Processando dados de volume inicial...")
+            debug_print("[TOOL] ETAPA 4: Processando dados de volume inicial...")
             dados_volume_inicial = None
             stats = None
             
@@ -184,7 +185,7 @@ class VariacaoReservatorioInicialTool(NEWAVETool):
                 # Aplicar filtro por usina se especificado
                 if codigo_usina is not None:
                     df_volume = df_volume[df_volume['codigo_usina'] == codigo_usina]
-                    print(f"[TOOL] ✅ Dados filtrados por usina {codigo_usina}: {len(df_volume)} registros")
+                    debug_print(f"[TOOL] ✅ Dados filtrados por usina {codigo_usina}: {len(df_volume)} registros")
                 
                 # Converter para lista de dicts
                 dados_volume_inicial = df_volume.to_dict(orient="records")
@@ -207,12 +208,12 @@ class VariacaoReservatorioInicialTool(NEWAVETool):
                         'volume_max': float(df_volume['volume_inicial_percentual'].max()) if not df_volume['volume_inicial_percentual'].isna().all() else 0,
                     }
                 
-                print(f"[TOOL] ✅ {len(dados_volume_inicial)} registros processados")
+                debug_print(f"[TOOL] ✅ {len(dados_volume_inicial)} registros processados")
             else:
-                print("[TOOL] ⚠️ Nenhum dado de usinas disponível (confhd.usinas é None)")
+                debug_print("[TOOL] ⚠️ Nenhum dado de usinas disponível (confhd.usinas é None)")
             
             # ETAPA 5: Formatar resultado
-            print("[TOOL] ETAPA 5: Formatando resultado...")
+            debug_print("[TOOL] ETAPA 5: Formatando resultado...")
             
             # Informações sobre filtros aplicados
             filtro_info = {}
@@ -235,14 +236,14 @@ class VariacaoReservatorioInicialTool(NEWAVETool):
             }
             
         except FileNotFoundError as e:
-            print(f"[TOOL] ❌ Erro FileNotFoundError: {e}")
+            safe_print(f"[TOOL] ❌ Erro FileNotFoundError: {e}")
             return {
                 "success": False,
                 "error": f"Arquivo não encontrado: {str(e)}",
                 "tool": self.get_name()
             }
         except Exception as e:
-            print(f"[TOOL] ❌ Erro ao processar: {type(e).__name__}: {e}")
+            safe_print(f"[TOOL] ❌ Erro ao processar: {type(e).__name__}: {e}")
             import traceback
             traceback.print_exc()
             return {

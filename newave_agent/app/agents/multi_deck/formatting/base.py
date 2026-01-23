@@ -5,6 +5,7 @@ Suporta N decks para comparação dinâmica.
 from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
+import math
 
 
 @dataclass
@@ -186,6 +187,122 @@ class ComparisonFormatter(ABC):
             "oldest_deck": decks_data[0].display_name if decks_data else None,
             "newest_deck": decks_data[-1].display_name if decks_data else None,
         }
+    
+    def _sanitize_number(self, value: Any) -> Optional[float]:
+        """
+        Sanitiza valor numérico, tratando None, NaN e Inf.
+        
+        Args:
+            value: Valor a ser sanitizado
+            
+        Returns:
+            float válido ou None
+        """
+        if value is None:
+            return None
+        try:
+            float_val = float(value)
+            if math.isnan(float_val) or math.isinf(float_val):
+                return None
+            return float_val
+        except (ValueError, TypeError):
+            return None
+    
+    def _safe_round(self, value: Any, decimals: int = 2) -> Optional[float]:
+        """
+        Arredonda valor numérico de forma segura.
+        
+        Args:
+            value: Valor a ser arredondado
+            decimals: Número de casas decimais (padrão: 2)
+            
+        Returns:
+            float arredondado ou None. Se o resultado for inteiro, retorna int.
+        """
+        sanitized = self._sanitize_number(value)
+        if sanitized is None:
+            return None
+        try:
+            rounded = round(sanitized, decimals)
+            if math.isnan(rounded) or math.isinf(rounded):
+                return None
+            # Se for número inteiro, retornar sem decimais
+            if rounded == int(rounded):
+                return int(rounded)
+            return rounded
+        except (ValueError, TypeError):
+            return None
+    
+    def _get_period_key(self, record: Dict[str, Any]) -> Optional[str]:
+        """
+        Obtém chave de período (ano-mês) de um registro.
+        Suporta múltiplos formatos: ano/mes, data ISO, datetime object.
+        
+        Args:
+            record: Dicionário com dados do registro
+            
+        Returns:
+            String no formato "YYYY-MM" ou None
+        """
+        # Tentar ano e mes primeiro
+        ano = record.get("ano")
+        mes = record.get("mes")
+        
+        if ano is not None and mes is not None:
+            try:
+                ano_int = int(float(ano)) if isinstance(ano, (int, float, str)) else None
+                mes_int = int(float(mes)) if isinstance(mes, (int, float, str)) else None
+                if ano_int is not None and mes_int is not None:
+                    return f"{ano_int:04d}-{mes_int:02d}"
+            except (ValueError, TypeError):
+                pass
+        
+        # Tentar campo data
+        data = record.get("data")
+        if data:
+            if isinstance(data, str):
+                if len(data) >= 7 and "-" in data:
+                    return data[:7]  # YYYY-MM
+            elif hasattr(data, 'year') and hasattr(data, 'month'):
+                try:
+                    return f"{data.year:04d}-{data.month:02d}"
+                except (AttributeError, ValueError):
+                    pass
+        
+        # Tentar ano_mes se existir
+        ano_mes = record.get("ano_mes")
+        if ano_mes:
+            if isinstance(ano_mes, str) and len(ano_mes) >= 7:
+                return ano_mes[:7]  # YYYY-MM
+        
+        return None
+    
+    def _format_period_label(self, periodo_key: str) -> str:
+        """
+        Formata chave de período (ex: "2025-12") para label legível (ex: "Dez/2025").
+        
+        Args:
+            periodo_key: String no formato "YYYY-MM"
+            
+        Returns:
+            String formatada (ex: "Dez/2025")
+        """
+        try:
+            if "-" in periodo_key:
+                parts = periodo_key.split("-")
+                if len(parts) == 2:
+                    ano = parts[0]
+                    mes = int(parts[1])
+                    meses_nomes = {
+                        1: "Jan", 2: "Fev", 3: "Mar", 4: "Abr",
+                        5: "Mai", 6: "Jun", 7: "Jul", 8: "Ago",
+                        9: "Set", 10: "Out", 11: "Nov", 12: "Dez"
+                    }
+                    mes_nome = meses_nomes.get(mes, str(mes))
+                    return f"{mes_nome}/{ano}"
+        except (ValueError, TypeError, IndexError):
+            pass
+        return periodo_key
 
 
 def convert_legacy_result_to_decks_data(

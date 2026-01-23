@@ -9,7 +9,7 @@ from newave_agent.app.config import safe_print
 from newave_agent.app.utils.text_utils import clean_response_text
 from newave_agent.app.agents.single_deck.nodes.helpers.code_execution.formatter import format_code_execution_response
 from newave_agent.app.agents.single_deck.formatters.registry import get_formatter_for_tool
-from newave_agent.app.agents.single_deck.tools import get_available_tools
+from newave_agent.app.tools import get_available_tools
 
 # Função auxiliar para escrever no log de debug de forma segura
 def _write_debug_log(data: dict):

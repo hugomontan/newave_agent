@@ -9,6 +9,7 @@ import pandas as pd
 import re
 from typing import Dict, Any, Optional
 from datetime import datetime
+from newave_agent.app.config import debug_print, safe_print
 
 class AgrintTool(NEWAVETool):
     """
@@ -77,7 +78,7 @@ class AgrintTool(NEWAVETool):
             if match:
                 try:
                     agrupamento = int(match.group(1))
-                    print(f"[TOOL] ✅ Agrupamento {agrupamento} encontrado na query")
+                    debug_print(f"[TOOL] ✅ Agrupamento {agrupamento} encontrado na query")
                     return agrupamento
                 except ValueError:
                     continue
@@ -108,7 +109,7 @@ class AgrintTool(NEWAVETool):
                 try:
                     patamar = int(match.group(1))
                     if 1 <= patamar <= 5:
-                        print(f"[TOOL] ✅ Patamar {patamar} encontrado na query")
+                        debug_print(f"[TOOL] ✅ Patamar {patamar} encontrado na query")
                         return patamar
                 except ValueError:
                     continue
@@ -125,13 +126,13 @@ class AgrintTool(NEWAVETool):
         3. Acessa propriedades agrupamentos e limites_agrupamentos
         4. Processa e retorna dados
         """
-        print(f"[TOOL] {self.get_name()}: Iniciando execução...")
-        print(f"[TOOL] Query: {query[:100]}")
-        print(f"[TOOL] Deck path: {self.deck_path}")
+        debug_print(f"[TOOL] {self.get_name()}: Iniciando execução...")
+        debug_print(f"[TOOL] Query: {query[:100]}")
+        debug_print(f"[TOOL] Deck path: {self.deck_path}")
         
         try:
             # ETAPA 1: Verificar existência do arquivo
-            print("[TOOL] ETAPA 1: Verificando existência do arquivo AGRINT.DAT...")
+            debug_print("[TOOL] ETAPA 1: Verificando existência do arquivo AGRINT.DAT...")
             agrint_path = os.path.join(self.deck_path, "AGRINT.DAT")
             
             if not os.path.exists(agrint_path):
@@ -139,39 +140,39 @@ class AgrintTool(NEWAVETool):
                 if os.path.exists(agrint_path_lower):
                     agrint_path = agrint_path_lower
                 else:
-                    print(f"[TOOL] ❌ Arquivo AGRINT.DAT não encontrado")
+                    safe_print(f"[TOOL] ❌ Arquivo AGRINT.DAT não encontrado")
                     return {
                         "success": False,
                         "error": f"Arquivo AGRINT.DAT não encontrado em {self.deck_path}",
                         "tool": self.get_name()
                     }
             
-            print(f"[TOOL] ✅ Arquivo encontrado: {agrint_path}")
+            debug_print(f"[TOOL] ✅ Arquivo encontrado: {agrint_path}")
             
             # ETAPA 2: Ler arquivo usando inewave
-            print("[TOOL] ETAPA 2: Lendo arquivo com inewave...")
+            debug_print("[TOOL] ETAPA 2: Lendo arquivo com inewave...")
             agrint = Agrint.read(agrint_path)
-            print("[TOOL] ✅ Arquivo lido com sucesso")
+            debug_print("[TOOL] ✅ Arquivo lido com sucesso")
             
             # ETAPA 3: Acessar propriedades
-            print("[TOOL] ETAPA 3: Acessando propriedades...")
+            debug_print("[TOOL] ETAPA 3: Acessando propriedades...")
             df_agrupamentos = agrint.agrupamentos
             df_limites = agrint.limites_agrupamentos
             
             if df_agrupamentos is None or df_agrupamentos.empty:
-                print("[TOOL] ⚠️ Nenhum agrupamento encontrado no arquivo")
+                debug_print("[TOOL] ⚠️ Nenhum agrupamento encontrado no arquivo")
                 return {
                     "success": False,
                     "error": "Nenhum agrupamento encontrado no arquivo AGRINT.DAT",
                     "tool": self.get_name()
                 }
             
-            print(f"[TOOL] ✅ Agrupamentos obtidos: {len(df_agrupamentos)} interligações")
+            debug_print(f"[TOOL] ✅ Agrupamentos obtidos: {len(df_agrupamentos)} interligações")
             if df_limites is not None:
-                print(f"[TOOL] ✅ Limites obtidos: {len(df_limites)} registros")
+                debug_print(f"[TOOL] ✅ Limites obtidos: {len(df_limites)} registros")
             
             # ETAPA 4: Identificar filtros da query
-            print("[TOOL] ETAPA 4: Identificando filtros...")
+            debug_print("[TOOL] ETAPA 4: Identificando filtros...")
             agrupamento_filtro = self._extract_agrupamento_from_query(query)
             patamar_filtro = self._extract_patamar_from_query(query)
             
@@ -194,14 +195,14 @@ class AgrintTool(NEWAVETool):
             stats_agrupamentos = None
             
             if pede_agrupamentos:
-                print("[TOOL] ETAPA 5: Processando agrupamentos...")
+                debug_print("[TOOL] ETAPA 5: Processando agrupamentos...")
                 df_agrup_filtrado = df_agrupamentos.copy()
                 
                 if agrupamento_filtro is not None:
                     df_agrup_filtrado = df_agrup_filtrado[
                         df_agrup_filtrado['agrupamento'] == agrupamento_filtro
                     ]
-                    print(f"[TOOL] ✅ Filtrado por agrupamento: {agrupamento_filtro}")
+                    debug_print(f"[TOOL] ✅ Filtrado por agrupamento: {agrupamento_filtro}")
                 
                 # Converter para lista de dicts
                 dados_agrupamentos = df_agrup_filtrado.to_dict(orient="records")
@@ -235,27 +236,27 @@ class AgrintTool(NEWAVETool):
                         })
                     stats_agrupamentos['stats_por_agrupamento'] = stats_por_agrupamento
                 
-                print(f"[TOOL] ✅ {len(dados_agrupamentos)} interligações processadas")
+                debug_print(f"[TOOL] ✅ {len(dados_agrupamentos)} interligações processadas")
             
             # ETAPA 6: Processar limites
             dados_limites = None
             stats_limites = None
             
             if pede_limites and df_limites is not None and not df_limites.empty:
-                print("[TOOL] ETAPA 6: Processando limites...")
+                debug_print("[TOOL] ETAPA 6: Processando limites...")
                 df_limites_filtrado = df_limites.copy()
                 
                 if agrupamento_filtro is not None:
                     df_limites_filtrado = df_limites_filtrado[
                         df_limites_filtrado['agrupamento'] == agrupamento_filtro
                     ]
-                    print(f"[TOOL] ✅ Limites filtrados por agrupamento: {agrupamento_filtro}")
+                    debug_print(f"[TOOL] ✅ Limites filtrados por agrupamento: {agrupamento_filtro}")
                 
                 if patamar_filtro is not None:
                     df_limites_filtrado = df_limites_filtrado[
                         df_limites_filtrado['patamar'] == patamar_filtro
                     ]
-                    print(f"[TOOL] ✅ Limites filtrados por patamar: {patamar_filtro}")
+                    debug_print(f"[TOOL] ✅ Limites filtrados por patamar: {patamar_filtro}")
                 
                 # Adicionar colunas auxiliares
                 if 'data_inicio' in df_limites_filtrado.columns:
@@ -304,10 +305,10 @@ class AgrintTool(NEWAVETool):
                             })
                         stats_limites['stats_por_agrupamento'] = stats_por_agrupamento_limites
                 
-                print(f"[TOOL] ✅ {len(dados_limites)} limites processados")
+                debug_print(f"[TOOL] ✅ {len(dados_limites)} limites processados")
             
             # ETAPA 7: Formatar resultado
-            print("[TOOL] ETAPA 7: Formatando resultado...")
+            debug_print("[TOOL] ETAPA 7: Formatando resultado...")
             
             # Informações sobre filtros aplicados
             filtro_info = {}
@@ -332,14 +333,14 @@ class AgrintTool(NEWAVETool):
             }
             
         except FileNotFoundError as e:
-            print(f"[TOOL] ❌ Erro FileNotFoundError: {e}")
+            safe_print(f"[TOOL] ❌ Erro FileNotFoundError: {e}")
             return {
                 "success": False,
                 "error": f"Arquivo não encontrado: {str(e)}",
                 "tool": self.get_name()
             }
         except Exception as e:
-            print(f"[TOOL] ❌ Erro ao processar: {type(e).__name__}: {e}")
+            safe_print(f"[TOOL] ❌ Erro ao processar: {type(e).__name__}: {e}")
             import traceback
             traceback.print_exc()
             return {

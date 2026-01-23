@@ -5,12 +5,7 @@ Similar ao Dadger, mas para o arquivo dadgnl que contém registros GL.
 from typing import Optional, List, TypeVar, Union, Type
 from cfinterface.components.register import Register
 from cfinterface.files.registerfile import RegisterFile
-import sys
-import os
-
-# Adicionar diretório raiz ao path para importar registrocl
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))))
-from registrocl import GL
+from decomp_agent.registrocl import GL
 
 
 T = TypeVar("T", bound=Register)

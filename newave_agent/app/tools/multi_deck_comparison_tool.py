@@ -7,6 +7,7 @@ from typing import Dict, Any, List, Optional
 import math
 from newave_agent.app.tools.base import NEWAVETool
 from newave_agent.app.tools.semantic_matcher import find_best_tool_semantic
+from newave_agent.app.config import debug_print, safe_print
 from newave_agent.app.utils.deck_loader import (
     list_available_decks,
     load_multiple_decks,

@@ -4,6 +4,7 @@ Acessa o arquivo VAZOES.DAT, propriedade vazoes.
 Inclui mapeamento interno de nome de usina para posto (via CONFHD.DAT).
 """
 from newave_agent.app.tools.base import NEWAVETool
+from newave_agent.app.config import debug_print, safe_print
 from inewave.newave import Vazoes, Confhd
 import os
 import pandas as pd
@@ -16,6 +17,14 @@ class VazoesTool(NEWAVETool):
     Tool para consultar vazões históricas de postos fluviométricos.
     Acessa o arquivo VAZOES.DAT, propriedade vazoes.
     """
+    
+    # Padrões regex compilados para melhor performance
+    _PATTERN_POSTO = re.compile(r'posto\s*(\d+)')
+    _PATTERN_POSTO_NUMERO = re.compile(r'posto\s*n[úu]mero\s*(\d+)')
+    _PATTERN_POSTO_HASH = re.compile(r'posto\s*#?\s*(\d+)')
+    _PATTERN_ANO = re.compile(r'\b(?:em|do|de|no|na|ano)\s+(\d{4})\b')
+    _PATTERN_ANO_4DIGITS = re.compile(r'\b(\d{4})\b')
+    _PATTERN_ANO_DGER = re.compile(r'\b(19[3-9]\d|20[0-5]\d)\b')
     
     def __init__(self, deck_path: str):
         super().__init__(deck_path)
@@ -84,7 +93,7 @@ class VazoesTool(NEWAVETool):
         if self._mapeamento_usina_posto is not None:
             return self._mapeamento_usina_posto
         
-        print("[TOOL] Carregando mapeamento completo usina → posto do CONFHD.DAT (descompilando)...")
+        debug_print("[TOOL] Carregando mapeamento completo usina → posto do CONFHD.DAT (descompilando)...")
         
         # Tentar encontrar CONFHD.DAT
         confhd_path = os.path.join(self.deck_path, "CONFHD.DAT")
@@ -92,7 +101,7 @@ class VazoesTool(NEWAVETool):
             confhd_path = os.path.join(self.deck_path, "confhd.dat")
         
         if not os.path.exists(confhd_path):
-            print("[TOOL] ⚠️ CONFHD.DAT não encontrado - consultas por nome de usina não funcionarão")
+            debug_print("[TOOL] ⚠️ CONFHD.DAT não encontrado - consultas por nome de usina não funcionarão")
             self._mapeamento_usina_posto = {}
             self._mapeamento_posto_usina = {}
             return self._mapeamento_usina_posto
@@ -101,7 +110,7 @@ class VazoesTool(NEWAVETool):
             confhd = Confhd.read(confhd_path)
             
             if confhd.usinas is None or confhd.usinas.empty:
-                print("[TOOL] ⚠️ Nenhuma usina encontrada no CONFHD.DAT")
+                debug_print("[TOOL] ⚠️ Nenhuma usina encontrada no CONFHD.DAT")
                 self._mapeamento_usina_posto = {}
                 self._mapeamento_posto_usina = {}
                 return self._mapeamento_usina_posto
@@ -124,12 +133,12 @@ class VazoesTool(NEWAVETool):
             self._mapeamento_posto_usina = mapeamento_inverso
             self._confhd_path = confhd_path
             
-            print(f"[TOOL] ✅ Mapeamento carregado: {len(mapeamento)} usinas mapeadas")
+            debug_print(f"[TOOL] ✅ Mapeamento carregado: {len(mapeamento)} usinas mapeadas")
             
             return mapeamento
             
         except Exception as e:
-            print(f"[TOOL] ⚠️ Erro ao carregar mapeamento: {e}")
+            debug_print(f"[TOOL] ⚠️ Erro ao carregar mapeamento: {e}")
             self._mapeamento_usina_posto = {}
             self._mapeamento_posto_usina = {}
             return self._mapeamento_usina_posto
@@ -159,18 +168,18 @@ class VazoesTool(NEWAVETool):
         # Extrair palavras significativas da query (remover palavras comuns)
         palavras_query = [p for p in query_lower.split() if len(p) > 2 and p not in palavras_ignorar]
         
-        print(f"[TOOL] Palavras significativas extraídas da query: {palavras_query}")
+        debug_print(f"[TOOL] Palavras significativas extraídas da query: {palavras_query}")
         
         # Obter usinas únicas (pode haver múltiplas usinas com mesmo posto, mas queremos o posto)
         usinas_unicas = confhd.usinas[['posto', 'nome_usina']].drop_duplicates()
         usinas_unicas = usinas_unicas.sort_values('posto')
         
-        print(f"[TOOL] Usinas disponíveis no CONFHD:")
+        debug_print(f"[TOOL] Usinas disponíveis no CONFHD:")
         for _, row in usinas_unicas.iterrows():
             posto = int(row.get('posto', 0))
             nome = str(row.get('nome_usina', '')).strip()
             if posto > 0 and nome:
-                print(f"[TOOL]   - Posto {posto}: \"{nome}\"")
+                debug_print(f"[TOOL]   - Posto {posto}: \"{nome}\"")
         
         # Lista de candidatos com pontuação
         candidatos = []
@@ -188,12 +197,12 @@ class VazoesTool(NEWAVETool):
             
             # PRIORIDADE 1: Match exato do nome completo na query
             if nome_usina_lower in query_lower:
-                print(f"[TOOL] ✅ Posto {posto} encontrado por nome completo '{nome_usina}' na query")
+                debug_print(f"[TOOL] ✅ Posto {posto} encontrado por nome completo '{nome_usina}' na query")
                 return (posto, nome_usina)
             
             # PRIORIDADE 2: Match exato de todas as palavras significativas
             if palavras_nome and all(palavra in query_lower for palavra in palavras_nome):
-                print(f"[TOOL] ✅ Posto {posto} encontrado: todas as palavras significativas de '{nome_usina}' estão na query")
+                debug_print(f"[TOOL] ✅ Posto {posto} encontrado: todas as palavras significativas de '{nome_usina}' estão na query")
                 return (posto, nome_usina)
             
             # PRIORIDADE 3: Similaridade de string (para matches parciais)
@@ -215,7 +224,7 @@ class VazoesTool(NEWAVETool):
             # Ordenar por tipo de match (similarity primeiro) e depois por score
             candidatos.sort(key=lambda x: (x[3] == 'similarity', x[2]), reverse=True)
             melhor = candidatos[0]
-            print(f"[TOOL] ✅ Posto {melhor[0]} encontrado por {melhor[3]} (score: {melhor[2]:.2f}) - '{melhor[1]}'")
+            debug_print(f"[TOOL] ✅ Posto {melhor[0]} encontrado por {melhor[3]} (score: {melhor[2]:.2f}) - '{melhor[1]}'")
             return (melhor[0], melhor[1])
         
         return None
@@ -233,17 +242,17 @@ class VazoesTool(NEWAVETool):
         query_lower = query.lower()
         
         patterns = [
-            r'posto\s*(\d+)',
-            r'posto\s*n[úu]mero\s*(\d+)',
-            r'posto\s*#?\s*(\d+)',
+            self._PATTERN_POSTO,
+            self._PATTERN_POSTO_NUMERO,
+            self._PATTERN_POSTO_HASH,
         ]
         
         for pattern in patterns:
-            match = re.search(pattern, query_lower)
+            match = pattern.search(query_lower)
             if match:
                 try:
                     posto = int(match.group(1))
-                    print(f"[TOOL] ✅ Posto {posto} encontrado na query")
+                    debug_print(f"[TOOL] ✅ Posto {posto} encontrado na query")
                     return posto
                 except ValueError:
                     continue
@@ -308,7 +317,7 @@ class VazoesTool(NEWAVETool):
                     nome_limpo = ' '.join(palavras_nome)
                     # Capitalizar primeira letra de cada palavra para padronizar
                     nome_limpo = ' '.join(palavra.capitalize() for palavra in nome_limpo.split())
-                    print(f"[TOOL] ✅ Nome de usina extraído (padrão): '{nome_limpo}'")
+                    debug_print(f"[TOOL] ✅ Nome de usina extraído (padrão): '{nome_limpo}'")
                     return nome_limpo
         
         # ETAPA 2: Buscar por palavras-chave conhecidas de usinas
@@ -327,7 +336,7 @@ class VazoesTool(NEWAVETool):
         # Buscar por substring (não apenas match exato)
         for usina in usinas_comuns:
             if usina in query_upper:
-                print(f"[TOOL] ✅ Usina conhecida detectada: '{usina}'")
+                debug_print(f"[TOOL] ✅ Usina conhecida detectada: '{usina}'")
                 return usina
         
         # ETAPA 3: Tentar extrair sequência de palavras que pareça nome de usina
@@ -374,7 +383,7 @@ class VazoesTool(NEWAVETool):
             nome_limpo = melhor_candidato[0]
             # Capitalizar
             nome_limpo = ' '.join(palavra.capitalize() for palavra in nome_limpo.split())
-            print(f"[TOOL] ✅ Nome de usina extraído (sequência): '{nome_limpo}'")
+            debug_print(f"[TOOL] ✅ Nome de usina extraído (sequência): '{nome_limpo}'")
             return nome_limpo
         
         return None
@@ -392,18 +401,17 @@ class VazoesTool(NEWAVETool):
         query_lower = query.lower()
         
         patterns = [
-            r'\b(?:em|do|de|no|na|ano)\s+(\d{4})\b',
-            r'\b(\d{4})\b',  # Qualquer 4 dígitos (menos específico)
+            self._PATTERN_ANO,
+            self._PATTERN_ANO_4DIGITS,
         ]
         
         for pattern in patterns:
-            match = re.search(pattern, query_lower)
+            match = pattern.search(query_lower)
             if match:
                 try:
                     ano = int(match.group(1))
-                    # Validar que é um ano razoável (1900-2100)
                     if 1900 <= ano <= 2100:
-                        print(f"[TOOL] ✅ Ano {ano} extraído da query")
+                        debug_print(f"[TOOL] ✅ Ano {ano} extraído da query")
                         return ano
                 except ValueError:
                     continue
@@ -458,20 +466,18 @@ class VazoesTool(NEWAVETool):
                     if len(lines) > 20:
                         reg21 = lines[20].strip()
                         # O ano inicial geralmente está nas colunas 9-12 do registro 21
-                        # Tentar extrair valor numérico de 4 dígitos
-                        # Procurar por padrão de 4 dígitos que possa ser um ano (1930-2100)
-                        anos_match = re.findall(r'\b(19[3-9]\d|20[0-5]\d)\b', reg21)
+                        anos_match = self._PATTERN_ANO_DGER.findall(reg21)
                         if anos_match:
                             ano = int(anos_match[0])
-                            print(f"[TOOL] ✅ Ano inicial encontrado no DGER.DAT: {ano}")
+                            debug_print(f"[TOOL] ✅ Ano inicial encontrado no DGER.DAT: {ano}")
                             self._ano_inicial_cache = ano
                             return ano
             except Exception as e:
-                print(f"[TOOL] ⚠️ Erro ao ler DGER.DAT: {e}")
+                debug_print(f"[TOOL] ⚠️ Erro ao ler DGER.DAT: {e}")
         
         # Valor padrão comum em estudos brasileiros (1931 é muito comum)
         ano_padrao = 1931
-        print(f"[TOOL] ⚠️ Usando ano inicial padrão: {ano_padrao}")
+        debug_print(f"[TOOL] ⚠️ Usando ano inicial padrão: {ano_padrao}")
         self._ano_inicial_cache = ano_padrao
         return ano_padrao
     
@@ -520,13 +526,11 @@ class VazoesTool(NEWAVETool):
         3. Identifica posto(s) da query (por número ou nome de usina)
         4. Processa e retorna dados
         """
-        print(f"[TOOL] {self.get_name()}: Iniciando execução...")
-        print(f"[TOOL] Query: {query[:100]}")
-        print(f"[TOOL] Deck path: {self.deck_path}")
+        debug_print(f"[TOOL] {self.get_name()}: Iniciando execução...")
+        debug_print(f"[TOOL] Query: {query[:100]}")
+        debug_print(f"[TOOL] Deck path: {self.deck_path}")
         
         try:
-            # ETAPA 1: Verificar existência do arquivo
-            print("[TOOL] ETAPA 1: Verificando existência do arquivo VAZOES.DAT...")
             vazoes_path = os.path.join(self.deck_path, "VAZOES.DAT")
             
             if not os.path.exists(vazoes_path):
@@ -534,52 +538,42 @@ class VazoesTool(NEWAVETool):
                 if os.path.exists(vazoes_path_lower):
                     vazoes_path = vazoes_path_lower
                 else:
-                    print(f"[TOOL] ❌ Arquivo VAZOES.DAT não encontrado")
+                    safe_print(f"[TOOL] ❌ Arquivo VAZOES.DAT não encontrado")
                     return {
                         "success": False,
                         "error": f"Arquivo VAZOES.DAT não encontrado em {self.deck_path}",
                         "tool": self.get_name()
                     }
             
-            print(f"[TOOL] ✅ Arquivo encontrado: {vazoes_path}")
+            debug_print(f"[TOOL] ✅ Arquivo encontrado: {vazoes_path}")
             
-            # ETAPA 2: Ler arquivo usando inewave
-            print("[TOOL] ETAPA 2: Lendo arquivo com inewave...")
             vazoes = Vazoes.read(vazoes_path)
-            print("[TOOL] ✅ Arquivo lido com sucesso")
+            debug_print("[TOOL] ✅ Arquivo lido com sucesso")
             
-            # ETAPA 3: Acessar propriedade vazoes
-            print("[TOOL] ETAPA 3: Acessando propriedade vazoes...")
             df_vazoes = vazoes.vazoes
             
             if df_vazoes is None or df_vazoes.empty:
-                print("[TOOL] ❌ DataFrame vazio ou None")
+                safe_print("[TOOL] ❌ DataFrame vazio ou None")
                 return {
                     "success": False,
                     "error": "Dados de vazões não encontrados no arquivo",
                     "tool": self.get_name()
                 }
             
-            print(f"[TOOL] ✅ DataFrame obtido: {len(df_vazoes)} meses, {len(df_vazoes.columns)} postos")
+            debug_print(f"[TOOL] ✅ DataFrame obtido: {len(df_vazoes)} meses, {len(df_vazoes.columns)} postos")
             
-            # ETAPA 4: Identificar posto(s) da query
-            print("[TOOL] ETAPA 4: Identificando posto(s) da query...")
             postos_consultados = []
             nome_usina_encontrado = None
             
-            # Tentar extrair posto direto
             posto_numero = self._extract_posto_from_query(query)
             if posto_numero is not None:
                 if posto_numero in df_vazoes.columns:
                     postos_consultados.append(posto_numero)
-                    print(f"[TOOL] ✅ Posto {posto_numero} identificado")
+                    debug_print(f"[TOOL] ✅ Posto {posto_numero} identificado")
                 else:
-                    print(f"[TOOL] ⚠️ Posto {posto_numero} não existe no arquivo (postos disponíveis: 1-{len(df_vazoes.columns)})")
+                    debug_print(f"[TOOL] ⚠️ Posto {posto_numero} não existe no arquivo (postos disponíveis: 1-{len(df_vazoes.columns)})")
             
-            # Se não encontrou posto, tentar buscar por nome de usina diretamente na query
-            # Seguindo o padrão da ClastValoresTool: comparar query diretamente com CONFHD
             if not postos_consultados:
-                # Carregar CONFHD para busca direta
                 confhd_path = os.path.join(self.deck_path, "CONFHD.DAT")
                 if not os.path.exists(confhd_path):
                     confhd_path = os.path.join(self.deck_path, "confhd.dat")
@@ -592,44 +586,34 @@ class VazoesTool(NEWAVETool):
                             posto_encontrado, nome_usina_encontrado = resultado
                             if posto_encontrado in df_vazoes.columns:
                                 postos_consultados.append(posto_encontrado)
-                                print(f"[TOOL] ✅ Posto {posto_encontrado} encontrado para usina '{nome_usina_encontrado}'")
+                                debug_print(f"[TOOL] ✅ Posto {posto_encontrado} encontrado para usina '{nome_usina_encontrado}'")
                             else:
-                                print(f"[TOOL] ⚠️ Posto {posto_encontrado} da usina '{nome_usina_encontrado}' não existe no arquivo")
+                                debug_print(f"[TOOL] ⚠️ Posto {posto_encontrado} da usina '{nome_usina_encontrado}' não existe no arquivo")
                     except Exception as e:
-                        print(f"[TOOL] ⚠️ Erro ao ler CONFHD.DAT para busca: {e}")
+                        debug_print(f"[TOOL] ⚠️ Erro ao ler CONFHD.DAT para busca: {e}")
                 else:
-                    print("[TOOL] ⚠️ CONFHD.DAT não encontrado - não é possível buscar por nome de usina")
+                    debug_print("[TOOL] ⚠️ CONFHD.DAT não encontrado - não é possível buscar por nome de usina")
             
-            # ETAPA 5: Extrair ano da query (se houver)
-            print("[TOOL] ETAPA 5: Verificando filtro por ano na query...")
             ano_filtro = self._extract_ano_from_query(query)
             ano_inicial = self._obter_ano_inicial()
             indice_inicio = None
             
-            # ETAPA 6: Processar dados
-            print("[TOOL] ETAPA 6: Processando dados...")
-            
-            # Se nenhum posto específico foi identificado, retornar todos os postos
             if not postos_consultados:
-                print("[TOOL] ⚠️ Nenhum posto específico identificado - retornando todos os postos disponíveis")
+                debug_print("[TOOL] ⚠️ Nenhum posto específico identificado - retornando todos os postos disponíveis")
                 postos_consultados = list(df_vazoes.columns)
-                print(f"[TOOL] Total de postos disponíveis: {len(postos_consultados)}")
+                debug_print(f"[TOOL] Total de postos disponíveis: {len(postos_consultados)}")
             
-            # Filtrar DataFrame pelos postos consultados
             df_filtrado = df_vazoes[postos_consultados].copy()
             
-            # Se há filtro por ano, aplicar filtro nos índices
             if ano_filtro and ano_inicial:
-                print(f"[TOOL] Filtro por ano detectado: {ano_filtro}")
-                # Calcular índices do ano (12 meses)
+                debug_print(f"[TOOL] Filtro por ano detectado: {ano_filtro}")
                 indice_inicio = self._ano_para_indice(ano_filtro, ano_inicial)
                 if indice_inicio is not None and indice_inicio < len(df_filtrado):
                     indice_fim = min(indice_inicio + 12, len(df_filtrado))
                     df_filtrado = df_filtrado.iloc[indice_inicio:indice_fim].copy()
-                    print(f"[TOOL] ✅ Dados filtrados para o ano {ano_filtro} (índices {indice_inicio}-{indice_fim-1})")
+                    debug_print(f"[TOOL] ✅ Dados filtrados para o ano {ano_filtro} (índices {indice_inicio}-{indice_fim-1})")
                 else:
-                    print(f"[TOOL] ⚠️ Ano {ano_filtro} está fora do range do histórico (início: {ano_inicial})")
-                    # Retornar erro indicando que o ano não está disponível
+                    debug_print(f"[TOOL] ⚠️ Ano {ano_filtro} está fora do range do histórico (início: {ano_inicial})")
                     return {
                         "success": False,
                         "error": f"Ano {ano_filtro} não está disponível no histórico. Histórico disponível desde {ano_inicial}.",
@@ -638,14 +622,10 @@ class VazoesTool(NEWAVETool):
                         "ano_inicial_disponivel": ano_inicial
                     }
             
-            # ETAPA 7: Calcular estatísticas
-            print("[TOOL] ETAPA 7: Calculando estatísticas...")
-            
             stats_por_posto = []
             for posto in postos_consultados:
                 serie_posto = df_filtrado[posto]
                 
-                # Obter nome da usina se disponível
                 nome_posto = f"Posto {posto}"
                 nome_usina_posto = None
                 if self._mapeamento_posto_usina:
@@ -665,12 +645,8 @@ class VazoesTool(NEWAVETool):
                     'coeficiente_variacao': float((serie_posto.std() / serie_posto.mean() * 100)) if serie_posto.notna().any() and serie_posto.mean() != 0 else 0,
                 })
             
-            # ETAPA 8: Formatar resultado
-            print("[TOOL] ETAPA 8: Formatando resultado...")
-            
-            # Ano inicial já foi obtido anteriormente
             if ano_inicial:
-                print(f"[TOOL] ✅ Ano inicial do histórico: {ano_inicial}")
+                debug_print(f"[TOOL] ✅ Ano inicial do histórico: {ano_inicial}")
             
             # Converter DataFrame para lista de dicts (limitado para não sobrecarregar)
             result_data = []
@@ -706,12 +682,9 @@ class VazoesTool(NEWAVETool):
                         })
                 
                 if len(serie_posto) > limite_registros:
-                    print(f"[TOOL] ⚠️ Série limitada a {limite_registros} primeiros registros (total: {len(serie_posto)})")
+                    debug_print(f"[TOOL] ⚠️ Série limitada a {limite_registros} primeiros registros (total: {len(serie_posto)})")
             else:
-                # Múltiplos postos: retornar apenas estatísticas por posto
-                # Não retornar dados mensais para múltiplos postos (apenas stats)
-                # Isso evita sobrecarregar a resposta com dados de 320 postos
-                print(f"[TOOL] Múltiplos postos detectados ({len(postos_consultados)}) - retornando apenas estatísticas")
+                debug_print(f"[TOOL] Múltiplos postos detectados ({len(postos_consultados)}) - retornando apenas estatísticas")
             
             # Informações sobre filtros aplicados
             filtro_info = {}
@@ -740,14 +713,14 @@ class VazoesTool(NEWAVETool):
             }
             
         except FileNotFoundError as e:
-            print(f"[TOOL] ❌ Erro FileNotFoundError: {e}")
+            safe_print(f"[TOOL] ❌ Erro FileNotFoundError: {e}")
             return {
                 "success": False,
                 "error": f"Arquivo não encontrado: {str(e)}",
                 "tool": self.get_name()
             }
         except Exception as e:
-            print(f"[TOOL] ❌ Erro ao processar: {type(e).__name__}: {e}")
+            safe_print(f"[TOOL] ❌ Erro ao processar: {type(e).__name__}: {e}")
             import traceback
             traceback.print_exc()
             return {

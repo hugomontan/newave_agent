@@ -11,6 +11,7 @@ import os
 import pandas as pd
 import re
 from typing import Dict, Any, Optional, Tuple
+from newave_agent.app.config import debug_print, safe_print
 
 
 class RestricaoEletricaTool(NEWAVETool):
@@ -90,7 +91,7 @@ class RestricaoEletricaTool(NEWAVETool):
             if match:
                 try:
                     codigo = int(match.group(1))
-                    print(f"[TOOL] ✅ Código de restrição encontrado por padrão numérico: {codigo}")
+                    debug_print(f"[TOOL] ✅ Código de restrição encontrado por padrão numérico: {codigo}")
                     return codigo, []
                 except ValueError:
                     continue
@@ -122,7 +123,7 @@ class RestricaoEletricaTool(NEWAVETool):
         # Remover duplicatas mantendo ordem
         nomes_extraidos = list(dict.fromkeys(nomes_extraidos))
         
-        print(f"[TOOL] Nomes extraídos da query: {nomes_extraidos}")
+        debug_print(f"[TOOL] Nomes extraídos da query: {nomes_extraidos}")
         
         # ETAPA 3: Buscar por nome da restrição
         # Primeiro tentar com os nomes extraídos (mais específico)
@@ -146,7 +147,7 @@ class RestricaoEletricaTool(NEWAVETool):
                 nome_encontrado = re_obj.nomes_restricoes[
                     re_obj.nomes_restricoes['cod_rest'] == cod_rest
                 ]['nome'].iloc[0] if not re_obj.nomes_restricoes.empty else str(cod_rest)
-                print(f"[TOOL] ✅ Código {cod_rest} encontrado por nome extraído '{nome_extraido}' (mapeado: '{nome_mapeado}'): '{nome_encontrado}'")
+                debug_print(f"[TOOL] ✅ Código {cod_rest} encontrado por nome extraído '{nome_extraido}' (mapeado: '{nome_mapeado}'): '{nome_encontrado}'")
                 return cod_rest, nomes_extraidos
         
         # ETAPA 4: Buscar com a query completa (fallback)
@@ -155,7 +156,7 @@ class RestricaoEletricaTool(NEWAVETool):
             nome_encontrado = re_obj.nomes_restricoes[
                 re_obj.nomes_restricoes['cod_rest'] == cod_rest
             ]['nome'].iloc[0] if not re_obj.nomes_restricoes.empty else str(cod_rest)
-            print(f"[TOOL] ✅ Código {cod_rest} encontrado por nome (query completa): '{nome_encontrado}'")
+            debug_print(f"[TOOL] ✅ Código {cod_rest} encontrado por nome (query completa): '{nome_encontrado}'")
             return cod_rest, nomes_extraidos
         
         # ETAPA 5: Busca direta pelos nomes conhecidos (mapeados por código)
@@ -164,7 +165,7 @@ class RestricaoEletricaTool(NEWAVETool):
             if nome_mapeado.lower() in query_lower:
                 cod_rest = re_obj.buscar_por_nome(nome_mapeado.lower())
                 if cod_rest is not None:
-                    print(f"[TOOL] ✅ Código {cod_rest} encontrado por nome mapeado (código {cod_rest_mapeado}): '{nome_mapeado}'")
+                    debug_print(f"[TOOL] ✅ Código {cod_rest} encontrado por nome mapeado (código {cod_rest_mapeado}): '{nome_mapeado}'")
                     return cod_rest, nomes_extraidos
         
         # ETAPA 6: Busca pelos nomes antigos (compatibilidade)
@@ -172,10 +173,10 @@ class RestricaoEletricaTool(NEWAVETool):
             if nome_antigo.lower() in query_lower or nome_novo.lower() in query_lower:
                 cod_rest = re_obj.buscar_por_nome(nome_novo.lower())
                 if cod_rest is not None:
-                    print(f"[TOOL] ✅ Código {cod_rest} encontrado por nome mapeado: '{nome_novo}'")
+                    debug_print(f"[TOOL] ✅ Código {cod_rest} encontrado por nome mapeado: '{nome_novo}'")
                     return cod_rest, nomes_extraidos
         
-        print(f"[TOOL] ⚠️ Nenhum código de restrição encontrado na query")
+        debug_print(f"[TOOL] ⚠️ Nenhum código de restrição encontrado na query")
         return None, nomes_extraidos
     
     def _extract_patamar_from_query(self, query: str) -> Optional[int]:
@@ -274,61 +275,61 @@ class RestricaoEletricaTool(NEWAVETool):
         3. Identifica filtros (código restrição, patamar, período)
         4. Retorna dados filtrados
         """
-        print(f"[TOOL] {self.get_name()}: Iniciando execução...")
-        print(f"[TOOL] Query: {query[:100]}")
-        print(f"[TOOL] Deck path: {self.deck_path}")
+        debug_print(f"[TOOL] {self.get_name()}: Iniciando execução...")
+        debug_print(f"[TOOL] Query: {query[:100]}")
+        debug_print(f"[TOOL] Deck path: {self.deck_path}")
         
         try:
             # ETAPA 1: Verificar existência do arquivo
-            print("[TOOL] ETAPA 1: Verificando existência do arquivo restricao-eletrica.csv...")
+            debug_print("[TOOL] ETAPA 1: Verificando existência do arquivo restricao-eletrica.csv...")
             csv_path = os.path.join(self.deck_path, "restricao-eletrica.csv")
             
             if not os.path.exists(csv_path):
-                print(f"[TOOL] ❌ Arquivo restricao-eletrica.csv não encontrado")
+                safe_print(f"[TOOL] ❌ Arquivo restricao-eletrica.csv não encontrado")
                 return {
                     "success": False,
                     "error": f"Arquivo restricao-eletrica.csv não encontrado em {self.deck_path}",
                     "tool": self.get_name()
                 }
             
-            print(f"[TOOL] ✅ Arquivo encontrado: {csv_path}")
+            debug_print(f"[TOOL] ✅ Arquivo encontrado: {csv_path}")
             
             # ETAPA 2: Ler arquivo usando RestricaoEletrica
-            print("[TOOL] ETAPA 2: Lendo arquivo com RestricaoEletrica...")
+            debug_print("[TOOL] ETAPA 2: Lendo arquivo com RestricaoEletrica...")
             re_obj = RestricaoEletrica.read(csv_path)
-            print("[TOOL] ✅ Arquivo lido com sucesso")
+            debug_print("[TOOL] ✅ Arquivo lido com sucesso")
             
             # ETAPA 3: Acessar propriedades
-            print("[TOOL] ETAPA 3: Acessando propriedades...")
+            debug_print("[TOOL] ETAPA 3: Acessando propriedades...")
             df_restricoes = re_obj.restricoes
             df_horizontes = re_obj.horizontes
             df_limites = re_obj.limites
             
             if df_restricoes is None and df_horizontes is None and df_limites is None:
-                print("[TOOL] ⚠️ Nenhuma restrição elétrica encontrada")
+                debug_print("[TOOL] ⚠️ Nenhuma restrição elétrica encontrada")
                 return {
                     "success": False,
                     "error": "Nenhuma restrição elétrica encontrada no arquivo",
                     "tool": self.get_name()
                 }
             
-            print(f"[TOOL] ✅ Dados carregados:")
+            debug_print(f"[TOOL] ✅ Dados carregados:")
             if df_restricoes is not None:
-                print(f"[TOOL]   - Restrições: {len(df_restricoes)} registro(s)")
+                debug_print(f"[TOOL]   - Restrições: {len(df_restricoes)} registro(s)")
             if df_horizontes is not None:
-                print(f"[TOOL]   - Horizontes: {len(df_horizontes)} registro(s)")
+                debug_print(f"[TOOL]   - Horizontes: {len(df_horizontes)} registro(s)")
             if df_limites is not None:
-                print(f"[TOOL]   - Limites: {len(df_limites)} registro(s)")
+                debug_print(f"[TOOL]   - Limites: {len(df_limites)} registro(s)")
             
             # ETAPA 4: Identificar filtros
-            print("[TOOL] ETAPA 4: Identificando filtros...")
+            debug_print("[TOOL] ETAPA 4: Identificando filtros...")
             cod_rest, nomes_extraidos = self._extract_cod_rest_from_query(query, re_obj)
             patamar = self._extract_patamar_from_query(query)
             periodo = self._extract_periodo_from_query(query)
             
             # Verificar se a query menciona uma restrição específica mas não foi encontrada
             if nomes_extraidos and cod_rest is None:
-                print(f"[TOOL] ⚠️ Query menciona restrição específica ({nomes_extraidos}) mas não foi encontrada")
+                debug_print(f"[TOOL] ⚠️ Query menciona restrição específica ({nomes_extraidos}) mas não foi encontrada")
                 return {
                     "success": False,
                     "error": f"Nenhuma restrição elétrica encontrada para: {', '.join(nomes_extraidos)}",
@@ -336,16 +337,16 @@ class RestricaoEletricaTool(NEWAVETool):
                 }
             
             if cod_rest is not None:
-                print(f"[TOOL] ✅ Filtro por código de restrição: {cod_rest}")
+                debug_print(f"[TOOL] ✅ Filtro por código de restrição: {cod_rest}")
             
             if patamar is not None:
-                print(f"[TOOL] ✅ Filtro por patamar: {patamar}")
+                debug_print(f"[TOOL] ✅ Filtro por patamar: {patamar}")
             
             if periodo is not None:
-                print(f"[TOOL] ✅ Filtro por período: {periodo}")
+                debug_print(f"[TOOL] ✅ Filtro por período: {periodo}")
             
             # ETAPA 5: Aplicar filtros e formatar resultados
-            print("[TOOL] ETAPA 5: Aplicando filtros e formatando resultados...")
+            debug_print("[TOOL] ETAPA 5: Aplicando filtros e formatando resultados...")
             
             dados_lista = []
             
@@ -427,7 +428,7 @@ class RestricaoEletricaTool(NEWAVETool):
                         **dados_formatados
                     })
             
-            print(f"[TOOL] ✅ {len(dados_lista)} registro(s) após filtros")
+            debug_print(f"[TOOL] ✅ {len(dados_lista)} registro(s) após filtros")
             
             # ETAPA 6: Estatísticas
             stats = {}
@@ -449,7 +450,7 @@ class RestricaoEletricaTool(NEWAVETool):
                     stats['patamares_disponiveis'] = sorted(df_limites['patamar'].unique().tolist())
             
             # ETAPA 7: Formatar resultado final
-            print("[TOOL] ETAPA 7: Formatando resultado final...")
+            debug_print("[TOOL] ETAPA 7: Formatando resultado final...")
             
             filtros_aplicados = {}
             if cod_rest is not None:
@@ -469,14 +470,14 @@ class RestricaoEletricaTool(NEWAVETool):
             }
             
         except FileNotFoundError as e:
-            print(f"[TOOL] ❌ Erro FileNotFoundError: {e}")
+            safe_print(f"[TOOL] ❌ Erro FileNotFoundError: {e}")
             return {
                 "success": False,
                 "error": f"Arquivo não encontrado: {str(e)}",
                 "tool": self.get_name()
             }
         except Exception as e:
-            print(f"[TOOL] ❌ Erro ao processar: {type(e).__name__}: {e}")
+            safe_print(f"[TOOL] ❌ Erro ao processar: {type(e).__name__}: {e}")
             import traceback
             traceback.print_exc()
             return {

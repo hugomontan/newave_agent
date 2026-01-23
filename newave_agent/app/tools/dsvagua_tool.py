@@ -10,6 +10,7 @@ import re
 from typing import Dict, Any, Optional
 from datetime import datetime
 from difflib import SequenceMatcher
+from newave_agent.app.config import debug_print, safe_print
 
 
 class DsvaguaTool(NEWAVETool):
@@ -45,7 +46,7 @@ class DsvaguaTool(NEWAVETool):
         if self._mapeamento_codigo_nome is not None:
             return self._mapeamento_codigo_nome
         
-        print("[TOOL] Carregando mapeamento código → nome do CONFHD.DAT...")
+        debug_print("[TOOL] Carregando mapeamento código → nome do CONFHD.DAT...")
         
         # Tentar encontrar CONFHD.DAT
         confhd_path = os.path.join(self.deck_path, "CONFHD.DAT")
@@ -53,7 +54,7 @@ class DsvaguaTool(NEWAVETool):
             confhd_path = os.path.join(self.deck_path, "confhd.dat")
         
         if not os.path.exists(confhd_path):
-            print("[TOOL] ⚠️ CONFHD.DAT não encontrado - consultas por nome de usina não funcionarão")
+            debug_print("[TOOL] ⚠️ CONFHD.DAT não encontrado - consultas por nome de usina não funcionarão")
             self._mapeamento_codigo_nome = {}
             self._mapeamento_nome_codigo = {}
             return self._mapeamento_codigo_nome
@@ -62,7 +63,7 @@ class DsvaguaTool(NEWAVETool):
             confhd = Confhd.read(confhd_path)
             
             if confhd.usinas is None or confhd.usinas.empty:
-                print("[TOOL] ⚠️ Nenhuma usina encontrada no CONFHD.DAT")
+                debug_print("[TOOL] ⚠️ Nenhuma usina encontrada no CONFHD.DAT")
                 self._mapeamento_codigo_nome = {}
                 self._mapeamento_nome_codigo = {}
                 return self._mapeamento_codigo_nome
@@ -83,12 +84,12 @@ class DsvaguaTool(NEWAVETool):
             self._mapeamento_codigo_nome = mapeamento_codigo_nome
             self._mapeamento_nome_codigo = mapeamento_nome_codigo
             
-            print(f"[TOOL] ✅ Mapeamento carregado: {len(mapeamento_codigo_nome)} usinas mapeadas")
+            debug_print(f"[TOOL] ✅ Mapeamento carregado: {len(mapeamento_codigo_nome)} usinas mapeadas")
             
             return mapeamento_codigo_nome
             
         except Exception as e:
-            print(f"[TOOL] ⚠️ Erro ao carregar mapeamento: {e}")
+            debug_print(f"[TOOL] ⚠️ Erro ao carregar mapeamento: {e}")
             self._mapeamento_codigo_nome = {}
             self._mapeamento_nome_codigo = {}
             return self._mapeamento_codigo_nome
@@ -167,20 +168,20 @@ class DsvaguaTool(NEWAVETool):
                     codigo = int(match.group(1))
                     # Verificar se código existe nos desvios
                     if codigo in desvios_df['codigo_usina'].values:
-                        print(f"[TOOL] ✅ Código {codigo} encontrado por padrão numérico")
+                        debug_print(f"[TOOL] ✅ Código {codigo} encontrado por padrão numérico")
                         return codigo
                 except ValueError:
                     continue
         
         # ETAPA 2: Buscar por nome da usina usando mapeamento do CONFHD
-        print(f"[TOOL] Buscando usina por nome na query: '{query}'")
+        debug_print(f"[TOOL] Buscando usina por nome na query: '{query}'")
         
         # Carregar mapeamento
         mapeamento_codigo_nome = self._carregar_mapeamento_usinas()
         mapeamento_nome_codigo = self._mapeamento_nome_codigo
         
         if not mapeamento_nome_codigo:
-            print("[TOOL] ⚠️ Mapeamento de nomes não disponível")
+            debug_print("[TOOL] ⚠️ Mapeamento de nomes não disponível")
             return None
         
         # Palavras comuns a ignorar
@@ -188,7 +189,7 @@ class DsvaguaTool(NEWAVETool):
         
         # Extrair palavras significativas da query
         palavras_query = [p for p in query_lower.split() if len(p) > 2 and p not in palavras_ignorar]
-        print(f"[TOOL] Palavras significativas extraídas da query: {palavras_query}")
+        debug_print(f"[TOOL] Palavras significativas extraídas da query: {palavras_query}")
         
         # Lista todas as usinas disponíveis (que têm desvios)
         codigos_com_desvios = set(desvios_df['codigo_usina'].unique())
@@ -200,7 +201,7 @@ class DsvaguaTool(NEWAVETool):
                 print(f"[TOOL]   - Código {codigo}: \"{nome}\"")
         
         if not usinas_list:
-            print("[TOOL] ⚠️ Nenhuma usina com nome encontrada")
+            debug_print("[TOOL] ⚠️ Nenhuma usina com nome encontrada")
             return None
         
         # Ordenar por tamanho do nome (maior primeiro) para priorizar matches mais específicos
@@ -217,14 +218,14 @@ class DsvaguaTool(NEWAVETool):
             
             # Match exato do nome completo
             if nome_usina_lower == query_lower.strip():
-                print(f"[TOOL] ✅ Código {codigo_usina} encontrado por match exato '{nome_usina}'")
+                debug_print(f"[TOOL] ✅ Código {codigo_usina} encontrado por match exato '{nome_usina}'")
                 return codigo_usina
             
             # Match exato do nome completo dentro da query (como palavra completa)
             if len(nome_usina_lower) >= 4:  # Nomes com pelo menos 4 caracteres
                 pattern = r'\b' + re.escape(nome_usina_lower) + r'\b'
                 if re.search(pattern, query_lower):
-                    print(f"[TOOL] ✅ Código {codigo_usina} encontrado por nome completo '{nome_usina}' na query")
+                    debug_print(f"[TOOL] ✅ Código {codigo_usina} encontrado por nome completo '{nome_usina}' na query")
                     return codigo_usina
         
         # ETAPA 2.2: Buscar por similaridade e palavras-chave
@@ -243,7 +244,7 @@ class DsvaguaTool(NEWAVETool):
             
             # PRIORIDADE 3: Match exato de todas as palavras significativas
             if palavras_nome and all(palavra in query_lower for palavra in palavras_nome):
-                print(f"[TOOL] ✅ Código {codigo_usina} encontrado: todas as palavras significativas de '{nome_usina}' estão na query")
+                debug_print(f"[TOOL] ✅ Código {codigo_usina} encontrado: todas as palavras significativas de '{nome_usina}' estão na query")
                 return codigo_usina
             
             # PRIORIDADE 4: Similaridade de string
@@ -275,10 +276,10 @@ class DsvaguaTool(NEWAVETool):
             # Ordenar por tipo (similarity primeiro) e depois por score
             candidatos.sort(key=lambda x: (x['tipo'] == 'similarity', x['score']), reverse=True)
             melhor = candidatos[0]
-            print(f"[TOOL] ✅ Código {melhor['codigo']} encontrado por {melhor['tipo']} (score: {melhor['score']:.2f}): '{melhor['nome']}'")
+            debug_print(f"[TOOL] ✅ Código {melhor['codigo']} encontrado por {melhor['tipo']} (score: {melhor['score']:.2f}): '{melhor['nome']}'")
             return melhor['codigo']
         
-        print("[TOOL] ⚠️ Nenhuma usina específica detectada na query")
+        debug_print("[TOOL] ⚠️ Nenhuma usina específica detectada na query")
         return None
     
     def _extract_periodo_from_query(self, query: str) -> Optional[Dict[str, Any]]:
@@ -365,57 +366,57 @@ class DsvaguaTool(NEWAVETool):
         3. Identifica filtros (usina, período)
         4. Retorna dados filtrados
         """
-        print(f"[TOOL] {self.get_name()}: Iniciando execução...")
-        print(f"[TOOL] Query: {query[:100]}")
-        print(f"[TOOL] Deck path: {self.deck_path}")
+        debug_print(f"[TOOL] {self.get_name()}: Iniciando execução...")
+        debug_print(f"[TOOL] Query: {query[:100]}")
+        debug_print(f"[TOOL] Deck path: {self.deck_path}")
         
         try:
             # ETAPA 1: Verificar existência do arquivo
-            print("[TOOL] ETAPA 1: Verificando existência do arquivo DSVAGUA.DAT...")
+            debug_print("[TOOL] ETAPA 1: Verificando existência do arquivo DSVAGUA.DAT...")
             dsvagua_path = os.path.join(self.deck_path, "DSVAGUA.DAT")
             
             if not os.path.exists(dsvagua_path):
                 dsvagua_path = os.path.join(self.deck_path, "dsvagua.dat")
                 if not os.path.exists(dsvagua_path):
-                    print(f"[TOOL] ❌ Arquivo DSVAGUA.DAT não encontrado")
+                    safe_print(f"[TOOL] ❌ Arquivo DSVAGUA.DAT não encontrado")
                     return {
                         "success": False,
                         "error": f"Arquivo DSVAGUA.DAT não encontrado em {self.deck_path}",
                         "tool": self.get_name()
                     }
             
-            print(f"[TOOL] ✅ Arquivo encontrado: {dsvagua_path}")
+            debug_print(f"[TOOL] ✅ Arquivo encontrado: {dsvagua_path}")
             
             # ETAPA 2: Ler arquivo usando inewave
-            print("[TOOL] ETAPA 2: Lendo arquivo com inewave...")
+            debug_print("[TOOL] ETAPA 2: Lendo arquivo com inewave...")
             dsvagua = Dsvagua.read(dsvagua_path)
-            print("[TOOL] ✅ Arquivo lido com sucesso")
+            debug_print("[TOOL] ✅ Arquivo lido com sucesso")
             
             # ETAPA 3: Verificar se há dados
             desvios_df = dsvagua.desvios
             if desvios_df is None or desvios_df.empty:
-                print("[TOOL] ⚠️ Nenhum desvio encontrado")
+                debug_print("[TOOL] ⚠️ Nenhum desvio encontrado")
                 return {
                     "success": False,
                     "error": "Nenhum desvio de água encontrado no arquivo DSVAGUA.DAT",
                     "tool": self.get_name()
                 }
             
-            print(f"[TOOL] ✅ {len(desvios_df)} registro(s) de desvio encontrado(s)")
+            debug_print(f"[TOOL] ✅ {len(desvios_df)} registro(s) de desvio encontrado(s)")
             
             # ETAPA 4: Identificar filtros
-            print("[TOOL] ETAPA 4: Identificando filtros...")
+            debug_print("[TOOL] ETAPA 4: Identificando filtros...")
             codigo_usina = self._extract_usina_from_query(query, dsvagua)
             periodo = self._extract_periodo_from_query(query)
             
             if codigo_usina is not None:
-                print(f"[TOOL] ✅ Filtro por usina: {codigo_usina}")
+                debug_print(f"[TOOL] ✅ Filtro por usina: {codigo_usina}")
             
             if periodo is not None:
-                print(f"[TOOL] ✅ Filtro por período: {periodo}")
+                debug_print(f"[TOOL] ✅ Filtro por período: {periodo}")
             
             # ETAPA 5: Aplicar filtros
-            print("[TOOL] ETAPA 5: Aplicando filtros...")
+            debug_print("[TOOL] ETAPA 5: Aplicando filtros...")
             resultado_df = desvios_df.copy()
             
             if codigo_usina is not None:
@@ -431,10 +432,10 @@ class DsvaguaTool(NEWAVETool):
                         if pd.api.types.is_datetime64_any_dtype(resultado_df['data']):
                             resultado_df = resultado_df[resultado_df['data'].dt.month == periodo['mes']]
             
-            print(f"[TOOL] ✅ {len(resultado_df)} registro(s) após filtros")
+            debug_print(f"[TOOL] ✅ {len(resultado_df)} registro(s) após filtros")
             
             # ETAPA 6: Formatar resultados
-            print("[TOOL] ETAPA 6: Formatando resultados...")
+            debug_print("[TOOL] ETAPA 6: Formatando resultados...")
             dados_lista = []
             for _, row in resultado_df.iterrows():
                 dados_lista.append(self._format_desvio_data(row))
@@ -461,7 +462,7 @@ class DsvaguaTool(NEWAVETool):
                 stats['desvios_por_ano'] = desvios_df_copy.groupby('ano').size().to_dict()
             
             # ETAPA 8: Formatar resultado final
-            print("[TOOL] ETAPA 8: Formatando resultado final...")
+            debug_print("[TOOL] ETAPA 8: Formatando resultado final...")
             
             filtros_aplicados = {}
             if codigo_usina is not None:
@@ -479,14 +480,14 @@ class DsvaguaTool(NEWAVETool):
             }
             
         except FileNotFoundError as e:
-            print(f"[TOOL] ❌ Erro FileNotFoundError: {e}")
+            safe_print(f"[TOOL] ❌ Erro FileNotFoundError: {e}")
             return {
                 "success": False,
                 "error": f"Arquivo não encontrado: {str(e)}",
                 "tool": self.get_name()
             }
         except Exception as e:
-            print(f"[TOOL] ❌ Erro ao processar: {type(e).__name__}: {e}")
+            safe_print(f"[TOOL] ❌ Erro ao processar: {type(e).__name__}: {e}")
             import traceback
             traceback.print_exc()
             return {

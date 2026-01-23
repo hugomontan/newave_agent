@@ -9,6 +9,7 @@ import pandas as pd
 import re
 from typing import Dict, Any, Optional
 from datetime import datetime
+from newave_agent.app.config import debug_print, safe_print
 
 
 class UsinasNaoSimuladasTool(NEWAVETool):
@@ -114,7 +115,7 @@ class UsinasNaoSimuladasTool(NEWAVETool):
                     codigos_validos = [s['codigo'] for s in subsistemas_disponiveis]
                     if codigo in codigos_validos:
                         nome_sub = next((s['nome'] for s in subsistemas_disponiveis if s['codigo'] == codigo), f"Subsistema {codigo}")
-                        print(f"[TOOL] ✅ Código {codigo} encontrado por padrão numérico: '{nome_sub}'")
+                        debug_print(f"[TOOL] ✅ Código {codigo} encontrado por padrão numérico: '{nome_sub}'")
                         return codigo
                 except ValueError:
                     continue
@@ -131,7 +132,7 @@ class UsinasNaoSimuladasTool(NEWAVETool):
             nome_sub_lower = nome_sub.lower().strip()
             
             if nome_sub_lower and nome_sub_lower in query_lower:
-                print(f"[TOOL] ✅ Código {codigo_sub} encontrado por nome: '{nome_sub}'")
+                debug_print(f"[TOOL] ✅ Código {codigo_sub} encontrado por nome: '{nome_sub}'")
                 return codigo_sub
         
         return None
@@ -212,20 +213,20 @@ class UsinasNaoSimuladasTool(NEWAVETool):
             for fonte in fontes_disponiveis:
                 fonte_str = str(fonte).lower().strip()
                 if sigla_base_encontrada in fonte_str and 'mmgd' in fonte_str:
-                    print(f"[TOOL] ✅ Fonte específica encontrada: '{fonte}'")
+                    debug_print(f"[TOOL] ✅ Fonte específica encontrada: '{fonte}'")
                     return fonte
         
         # ETAPA 4: Se encontrou sigla base mas NÃO mencionou MMGD, retornar sigla base
         # (será usado para filtro flexível que pega todas as variações)
         if sigla_base_encontrada and not tem_mmgd:
-            print(f"[TOOL] ✅ Sigla base encontrada para filtro genérico: '{sigla_base_encontrada.upper()}'")
-            print(f"[TOOL] 🔍 Buscando todas as fontes que contêm '{sigla_base_encontrada.upper()}'...")
+            debug_print(f"[TOOL] ✅ Sigla base encontrada para filtro genérico: '{sigla_base_encontrada.upper()}'")
+            debug_print(f"[TOOL] 🔍 Buscando todas as fontes que contêm '{sigla_base_encontrada.upper()}'...")
             # Verificar se existem fontes com essa sigla
             fontes_com_sigla = [f for f in fontes_disponiveis if sigla_base_encontrada in str(f).lower()]
             if fontes_com_sigla:
-                print(f"[TOOL] ✅ Encontradas {len(fontes_com_sigla)} fonte(s) com '{sigla_base_encontrada.upper()}': {[str(f) for f in fontes_com_sigla]}")
+                debug_print(f"[TOOL] ✅ Encontradas {len(fontes_com_sigla)} fonte(s) com '{sigla_base_encontrada.upper()}': {[str(f) for f in fontes_com_sigla]}")
             else:
-                print(f"[TOOL] ⚠️ Nenhuma fonte encontrada com '{sigla_base_encontrada.upper()}'")
+                debug_print(f"[TOOL] ⚠️ Nenhuma fonte encontrada com '{sigla_base_encontrada.upper()}'")
             # Retornar a sigla base com prefixo especial para indicar filtro flexível
             return f"__GEN_{sigla_base_encontrada.upper()}__"
         
@@ -240,12 +241,12 @@ class UsinasNaoSimuladasTool(NEWAVETool):
             
             # Match exato
             if fonte_str == query_lower.strip():
-                print(f"[TOOL] ✅ Fonte encontrada (match exato): '{fonte}'")
+                debug_print(f"[TOOL] ✅ Fonte encontrada (match exato): '{fonte}'")
                 return fonte
             
             # Match parcial - fonte contida na query ou query contida na fonte
             if fonte_str in query_lower or query_lower in fonte_str:
-                print(f"[TOOL] ✅ Fonte encontrada (match parcial): '{fonte}'")
+                debug_print(f"[TOOL] ✅ Fonte encontrada (match parcial): '{fonte}'")
                 return fonte
             
             # Match por palavras-chave da fonte na query
@@ -254,7 +255,7 @@ class UsinasNaoSimuladasTool(NEWAVETool):
                 # Se todas as palavras principais da fonte estão na query
                 palavras_principais = [p for p in palavras_fonte if len(p) > 2]
                 if palavras_principais and all(p in query_lower for p in palavras_principais):
-                    print(f"[TOOL] ✅ Fonte encontrada (match por palavras): '{fonte}'")
+                    debug_print(f"[TOOL] ✅ Fonte encontrada (match por palavras): '{fonte}'")
                     return fonte
         
         return None
@@ -357,62 +358,62 @@ class UsinasNaoSimuladasTool(NEWAVETool):
         4. Identifica filtros (submercado, bloco, fonte, período)
         5. Retorna dados filtrados
         """
-        print(f"[TOOL] {self.get_name()}: Iniciando execução...")
-        print(f"[TOOL] Query: {query[:100]}")
-        print(f"[TOOL] Deck path: {self.deck_path}")
+        debug_print(f"[TOOL] {self.get_name()}: Iniciando execução...")
+        debug_print(f"[TOOL] Query: {query[:100]}")
+        debug_print(f"[TOOL] Deck path: {self.deck_path}")
         
         try:
             # ETAPA 1: Verificar existência do arquivo
-            print("[TOOL] ETAPA 1: Verificando existência do arquivo SISTEMA.DAT...")
+            debug_print("[TOOL] ETAPA 1: Verificando existência do arquivo SISTEMA.DAT...")
             sistema_path = os.path.join(self.deck_path, "SISTEMA.DAT")
             
             if not os.path.exists(sistema_path):
                 sistema_path = os.path.join(self.deck_path, "sistema.dat")
                 if not os.path.exists(sistema_path):
-                    print(f"[TOOL] ❌ Arquivo SISTEMA.DAT não encontrado")
+                    safe_print(f"[TOOL] ❌ Arquivo SISTEMA.DAT não encontrado")
                     return {
                         "success": False,
                         "error": f"Arquivo SISTEMA.DAT não encontrado em {self.deck_path}",
                         "tool": self.get_name()
                     }
             
-            print(f"[TOOL] ✅ Arquivo encontrado: {sistema_path}")
+            debug_print(f"[TOOL] ✅ Arquivo encontrado: {sistema_path}")
             
             # ETAPA 2: Ler arquivo usando inewave
-            print("[TOOL] ETAPA 2: Lendo arquivo com inewave...")
+            debug_print("[TOOL] ETAPA 2: Lendo arquivo com inewave...")
             sistema = Sistema.read(sistema_path)
-            print("[TOOL] ✅ Arquivo lido com sucesso")
+            debug_print("[TOOL] ✅ Arquivo lido com sucesso")
             
             # ETAPA 3: Acessar propriedade geracao_usinas_nao_simuladas
-            print("[TOOL] ETAPA 3: Acessando propriedade geracao_usinas_nao_simuladas...")
+            debug_print("[TOOL] ETAPA 3: Acessando propriedade geracao_usinas_nao_simuladas...")
             df_geracao = sistema.geracao_usinas_nao_simuladas
             
             if df_geracao is None or df_geracao.empty:
-                print("[TOOL] ⚠️ Nenhuma geração de usinas não simuladas encontrada")
+                debug_print("[TOOL] ⚠️ Nenhuma geração de usinas não simuladas encontrada")
                 return {
                     "success": False,
                     "error": "Nenhuma geração de usinas não simuladas encontrada no arquivo SISTEMA.DAT",
                     "tool": self.get_name()
                 }
             
-            print(f"[TOOL] ✅ {len(df_geracao)} registro(s) de geração encontrado(s)")
-            print(f"[TOOL] Colunas: {list(df_geracao.columns)}")
+            debug_print(f"[TOOL] ✅ {len(df_geracao)} registro(s) de geração encontrado(s)")
+            debug_print(f"[TOOL] Colunas: {list(df_geracao.columns)}")
             
             # ETAPA 4: Listar subsistemas disponíveis
-            print("[TOOL] ETAPA 4: Listando subsistemas disponíveis...")
+            debug_print("[TOOL] ETAPA 4: Listando subsistemas disponíveis...")
             subsistemas_disponiveis = []
             if sistema.custo_deficit is not None:
                 df_custo = sistema.custo_deficit
                 subsistemas_unicos = df_custo[['codigo_submercado', 'nome_submercado']].drop_duplicates()
                 subsistemas_unicos = subsistemas_unicos.sort_values('codigo_submercado')
                 
-                print("[TOOL] ===== SUBSISTEMAS DISPONÍVEIS =====")
+                debug_print("[TOOL] ===== SUBSISTEMAS DISPONÍVEIS =====")
                 for _, row in subsistemas_unicos.iterrows():
                     codigo = int(row.get('codigo_submercado'))
                     nome = str(row.get('nome_submercado', '')).strip()
                     subsistemas_disponiveis.append({'codigo': codigo, 'nome': nome})
                     print(f"[TOOL]   - Código {codigo}: \"{nome}\"")
-                print("[TOOL] =====================================")
+                debug_print("[TOOL] =====================================")
             
             # Criar mapa de código -> nome de submercado para enriquecer os dados de saída
             submercado_map = {
@@ -421,26 +422,26 @@ class UsinasNaoSimuladasTool(NEWAVETool):
             } if subsistemas_disponiveis else {}
             
             # ETAPA 5: Identificar filtros
-            print("[TOOL] ETAPA 5: Identificando filtros...")
+            debug_print("[TOOL] ETAPA 5: Identificando filtros...")
             codigo_submercado = self._extract_submercado_from_query(query, sistema, subsistemas_disponiveis)
             indice_bloco = self._extract_bloco_from_query(query)
             fonte = self._extract_fonte_from_query(query, df_geracao)
             periodo = self._extract_periodo_from_query(query)
             
             if codigo_submercado is not None:
-                print(f"[TOOL] ✅ Filtro por submercado: {codigo_submercado}")
+                debug_print(f"[TOOL] ✅ Filtro por submercado: {codigo_submercado}")
             
             if indice_bloco is not None:
-                print(f"[TOOL] ✅ Filtro por bloco: {indice_bloco}")
+                debug_print(f"[TOOL] ✅ Filtro por bloco: {indice_bloco}")
             
             if fonte is not None:
-                print(f"[TOOL] ✅ Filtro por fonte: {fonte}")
+                debug_print(f"[TOOL] ✅ Filtro por fonte: {fonte}")
             
             if periodo is not None:
-                print(f"[TOOL] ✅ Filtro por período: {periodo}")
+                debug_print(f"[TOOL] ✅ Filtro por período: {periodo}")
             
             # ETAPA 6: Aplicar filtros
-            print("[TOOL] ETAPA 6: Aplicando filtros...")
+            debug_print("[TOOL] ETAPA 6: Aplicando filtros...")
             resultado_df = df_geracao.copy()
             
             if codigo_submercado is not None:
@@ -454,24 +455,24 @@ class UsinasNaoSimuladasTool(NEWAVETool):
                 if fonte.startswith("__GEN_") and fonte.endswith("__"):
                     # Filtro genérico: pegar todas as fontes que contêm a sigla base
                     sigla_base = fonte.replace("__GEN_", "").replace("__", "").lower()
-                    print(f"[TOOL] 🔍 Aplicando filtro genérico para '{sigla_base.upper()}' (retorna todas as variações)")
-                    print(f"[TOOL]  Total de registros antes do filtro de fonte: {len(resultado_df)}")
+                    debug_print(f"[TOOL] 🔍 Aplicando filtro genérico para '{sigla_base.upper()}' (retorna todas as variações)")
+                    debug_print(f"[TOOL]  Total de registros antes do filtro de fonte: {len(resultado_df)}")
                     resultado_df = resultado_df[resultado_df['fonte'].str.lower().str.contains(sigla_base, na=False)]
                     fontes_encontradas = resultado_df['fonte'].unique().tolist() if not resultado_df.empty else []
-                    print(f"[TOOL] ✅ {len(resultado_df)} registro(s) após filtro genérico")
-                    print(f"[TOOL] ✅ Fontes encontradas: {fontes_encontradas}")
+                    debug_print(f"[TOOL] ✅ {len(resultado_df)} registro(s) após filtro genérico")
+                    debug_print(f"[TOOL] ✅ Fontes encontradas: {fontes_encontradas}")
                     if len(resultado_df) == 0:
-                        print(f"[TOOL] ⚠️ Nenhum registro encontrado com fonte contendo '{sigla_base.upper()}'")
-                        print(f"[TOOL] 📋 Fontes disponíveis no DataFrame: {df_geracao['fonte'].unique().tolist()}")
+                        debug_print(f"[TOOL] ⚠️ Nenhum registro encontrado com fonte contendo '{sigla_base.upper()}'")
+                        debug_print(f"[TOOL] 📋 Fontes disponíveis no DataFrame: {df_geracao['fonte'].unique().tolist()}")
                 else:
                     # Filtro específico: match exato
-                    print(f"[TOOL] 🔍 Aplicando filtro específico para fonte: '{fonte}'")
-                    print(f"[TOOL]  Total de registros antes do filtro de fonte: {len(resultado_df)}")
+                    debug_print(f"[TOOL] 🔍 Aplicando filtro específico para fonte: '{fonte}'")
+                    debug_print(f"[TOOL]  Total de registros antes do filtro de fonte: {len(resultado_df)}")
                     resultado_df = resultado_df[resultado_df['fonte'] == fonte]
-                    print(f"[TOOL] ✅ {len(resultado_df)} registro(s) após filtro específico")
+                    debug_print(f"[TOOL] ✅ {len(resultado_df)} registro(s) após filtro específico")
                     if len(resultado_df) == 0:
-                        print(f"[TOOL] ⚠️ Nenhum registro encontrado com fonte exata '{fonte}'")
-                        print(f"[TOOL] 📋 Fontes disponíveis no DataFrame: {df_geracao['fonte'].unique().tolist()}")
+                        debug_print(f"[TOOL] ⚠️ Nenhum registro encontrado com fonte exata '{fonte}'")
+                        debug_print(f"[TOOL] 📋 Fontes disponíveis no DataFrame: {df_geracao['fonte'].unique().tolist()}")
             
             if periodo is not None:
                 # Processar filtro de período baseado no tipo de data
@@ -488,19 +489,19 @@ class UsinasNaoSimuladasTool(NEWAVETool):
                         if pd.api.types.is_datetime64_any_dtype(resultado_df['data']):
                             resultado_df = resultado_df[resultado_df['data'].dt.month == periodo['mes']]
             
-            print(f"[TOOL] ✅ {len(resultado_df)} registro(s) após filtros")
+            debug_print(f"[TOOL] ✅ {len(resultado_df)} registro(s) após filtros")
             
             # Verificar se há resultados após filtros
             if len(resultado_df) == 0:
-                print("[TOOL] ⚠️ Nenhum registro encontrado após aplicar filtros")
-                print(f"[TOOL] 📋 Informações de debug:")
-                print(f"[TOOL]   - Total de registros no arquivo: {len(df_geracao)}")
-                print(f"[TOOL]   - Fontes disponíveis: {df_geracao['fonte'].unique().tolist() if not df_geracao.empty else 'N/A'}")
-                print(f"[TOOL]   - Submercados disponíveis: {df_geracao['codigo_submercado'].unique().tolist() if not df_geracao.empty else 'N/A'}")
-                print(f"[TOOL]   - Blocos disponíveis: {df_geracao['indice_bloco'].unique().tolist() if not df_geracao.empty else 'N/A'}")
+                debug_print("[TOOL] ⚠️ Nenhum registro encontrado após aplicar filtros")
+                debug_print(f"[TOOL] 📋 Informações de debug:")
+                debug_print(f"[TOOL]   - Total de registros no arquivo: {len(df_geracao)}")
+                debug_print(f"[TOOL]   - Fontes disponíveis: {df_geracao['fonte'].unique().tolist() if not df_geracao.empty else 'N/A'}")
+                debug_print(f"[TOOL]   - Submercados disponíveis: {df_geracao['codigo_submercado'].unique().tolist() if not df_geracao.empty else 'N/A'}")
+                debug_print(f"[TOOL]   - Blocos disponíveis: {df_geracao['indice_bloco'].unique().tolist() if not df_geracao.empty else 'N/A'}")
             
             # ETAPA 7: Formatar resultados
-            print("[TOOL] ETAPA 7: Formatando resultados...")
+            debug_print("[TOOL] ETAPA 7: Formatando resultados...")
             dados_lista = []
             for _, row in resultado_df.iterrows():
                 item = self._format_geracao_data(row)
@@ -575,7 +576,7 @@ class UsinasNaoSimuladasTool(NEWAVETool):
                 stats['geracao_por_ano'] = df_copy.groupby('ano').size().to_dict()
             
             # ETAPA 9: Formatar resultado final
-            print("[TOOL] ETAPA 9: Formatando resultado final...")
+            debug_print("[TOOL] ETAPA 9: Formatando resultado final...")
             
             filtros_aplicados = {}
             if codigo_submercado is not None:
@@ -641,14 +642,14 @@ class UsinasNaoSimuladasTool(NEWAVETool):
             }
             
         except FileNotFoundError as e:
-            print(f"[TOOL] ❌ Erro FileNotFoundError: {e}")
+            safe_print(f"[TOOL] ❌ Erro FileNotFoundError: {e}")
             return {
                 "success": False,
                 "error": f"Arquivo não encontrado: {str(e)}",
                 "tool": self.get_name()
             }
         except Exception as e:
-            print(f"[TOOL] ❌ Erro ao processar: {type(e).__name__}: {e}")
+            safe_print(f"[TOOL] ❌ Erro ao processar: {type(e).__name__}: {e}")
             import traceback
             traceback.print_exc()
             return {

@@ -9,6 +9,7 @@ import pandas as pd
 import re
 from typing import Dict, Any, Optional
 from difflib import SequenceMatcher
+from newave_agent.app.config import debug_print, safe_print
 
 
 class HidrCadastroTool(NEWAVETool):
@@ -99,7 +100,7 @@ class HidrCadastroTool(NEWAVETool):
         # Verificar se há cadastro
         cadastro = hidr.cadastro
         if cadastro is None or cadastro.empty:
-            print("[TOOL] ⚠️ Cadastro vazio ou inexistente")
+            debug_print("[TOOL] ⚠️ Cadastro vazio ou inexistente")
             return None
         
         # ETAPA 1: Tentar extrair número explícito (código da usina)
@@ -126,24 +127,24 @@ class HidrCadastroTool(NEWAVETool):
                         if codigo_calculado == codigo:
                             nome = str(row.get('nome_usina', '')).strip()
                             if nome:  # Só considerar se tiver nome
-                                print(f"[TOOL] ✅ Código {codigo} encontrado por padrão numérico: '{nome}' (idx_real={idx})")
+                                debug_print(f"[TOOL] ✅ Código {codigo} encontrado por padrão numérico: '{nome}' (idx_real={idx})")
                                 return (codigo, idx)
                 except (ValueError, IndexError):
                     continue
         
         # ETAPA 2: Buscar por nome da usina
-        print(f"[TOOL] Buscando usina por nome na query: '{query}'")
-        print(f"[TOOL] Total de usinas no cadastro: {len(cadastro)}")
+        debug_print(f"[TOOL] Buscando usina por nome na query: '{query}'")
+        debug_print(f"[TOOL] Total de usinas no cadastro: {len(cadastro)}")
         
         # Palavras comuns a ignorar
         palavras_ignorar = {'de', 'da', 'do', 'das', 'dos', 'e', 'a', 'o', 'as', 'os', 'em', 'na', 'no', 'nas', 'nos', 'a', 'à', 'ao', 'aos', 'informacoes', 'informações', 'dados', 'usina', 'hidrelétrica', 'hidreletrica'}
         
         # Extrair palavras significativas da query
         palavras_query = [p for p in query_lower.split() if len(p) > 2 and p not in palavras_ignorar]
-        print(f"[TOOL] Palavras significativas extraídas da query: {palavras_query}")
+        debug_print(f"[TOOL] Palavras significativas extraídas da query: {palavras_query}")
         
         # Lista todas as usinas disponíveis
-        print(f"[TOOL] Usinas disponíveis no arquivo:")
+        debug_print(f"[TOOL] Usinas disponíveis no arquivo:")
         usinas_list = []
         for idx, row in cadastro.iterrows():
             codigo = idx + 1  # Código = índice + 1
@@ -153,7 +154,7 @@ class HidrCadastroTool(NEWAVETool):
                 print(f"[TOOL]   - Código {codigo}: \"{nome}\"")
         
         if not usinas_list:
-            print("[TOOL] ⚠️ Nenhuma usina com nome encontrada")
+            debug_print("[TOOL] ⚠️ Nenhuma usina com nome encontrada")
             return None
         
         # Ordenar por tamanho do nome (maior primeiro) para priorizar matches mais específicos
@@ -171,7 +172,7 @@ class HidrCadastroTool(NEWAVETool):
             # Match exato do nome completo
             if nome_usina_lower == query_lower.strip():
                 idx_real = usina['idx']
-                print(f"[TOOL] ✅ Código {codigo_usina} encontrado por match exato '{nome_usina}' (idx_real={idx_real})")
+                debug_print(f"[TOOL] ✅ Código {codigo_usina} encontrado por match exato '{nome_usina}' (idx_real={idx_real})")
                 return (codigo_usina, idx_real)
             
             # Match exato do nome completo dentro da query (como palavra completa)
@@ -180,7 +181,7 @@ class HidrCadastroTool(NEWAVETool):
                 pattern = r'\b' + re.escape(nome_usina_lower) + r'\b'
                 if re.search(pattern, query_lower):
                     idx_real = usina['idx']
-                    print(f"[TOOL] ✅ Código {codigo_usina} encontrado por nome completo '{nome_usina}' na query (idx_real={idx_real})")
+                    debug_print(f"[TOOL] ✅ Código {codigo_usina} encontrado por nome completo '{nome_usina}' na query (idx_real={idx_real})")
                     return (codigo_usina, idx_real)
         
         # ETAPA 2.2: Buscar por similaridade e palavras-chave
@@ -200,7 +201,7 @@ class HidrCadastroTool(NEWAVETool):
             # PRIORIDADE 3: Match exato de todas as palavras significativas
             if palavras_nome and all(palavra in query_lower for palavra in palavras_nome):
                 idx_real = usina['idx']
-                print(f"[TOOL] ✅ Código {codigo_usina} encontrado: todas as palavras significativas de '{nome_usina}' estão na query (idx_real={idx_real})")
+                debug_print(f"[TOOL] ✅ Código {codigo_usina} encontrado: todas as palavras significativas de '{nome_usina}' estão na query (idx_real={idx_real})")
                 return (codigo_usina, idx_real)
             
             # PRIORIDADE 4: Similaridade de string
@@ -234,10 +235,10 @@ class HidrCadastroTool(NEWAVETool):
             # Ordenar por tipo (similarity primeiro) e depois por score
             candidatos.sort(key=lambda x: (x['tipo'] == 'similarity', x['score']), reverse=True)
             melhor = candidatos[0]
-            print(f"[TOOL] ✅ Código {melhor['codigo']} encontrado por {melhor['tipo']} (score: {melhor['score']:.2f}): '{melhor['nome']}' (idx_real={melhor['idx_real']})")
+            debug_print(f"[TOOL] ✅ Código {melhor['codigo']} encontrado por {melhor['tipo']} (score: {melhor['score']:.2f}): '{melhor['nome']}' (idx_real={melhor['idx_real']})")
             return (melhor['codigo'], melhor['idx_real'])
         
-        print("[TOOL] ⚠️ Nenhuma usina específica detectada na query")
+        debug_print("[TOOL] ⚠️ Nenhuma usina específica detectada na query")
         return None
     
     def _format_usina_data(self, row: pd.Series, codigo: int) -> Dict[str, Any]:
@@ -440,13 +441,13 @@ class HidrCadastroTool(NEWAVETool):
         3. Identifica a usina da query usando cross-validation
         4. Retorna todas as informações disponíveis sobre a usina
         """
-        print(f"[TOOL] {self.get_name()}: Iniciando execução...")
-        print(f"[TOOL] Query: {query[:100]}")
-        print(f"[TOOL] Deck path: {self.deck_path}")
+        debug_print(f"[TOOL] {self.get_name()}: Iniciando execução...")
+        debug_print(f"[TOOL] Query: {query[:100]}")
+        debug_print(f"[TOOL] Deck path: {self.deck_path}")
         
         try:
             # ETAPA 1: Verificar existência do arquivo
-            print("[TOOL] ETAPA 1: Verificando existência do arquivo HIDR.DAT...")
+            debug_print("[TOOL] ETAPA 1: Verificando existência do arquivo HIDR.DAT...")
             hidr_path = os.path.join(self.deck_path, "HIDR.DAT")
             
             if not os.path.exists(hidr_path):
@@ -454,38 +455,38 @@ class HidrCadastroTool(NEWAVETool):
                 if os.path.exists(hidr_path_lower):
                     hidr_path = hidr_path_lower
                 else:
-                    print(f"[TOOL] ❌ Arquivo HIDR.DAT não encontrado")
+                    safe_print(f"[TOOL] ❌ Arquivo HIDR.DAT não encontrado")
                     return {
                         "success": False,
                         "error": f"Arquivo HIDR.DAT não encontrado em {self.deck_path}",
                         "tool": self.get_name()
                     }
             
-            print(f"[TOOL] ✅ Arquivo encontrado: {hidr_path}")
+            debug_print(f"[TOOL] ✅ Arquivo encontrado: {hidr_path}")
             
             # ETAPA 2: Ler arquivo usando inewave
-            print("[TOOL] ETAPA 2: Lendo arquivo com inewave...")
+            debug_print("[TOOL] ETAPA 2: Lendo arquivo com inewave...")
             hidr = Hidr.read(hidr_path)
-            print("[TOOL] ✅ Arquivo lido com sucesso")
+            debug_print("[TOOL] ✅ Arquivo lido com sucesso")
             
             # ETAPA 3: Verificar se há dados
             cadastro = hidr.cadastro
             if cadastro is None or cadastro.empty:
-                print("[TOOL] ⚠️ Nenhuma usina encontrada no cadastro")
+                debug_print("[TOOL] ⚠️ Nenhuma usina encontrada no cadastro")
                 return {
                     "success": False,
                     "error": "Nenhuma usina encontrada no arquivo HIDR.DAT",
                     "tool": self.get_name()
                 }
             
-            print(f"[TOOL] ✅ {len(cadastro)} usina(s) encontrada(s) no cadastro")
+            debug_print(f"[TOOL] ✅ {len(cadastro)} usina(s) encontrada(s) no cadastro")
             
             # ETAPA 4: Identificar usina da query
-            print("[TOOL] ETAPA 4: Identificando usina da query...")
+            debug_print("[TOOL] ETAPA 4: Identificando usina da query...")
             resultado = self._extract_usina_from_query(query, hidr)
             
             if resultado is None:
-                print("[TOOL] ⚠️ Nenhuma usina específica identificada")
+                debug_print("[TOOL] ⚠️ Nenhuma usina específica identificada")
                 return {
                     "success": False,
                     "error": "Não foi possível identificar qual usina consultar. Por favor, especifique o nome ou código da usina.",
@@ -494,10 +495,10 @@ class HidrCadastroTool(NEWAVETool):
                 }
             
             codigo_usina, idx_real = resultado
-            print(f"[TOOL] ✅ Usina identificada: código {codigo_usina}, índice real {idx_real}")
+            debug_print(f"[TOOL] ✅ Usina identificada: código {codigo_usina}, índice real {idx_real}")
             
             # ETAPA 5: Obter dados da usina
-            print(f"[TOOL] ETAPA 5: Obtendo dados da usina {codigo_usina} (idx_real={idx_real})...")
+            debug_print(f"[TOOL] ETAPA 5: Obtendo dados da usina {codigo_usina} (idx_real={idx_real})...")
             
             # Usar o índice real do DataFrame para acessar a linha correta
             # Como idx_real vem de iterrows(), ele sempre existe no index do DataFrame
@@ -505,9 +506,9 @@ class HidrCadastroTool(NEWAVETool):
                 row = cadastro.loc[idx_real]
                 # Validar que pegamos a usina correta pelo nome
                 nome_encontrado = str(row.get('nome_usina', '')).strip()
-                print(f"[TOOL] ✅ Linha acessada: '{nome_encontrado}' (idx_real={idx_real})")
+                debug_print(f"[TOOL] ✅ Linha acessada: '{nome_encontrado}' (idx_real={idx_real})")
             except (KeyError, IndexError) as e:
-                print(f"[TOOL] ❌ Erro ao acessar linha com índice {idx_real}: {e}")
+                safe_print(f"[TOOL] ❌ Erro ao acessar linha com índice {idx_real}: {e}")
                 return {
                     "success": False,
                     "error": f"Erro ao acessar dados da usina {codigo_usina} (índice {idx_real}): {str(e)}",
@@ -516,7 +517,7 @@ class HidrCadastroTool(NEWAVETool):
             
             dados_usina = self._format_usina_data(row, codigo_usina)
             
-            print(f"[TOOL] ✅ Dados da usina '{dados_usina.get('nome_usina', 'N/A')}' extraídos com sucesso")
+            debug_print(f"[TOOL] ✅ Dados da usina '{dados_usina.get('nome_usina', 'N/A')}' extraídos com sucesso")
             
             # ETAPA 6: Estatísticas gerais
             stats = {
@@ -525,7 +526,7 @@ class HidrCadastroTool(NEWAVETool):
             }
             
             # ETAPA 7: Formatar resultado
-            print("[TOOL] ETAPA 7: Formatando resultado...")
+            debug_print("[TOOL] ETAPA 7: Formatando resultado...")
             
             return {
                 "success": True,
@@ -536,14 +537,14 @@ class HidrCadastroTool(NEWAVETool):
             }
             
         except FileNotFoundError as e:
-            print(f"[TOOL] ❌ Erro FileNotFoundError: {e}")
+            safe_print(f"[TOOL] ❌ Erro FileNotFoundError: {e}")
             return {
                 "success": False,
                 "error": f"Arquivo não encontrado: {str(e)}",
                 "tool": self.get_name()
             }
         except Exception as e:
-            print(f"[TOOL] ❌ Erro ao processar: {type(e).__name__}: {e}")
+            safe_print(f"[TOOL] ❌ Erro ao processar: {type(e).__name__}: {e}")
             import traceback
             traceback.print_exc()
             return {

@@ -8,6 +8,7 @@ import os
 import pandas as pd
 import re
 from typing import Dict, Any, Optional
+from newave_agent.app.config import debug_print, safe_print
 
 class ExptOperacaoTool(NEWAVETool):
     """
@@ -133,7 +134,7 @@ class ExptOperacaoTool(NEWAVETool):
                     if expt.expansoes is not None:
                         codigos_validos = expt.expansoes['codigo_usina'].unique()
                         if codigo in codigos_validos:
-                            print(f"[TOOL] ✅ Código {codigo} encontrado por padrão numérico")
+                            debug_print(f"[TOOL] ✅ Código {codigo} encontrado por padrão numérico")
                             return codigo
                 except ValueError:
                     continue
@@ -143,7 +144,7 @@ class ExptOperacaoTool(NEWAVETool):
             usinas_unicas = expt.expansoes[['codigo_usina', 'nome_usina']].drop_duplicates()
             usinas_unicas = usinas_unicas.sort_values('codigo_usina')
             
-            print(f"[TOOL] Usinas disponíveis no arquivo:")
+            debug_print(f"[TOOL] Usinas disponíveis no arquivo:")
             for _, row in usinas_unicas.iterrows():
                 codigo = int(row.get('codigo_usina'))
                 nome = str(row.get('nome_usina', '')).strip()
@@ -168,7 +169,7 @@ class ExptOperacaoTool(NEWAVETool):
                 
                 # Match exato do nome completo
                 if nome_usina_lower == query_lower.strip():
-                    print(f"[TOOL] ✅ Código {codigo_usina} encontrado por match exato '{nome_usina}'")
+                    debug_print(f"[TOOL] ✅ Código {codigo_usina} encontrado por match exato '{nome_usina}'")
                     return codigo_usina
                 
                 # Match exato do nome completo dentro da query (com word boundaries)
@@ -180,7 +181,7 @@ class ExptOperacaoTool(NEWAVETool):
                         # Usar word boundaries para evitar matches parciais
                         pattern = r'\b' + re.escape(nome_usina_lower) + r'\b'
                         if re.search(pattern, query_lower):
-                            print(f"[TOOL] ✅ Código {codigo_usina} encontrado por nome completo '{nome_usina}' na query")
+                            debug_print(f"[TOOL] ✅ Código {codigo_usina} encontrado por nome completo '{nome_usina}' na query")
                             return codigo_usina
             
             # ETAPA 2.2: Buscar por palavras-chave do nome (apenas se match exato não encontrou)
@@ -221,10 +222,10 @@ class ExptOperacaoTool(NEWAVETool):
             
             if candidatos:
                 melhor_codigo, melhor_nome, melhor_score = candidatos[0]
-                print(f"[TOOL] ✅ Código {melhor_codigo} encontrado por palavras-chave '{melhor_nome}' (score: {melhor_score:.2f})")
+                debug_print(f"[TOOL] ✅ Código {melhor_codigo} encontrado por palavras-chave '{melhor_nome}' (score: {melhor_score:.2f})")
                 return melhor_codigo
         
-        print("[TOOL] ⚠️ Nenhuma usina específica detectada na query")
+        debug_print("[TOOL] ⚠️ Nenhuma usina específica detectada na query")
         return None
     
     def _extract_operacao_especifica(self, query: str) -> Optional[str]:
@@ -258,13 +259,13 @@ class ExptOperacaoTool(NEWAVETool):
         3. Identifica filtros (usina, tipo de modificação, operação específica)
         4. Processa e retorna dados
         """
-        print(f"[TOOL] {self.get_name()}: Iniciando execução...")
-        print(f"[TOOL] Query: {query[:100]}")
-        print(f"[TOOL] Deck path: {self.deck_path}")
+        debug_print(f"[TOOL] {self.get_name()}: Iniciando execução...")
+        debug_print(f"[TOOL] Query: {query[:100]}")
+        debug_print(f"[TOOL] Deck path: {self.deck_path}")
         
         try:
             # ETAPA 1: Verificar existência do arquivo
-            print("[TOOL] ETAPA 1: Verificando existência do arquivo EXPT.DAT...")
+            debug_print("[TOOL] ETAPA 1: Verificando existência do arquivo EXPT.DAT...")
             expt_path = os.path.join(self.deck_path, "EXPT.DAT")
             
             if not os.path.exists(expt_path):
@@ -272,57 +273,57 @@ class ExptOperacaoTool(NEWAVETool):
                 if os.path.exists(expt_path_lower):
                     expt_path = expt_path_lower
                 else:
-                    print(f"[TOOL] ❌ Arquivo EXPT.DAT não encontrado")
+                    safe_print(f"[TOOL] ❌ Arquivo EXPT.DAT não encontrado")
                     return {
                         "success": False,
                         "error": f"Arquivo EXPT.DAT não encontrado em {self.deck_path}",
                         "tool": self.get_name()
                     }
             
-            print(f"[TOOL] ✅ Arquivo encontrado: {expt_path}")
+            debug_print(f"[TOOL] ✅ Arquivo encontrado: {expt_path}")
             
             # ETAPA 2: Ler arquivo usando inewave
-            print("[TOOL] ETAPA 2: Lendo arquivo com inewave...")
+            debug_print("[TOOL] ETAPA 2: Lendo arquivo com inewave...")
             expt = Expt.read(expt_path)
-            print("[TOOL] ✅ Arquivo lido com sucesso")
+            debug_print("[TOOL] ✅ Arquivo lido com sucesso")
             
             # ETAPA 3: Verificar se há dados
             if expt.expansoes is None or expt.expansoes.empty:
-                print("[TOOL] ⚠️ Nenhum dado de expansão disponível")
+                debug_print("[TOOL] ⚠️ Nenhum dado de expansão disponível")
                 return {
                     "success": False,
                     "error": "Nenhuma expansão ou modificação encontrada no arquivo EXPT.DAT",
                     "tool": self.get_name()
                 }
             
-            print(f"[TOOL] ✅ DataFrame obtido: {len(expt.expansoes)} registros")
-            print(f"[TOOL] Colunas: {list(expt.expansoes.columns)}")
+            debug_print(f"[TOOL] ✅ DataFrame obtido: {len(expt.expansoes)} registros")
+            debug_print(f"[TOOL] Colunas: {list(expt.expansoes.columns)}")
             
             # ETAPA 4: Identificar filtros
-            print("[TOOL] ETAPA 4: Identificando filtros...")
+            debug_print("[TOOL] ETAPA 4: Identificando filtros...")
             codigo_usina = self._extract_usina_from_query(query, expt)
             tipo_modificacao = self._extract_tipo_modificacao(query)
             operacao_especifica = self._extract_operacao_especifica(query)
             
             if codigo_usina is not None:
-                print(f"[TOOL] ✅ Filtro por usina: {codigo_usina}")
+                debug_print(f"[TOOL] ✅ Filtro por usina: {codigo_usina}")
             if tipo_modificacao is not None:
-                print(f"[TOOL] ✅ Filtro por tipo de modificação: {tipo_modificacao}")
+                debug_print(f"[TOOL] ✅ Filtro por tipo de modificação: {tipo_modificacao}")
             if operacao_especifica is not None:
-                print(f"[TOOL] ✅ Filtro por operação específica: {operacao_especifica}")
+                debug_print(f"[TOOL] ✅ Filtro por operação específica: {operacao_especifica}")
             
             # ETAPA 5: Processar dados
-            print("[TOOL] ETAPA 5: Processando dados...")
+            debug_print("[TOOL] ETAPA 5: Processando dados...")
             df_expansoes = expt.expansoes.copy()
             
             # Aplicar filtros
             if codigo_usina is not None:
                 df_expansoes = df_expansoes[df_expansoes['codigo_usina'] == codigo_usina]
-                print(f"[TOOL] ✅ Dados filtrados por usina {codigo_usina}: {len(df_expansoes)} registros")
+                debug_print(f"[TOOL] ✅ Dados filtrados por usina {codigo_usina}: {len(df_expansoes)} registros")
             
             if tipo_modificacao is not None:
                 df_expansoes = df_expansoes[df_expansoes['tipo'] == tipo_modificacao]
-                print(f"[TOOL] ✅ Dados filtrados por tipo {tipo_modificacao}: {len(df_expansoes)} registros")
+                debug_print(f"[TOOL] ✅ Dados filtrados por tipo {tipo_modificacao}: {len(df_expansoes)} registros")
             
             # Processar operações específicas
             desativacoes = None
@@ -337,7 +338,7 @@ class ExptOperacaoTool(NEWAVETool):
                 ]
                 if not desativacoes_df.empty:
                     desativacoes = desativacoes_df.to_dict(orient="records")
-                    print(f"[TOOL] ✅ {len(desativacoes)} desativações encontradas")
+                    debug_print(f"[TOOL] ✅ {len(desativacoes)} desativações encontradas")
             
             if operacao_especifica == "repotenciacao" or operacao_especifica is None:
                 # Repotenciações: POTEF > 0
@@ -347,14 +348,14 @@ class ExptOperacaoTool(NEWAVETool):
                 ]
                 if not repotenciacoes_df.empty:
                     repotenciacoes = repotenciacoes_df.to_dict(orient="records")
-                    print(f"[TOOL] ✅ {len(repotenciacoes)} repotenciações encontradas")
+                    debug_print(f"[TOOL] ✅ {len(repotenciacoes)} repotenciações encontradas")
             
             if operacao_especifica == "expansao" or operacao_especifica is None:
                 # Expansões: todas as modificações de POTEF
                 expansoes_df = df_expansoes[df_expansoes['tipo'] == 'POTEF']
                 if not expansoes_df.empty:
                     expansoes = expansoes_df.to_dict(orient="records")
-                    print(f"[TOOL] ✅ {len(expansoes)} expansões encontradas")
+                    debug_print(f"[TOOL] ✅ {len(expansoes)} expansões encontradas")
             
             # Converter DataFrame para lista de dicts
             dados_expansoes = df_expansoes.to_dict(orient="records")
@@ -393,7 +394,7 @@ class ExptOperacaoTool(NEWAVETool):
                             record[key] = value.isoformat() if hasattr(value, 'isoformat') else str(value)
             
             # ETAPA 6: Calcular estatísticas
-            print("[TOOL] ETAPA 6: Calculando estatísticas...")
+            debug_print("[TOOL] ETAPA 6: Calculando estatísticas...")
             
             stats_geral = {
                 'total_registros': len(df_expansoes),
@@ -444,7 +445,7 @@ class ExptOperacaoTool(NEWAVETool):
                                 record[key] = value.isoformat() if hasattr(value, 'isoformat') else str(value)
             
             # ETAPA 7: Formatar resultado
-            print("[TOOL] ETAPA 7: Formatando resultado...")
+            debug_print("[TOOL] ETAPA 7: Formatando resultado...")
             
             # Informações sobre filtros aplicados
             filtro_info = {}
@@ -477,14 +478,14 @@ class ExptOperacaoTool(NEWAVETool):
             }
             
         except FileNotFoundError as e:
-            print(f"[TOOL] ❌ Erro FileNotFoundError: {e}")
+            safe_print(f"[TOOL] ❌ Erro FileNotFoundError: {e}")
             return {
                 "success": False,
                 "error": f"Arquivo não encontrado: {str(e)}",
                 "tool": self.get_name()
             }
         except Exception as e:
-            print(f"[TOOL] ❌ Erro ao processar: {type(e).__name__}: {e}")
+            safe_print(f"[TOOL] ❌ Erro ao processar: {type(e).__name__}: {e}")
             import traceback
             traceback.print_exc()
             return {

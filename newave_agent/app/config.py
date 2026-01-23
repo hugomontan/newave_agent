@@ -67,6 +67,20 @@ def safe_print(*args, **kwargs):
         except Exception:
             pass  # Silenciosamente ignora se ainda falhar
 
+# Debug mode - controla se prints de debug são exibidos
+DEBUG_MODE = os.getenv("DEBUG_MODE", "false").lower() == "true"
+
+def debug_print(*args, **kwargs):
+    """
+    Print condicional para debug. Só imprime se DEBUG_MODE=True.
+    
+    Uso:
+        from newave_agent.app.config import debug_print
+        debug_print("[TOOL] Mensagem de debug")  # Só imprime se DEBUG_MODE=true
+    """
+    if DEBUG_MODE:
+        safe_print(*args, **kwargs)
+
 # Base paths
 BASE_DIR = Path(__file__).resolve().parent.parent
 

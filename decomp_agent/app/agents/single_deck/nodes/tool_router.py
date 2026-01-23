@@ -9,7 +9,7 @@ from typing import Optional, Dict, Any, List
 import os
 import json as json_module
 from decomp_agent.app.agents.single_deck.state import SingleDeckState
-from decomp_agent.app.agents.single_deck.tools import get_available_tools
+from decomp_agent.app.tools import get_available_tools
 from decomp_agent.app.tools.base import DECOMPTool
 from decomp_agent.app.config import (
     SEMANTIC_MATCHING_ENABLED, 

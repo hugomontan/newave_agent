@@ -3,6 +3,7 @@ Tool para consultar dados de carga mensais por submercado.
 Acessa o arquivo SISTEMA.DAT, propriedade mercado_energia.
 """
 from newave_agent.app.tools.base import NEWAVETool
+from newave_agent.app.config import debug_print, safe_print
 from inewave.newave import Sistema
 import os
 import pandas as pd
@@ -101,16 +102,16 @@ class CargaMensalTool(NEWAVETool):
                     if codigo in codigos_validos:
                         # Encontrar o nome do subsistema
                         nome_sub = next((s['nome'] for s in subsistemas_disponiveis if s['codigo'] == codigo), f"Subsistema {codigo}")
-                        print(f"[TOOL] ✅ Código {codigo} encontrado por padrão numérico: \"{nome_sub}\"")
+                        debug_print(f"[TOOL] ✅ Código {codigo} encontrado por padrão numérico: \"{nome_sub}\"")
                         return codigo
                     else:
-                        print(f"[TOOL] ⚠️ Código {codigo} mencionado mas não existe no arquivo")
-                        print(f"[TOOL] Códigos disponíveis: {codigos_validos}")
+                        debug_print(f"[TOOL] ⚠️ Código {codigo} mencionado mas não existe no arquivo")
+                        debug_print(f"[TOOL] Códigos disponíveis: {codigos_validos}")
                 except ValueError:
                     continue
         
         # ETAPA 2: Buscar por nome na lista de subsistemas disponíveis
-        print(f"[TOOL] Buscando correspondência por nome na query: '{query_lower}'")
+        debug_print(f"[TOOL] Buscando correspondência por nome na query: '{query_lower}'")
         
         # Ordenar por tamanho do nome (mais específico primeiro) para evitar matches incorretos
         subsistemas_ordenados = sorted(subsistemas_disponiveis, key=lambda x: len(x['nome']), reverse=True)
@@ -122,7 +123,7 @@ class CargaMensalTool(NEWAVETool):
             
             # Verificar se o nome completo do subsistema está na query
             if nome_sub_lower and nome_sub_lower in query_lower:
-                print(f"[TOOL] ✅ Código {codigo_sub} encontrado por nome completo '{nome_sub}' na query")
+                debug_print(f"[TOOL] ✅ Código {codigo_sub} encontrado por nome completo '{nome_sub}' na query")
                 return codigo_sub
             
             # Verificar palavras-chave do nome (para nomes compostos ou abreviações)
@@ -133,7 +134,7 @@ class CargaMensalTool(NEWAVETool):
                     # Verificar se não é uma palavra muito comum que poderia dar falso positivo
                     palavras_comuns = ['do', 'da', 'de', 'para', 'por', 'com', 'sem', 'em', 'na', 'no']
                     if palavra not in palavras_comuns:
-                        print(f"[TOOL] ✅ Código {codigo_sub} encontrado por palavra-chave '{palavra}' do nome '{nome_sub}'")
+                        debug_print(f"[TOOL] ✅ Código {codigo_sub} encontrado por palavra-chave '{palavra}' do nome '{nome_sub}'")
                         return codigo_sub
             
             # Verificar também padrões como "do norte", "do sudeste", etc
@@ -146,13 +147,13 @@ class CargaMensalTool(NEWAVETool):
             ]
             for padrao in padroes:
                 if padrao in query_lower:
-                    print(f"[TOOL] ✅ Código {codigo_sub} encontrado por padrão '{padrao}' do nome '{nome_sub}'")
+                    debug_print(f"[TOOL] ✅ Código {codigo_sub} encontrado por padrão '{padrao}' do nome '{nome_sub}'")
                     return codigo_sub
         
-        print("[TOOL] ⚠️ Nenhum subsistema específico detectado na query")
-        print(f"[TOOL] Subsistemas disponíveis para referência:")
+        debug_print("[TOOL] ⚠️ Nenhum subsistema específico detectado na query")
+        debug_print(f"[TOOL] Subsistemas disponíveis para referência:")
         for s in subsistemas_disponiveis:
-            print(f"[TOOL]   - Código {s['codigo']}: \"{s['nome']}\"")
+            debug_print(f"[TOOL]   - Código {s['codigo']}: \"{s['nome']}\"")
         return None
     
     def _should_group_by_submercado(self, query: str) -> bool:
@@ -203,17 +204,14 @@ class CargaMensalTool(NEWAVETool):
         Returns:
             Dict com resultado da execução
         """
-        print(f"[TOOL] {self.get_name()}: Iniciando execução...")
-        print(f"[TOOL] Query: {query[:100]}")
-        print(f"[TOOL] Deck path: {self.deck_path}")
+        debug_print(f"[TOOL] {self.get_name()}: Iniciando execução...")
+        debug_print(f"[TOOL] Query: {query[:100]}")
+        debug_print(f"[TOOL] Deck path: {self.deck_path}")
         
         try:
-            # ETAPA 1: Verificar existência do arquivo
-            print("[TOOL] ETAPA 1: Verificando existência do arquivo SISTEMA.DAT...")
             sistema_path = os.path.join(self.deck_path, "SISTEMA.DAT")
             
             if not os.path.exists(sistema_path):
-                # Tentar variações de nome
                 sistema_path_upper = os.path.join(self.deck_path, "SISTEMA.DAT")
                 sistema_path_lower = os.path.join(self.deck_path, "sistema.dat")
                 
@@ -222,69 +220,58 @@ class CargaMensalTool(NEWAVETool):
                 elif os.path.exists(sistema_path_lower):
                     sistema_path = sistema_path_lower
                 else:
-                    print(f"[TOOL] ❌ Arquivo SISTEMA.DAT não encontrado")
+                    safe_print(f"[TOOL] ❌ Arquivo SISTEMA.DAT não encontrado")
                     return {
                         "success": False,
                         "error": f"Arquivo SISTEMA.DAT não encontrado em {self.deck_path}",
                         "tool": self.get_name()
                     }
             
-            print(f"[TOOL] ✅ Arquivo encontrado: {sistema_path}")
+            debug_print(f"[TOOL] ✅ Arquivo encontrado: {sistema_path}")
             
-            # ETAPA 2: Ler arquivo usando inewave
-            print("[TOOL] ETAPA 2: Lendo arquivo com inewave...")
             sistema = Sistema.read(sistema_path)
-            print("[TOOL] ✅ Arquivo lido com sucesso")
+            debug_print("[TOOL] ✅ Arquivo lido com sucesso")
             
-            # ETAPA 3: Acessar propriedade mercado_energia
-            print("[TOOL] ETAPA 3: Acessando propriedade mercado_energia...")
             df_mercado = sistema.mercado_energia
             
             if df_mercado is None or df_mercado.empty:
-                print("[TOOL] ❌ DataFrame vazio ou None")
+                safe_print("[TOOL] ❌ DataFrame vazio ou None")
                 return {
                     "success": False,
                     "error": "Dados de mercado de energia não encontrados no arquivo",
                     "tool": self.get_name()
                 }
             
-            print(f"[TOOL] ✅ DataFrame obtido: {len(df_mercado)} registros")
-            print(f"[TOOL] Colunas: {list(df_mercado.columns)}")
+            debug_print(f"[TOOL] ✅ DataFrame obtido: {len(df_mercado)} registros")
+            debug_print(f"[TOOL] Colunas: {list(df_mercado.columns)}")
             
-            # ETAPA 3.5: Listar subsistemas disponíveis e extrair filtro se especificado
-            print("[TOOL] ETAPA 3.5: Listando subsistemas disponíveis no arquivo...")
-            
-            # Listar todos os subsistemas disponíveis
             subsistemas_disponiveis = []
             if sistema.custo_deficit is not None:
                 df_custo = sistema.custo_deficit
                 subsistemas_unicos = df_custo[['codigo_submercado', 'nome_submercado']].drop_duplicates()
                 subsistemas_unicos = subsistemas_unicos.sort_values('codigo_submercado')
                 
-                print("[TOOL] ===== SUBSISTEMAS DISPONÍVEIS NO ARQUIVO =====")
+                debug_print("[TOOL] ===== SUBSISTEMAS DISPONÍVEIS NO ARQUIVO =====")
                 for _, row in subsistemas_unicos.iterrows():
                     codigo = int(row.get('codigo_submercado'))
                     nome = str(row.get('nome_submercado', '')).strip()
                     subsistemas_disponiveis.append({'codigo': codigo, 'nome': nome})
-                    print(f"[TOOL]   - Código {codigo}: \"{nome}\"")
-                print("[TOOL] ==============================================")
+                    debug_print(f"[TOOL]   - Código {codigo}: \"{nome}\"")
+                debug_print("[TOOL] ==============================================")
             
-            # Extrair filtro da query - A TOOL É RESPONSÁVEL POR IDENTIFICAR O CÓDIGO CORRETO
-            print(f"[TOOL] Analisando query do usuário para identificar subsistema: '{query}'")
-            codigo_submercado = None  # Inicializar variável
+            debug_print(f"[TOOL] Analisando query do usuário para identificar subsistema: '{query}'")
+            codigo_submercado = None
             codigo_submercado = self._extract_submercado_from_query(query, sistema, subsistemas_disponiveis)
             
             if codigo_submercado is not None:
-                # Encontrar nome do subsistema para log
                 nome_sub = next((s['nome'] for s in subsistemas_disponiveis if s['codigo'] == codigo_submercado), f"Subsistema {codigo_submercado}")
-                print(f"[TOOL] ✅ TOOL IDENTIFICOU: Query do usuário refere-se ao subsistema '{nome_sub}' (Código: {codigo_submercado})")
+                debug_print(f"[TOOL] ✅ TOOL IDENTIFICOU: Query do usuário refere-se ao subsistema '{nome_sub}' (Código: {codigo_submercado})")
             else:
-                print("[TOOL] ⚠️ Nenhum subsistema específico identificado na query - retornando todos os submercados")
+                debug_print("[TOOL] ⚠️ Nenhum subsistema específico identificado na query - retornando todos os submercados")
             
             if codigo_submercado is not None:
-                print(f"[TOOL] ✅ Filtro detectado: subsistema {codigo_submercado}")
+                debug_print(f"[TOOL] ✅ Filtro detectado: subsistema {codigo_submercado}")
                 
-                # Obter nome do subsistema para exibição
                 nome_submercado = None
                 if sistema.custo_deficit is not None:
                     df_custo = sistema.custo_deficit
@@ -292,9 +279,8 @@ class CargaMensalTool(NEWAVETool):
                     if not subsistema_info.empty:
                         nome_submercado = subsistema_info.iloc[0].get('nome_submercado', f'Subsistema {codigo_submercado}')
                 
-                # Filtrar DataFrame
                 df_mercado = df_mercado[df_mercado['codigo_submercado'] == codigo_submercado].copy()
-                print(f"[TOOL] ✅ Dados filtrados: {len(df_mercado)} registros para subsistema {codigo_submercado} ({nome_submercado})")
+                debug_print(f"[TOOL] ✅ Dados filtrados: {len(df_mercado)} registros para subsistema {codigo_submercado} ({nome_submercado})")
                 
                 if df_mercado.empty:
                     return {
@@ -303,53 +289,45 @@ class CargaMensalTool(NEWAVETool):
                         "tool": self.get_name()
                     }
             else:
-                print("[TOOL] ⚠️ Nenhum filtro por subsistema detectado, retornando todos os submercados")
+                debug_print("[TOOL] ⚠️ Nenhum filtro por subsistema detectado, retornando todos os submercados")
             
-            # ETAPA 4: Processar dados
-            print("[TOOL] ETAPA 4: Processando dados...")
-            print(f"[TOOL] Colunas disponíveis: {list(df_mercado.columns)}")
-            print(f"[TOOL] Tipos de dados: {df_mercado.dtypes.to_dict()}")
+            debug_print("[TOOL] ETAPA 4: Processando dados...")
+            debug_print(f"[TOOL] Colunas disponíveis: {list(df_mercado.columns)}")
+            debug_print(f"[TOOL] Tipos de dados: {df_mercado.dtypes.to_dict()}")
             
             # Adicionar colunas auxiliares para facilitar consultas
             df_mercado = df_mercado.copy()
             
-            # Verificar se existe coluna 'data' e processar
             if 'data' in df_mercado.columns:
-                print(f"[TOOL] Coluna 'data' encontrada. Tipo: {df_mercado['data'].dtype}")
+                debug_print(f"[TOOL] Coluna 'data' encontrada. Tipo: {df_mercado['data'].dtype}")
                 
-                # Verificar se a coluna 'data' é datetime, se não, converter
                 if not pd.api.types.is_datetime64_any_dtype(df_mercado['data']):
-                    print("[TOOL] ⚠️ Coluna 'data' não é datetime, tentando converter...")
+                    debug_print("[TOOL] ⚠️ Coluna 'data' não é datetime, tentando converter...")
                     try:
                         df_mercado['data'] = pd.to_datetime(df_mercado['data'], errors='coerce')
-                        print("[TOOL] ✅ Coluna 'data' convertida para datetime")
+                        debug_print("[TOOL] ✅ Coluna 'data' convertida para datetime")
                     except Exception as e:
-                        print(f"[TOOL] ⚠️ Não foi possível converter 'data' para datetime: {e}")
+                        debug_print(f"[TOOL] ⚠️ Não foi possível converter 'data' para datetime: {e}")
                 
-                # Agora podemos usar .dt se a coluna for datetime
                 if pd.api.types.is_datetime64_any_dtype(df_mercado['data']):
                     try:
                         df_mercado['ano'] = df_mercado['data'].dt.year
                         df_mercado['mes'] = df_mercado['data'].dt.month
                         df_mercado['mes_nome'] = df_mercado['data'].dt.strftime('%B')
                         df_mercado['ano_mes'] = df_mercado['data'].dt.strftime('%Y-%m')
-                        print("[TOOL] ✅ Colunas auxiliares criadas a partir de 'data'")
+                        debug_print("[TOOL] ✅ Colunas auxiliares criadas a partir de 'data'")
                     except Exception as e:
-                        print(f"[TOOL] ⚠️ Erro ao extrair ano/mês de 'data': {e}")
-                        # Tentar usar colunas existentes se disponíveis
+                        debug_print(f"[TOOL] ⚠️ Erro ao extrair ano/mês de 'data': {e}")
                         if 'ano' in df_mercado.columns and 'mes' in df_mercado.columns:
-                            print("[TOOL] ✅ Usando colunas 'ano' e 'mes' existentes")
+                            debug_print("[TOOL] ✅ Usando colunas 'ano' e 'mes' existentes")
                 elif 'ano' in df_mercado.columns and 'mes' in df_mercado.columns:
-                    # Se não é datetime mas tem ano/mês, usar diretamente
-                    print("[TOOL] ✅ Usando colunas 'ano' e 'mes' existentes")
+                    debug_print("[TOOL] ✅ Usando colunas 'ano' e 'mes' existentes")
                 else:
-                    print("[TOOL] ⚠️ Não foi possível criar colunas auxiliares de data")
+                    debug_print("[TOOL] ⚠️ Não foi possível criar colunas auxiliares de data")
             
-            # Se não tem 'data' mas tem 'ano' e 'mes', usar diretamente
             elif 'ano' in df_mercado.columns and 'mes' in df_mercado.columns:
-                print("[TOOL] ✅ Colunas 'ano' e 'mes' encontradas, usando diretamente")
+                debug_print("[TOOL] ✅ Colunas 'ano' e 'mes' encontradas, usando diretamente")
                 if 'mes_nome' not in df_mercado.columns:
-                    # Criar mês nome a partir do número
                     meses = {1: 'January', 2: 'February', 3: 'March', 4: 'April',
                             5: 'May', 6: 'June', 7: 'July', 8: 'August',
                             9: 'September', 10: 'October', 11: 'November', 12: 'December'}
@@ -357,10 +335,7 @@ class CargaMensalTool(NEWAVETool):
                 if 'ano_mes' not in df_mercado.columns:
                     df_mercado['ano_mes'] = df_mercado['ano'].astype(str) + '-' + df_mercado['mes'].astype(str).str.zfill(2)
             else:
-                print("[TOOL] ⚠️ Nenhuma coluna de data/ano/mês encontrada, continuando sem colunas auxiliares")
-            
-            # ETAPA 5: Calcular estatísticas e agregações
-            print("[TOOL] ETAPA 5: Calculando estatísticas...")
+                debug_print("[TOOL] ⚠️ Nenhuma coluna de data/ano/mês encontrada, continuando sem colunas auxiliares")
             
             total_registros = len(df_mercado)
             submercados = sorted(df_mercado['codigo_submercado'].unique().tolist()) if 'codigo_submercado' in df_mercado.columns else []
@@ -451,15 +426,12 @@ class CargaMensalTool(NEWAVETool):
             # Anos disponíveis
             anos = sorted(df_mercado['ano'].unique().tolist()) if 'ano' in df_mercado.columns else []
             
-            # ETAPA 6: Formatar resultado
-            print("[TOOL] ETAPA 6: Formatando resultado...")
+            debug_print("[TOOL] ETAPA 6: Formatando resultado...")
             
-            # Converter DataFrame para lista de dicts - RETORNAR TODOS OS DADOS
-            print(f"[TOOL] Convertendo {len(df_mercado)} registros para formato JSON...")
+            debug_print(f"[TOOL] Convertendo {len(df_mercado)} registros para formato JSON...")
             result_data = df_mercado.to_dict(orient="records")
-            print(f"[TOOL] ✅ {len(result_data)} registros convertidos")
+            debug_print(f"[TOOL] ✅ {len(result_data)} registros convertidos")
             
-            # Converter tipos para JSON-serializable
             for record in result_data:
                 for key, value in record.items():
                     if pd.isna(value):
@@ -467,7 +439,7 @@ class CargaMensalTool(NEWAVETool):
                     elif isinstance(value, (pd.Timestamp, pd.DatetimeTZDtype)):
                         record[key] = value.isoformat() if hasattr(value, 'isoformat') else str(value)
             
-            print(f"[TOOL] ✅ Processamento concluído: {len(result_data)} registros formatados")
+            debug_print(f"[TOOL] ✅ Processamento concluído: {len(result_data)} registros formatados")
             
             # Adicionar informação sobre filtro aplicado
             filtro_info = None
@@ -489,15 +461,13 @@ class CargaMensalTool(NEWAVETool):
             organizado_por_submercado = False
             
             if self._should_group_by_submercado(query) and codigo_submercado is None:
-                print("[TOOL] ETAPA 6.5: Organizando dados por submercado (separadamente)...")
+                debug_print("[TOOL] ETAPA 6.5: Organizando dados por submercado (separadamente)...")
                 
                 dados_por_submercado = {}
                 if 'codigo_submercado' in df_mercado.columns:
-                    # Usar o DataFrame original antes da conversão para manter tipos
                     for sub in submercados:
                         df_sub = df_mercado[df_mercado['codigo_submercado'] == sub].copy()
                         
-                        # Obter nome do submercado
                         nome_sub = f"Subsistema {sub}"
                         if sistema.custo_deficit is not None:
                             df_custo = sistema.custo_deficit
@@ -505,10 +475,8 @@ class CargaMensalTool(NEWAVETool):
                             if not subsistema_info.empty:
                                 nome_sub = subsistema_info.iloc[0].get('nome_submercado', nome_sub)
                         
-                        # Converter para lista de dicts
                         dados_sub = df_sub.to_dict(orient="records")
                         
-                        # Converter tipos para JSON-serializable
                         for record in dados_sub:
                             for key, value in record.items():
                                 if pd.isna(value):
@@ -524,7 +492,7 @@ class CargaMensalTool(NEWAVETool):
                         }
                     
                     organizado_por_submercado = True
-                    print(f"[TOOL] ✅ Dados organizados por {len(dados_por_submercado)} submercado(s)")
+                    debug_print(f"[TOOL] ✅ Dados organizados por {len(dados_por_submercado)} submercado(s)")
             
             return {
                 "success": True,
@@ -547,14 +515,14 @@ class CargaMensalTool(NEWAVETool):
             }
             
         except FileNotFoundError as e:
-            print(f"[TOOL] ❌ Erro FileNotFoundError: {e}")
+            safe_print(f"[TOOL] ❌ Erro FileNotFoundError: {e}")
             return {
                 "success": False,
                 "error": f"Arquivo não encontrado: {str(e)}",
                 "tool": self.get_name()
             }
         except Exception as e:
-            print(f"[TOOL] ❌ Erro ao processar: {type(e).__name__}: {e}")
+            safe_print(f"[TOOL] ❌ Erro ao processar: {type(e).__name__}: {e}")
             import traceback
             traceback.print_exc()
             return {

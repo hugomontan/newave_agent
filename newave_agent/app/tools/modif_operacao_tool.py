@@ -8,6 +8,7 @@ import os
 import pandas as pd
 import re
 from typing import Dict, Any, Optional
+from newave_agent.app.config import debug_print, safe_print
 
 class ModifOperacaoTool(NEWAVETool):
     """
@@ -178,7 +179,7 @@ class ModifOperacaoTool(NEWAVETool):
                     if usinas_df is not None and not usinas_df.empty:
                         codigos_validos = usinas_df['codigo'].unique()
                         if codigo in codigos_validos:
-                            print(f"[TOOL] ✅ Código {codigo} encontrado por padrão numérico")
+                            debug_print(f"[TOOL] ✅ Código {codigo} encontrado por padrão numérico")
                             return codigo
                 except ValueError:
                     continue
@@ -186,7 +187,7 @@ class ModifOperacaoTool(NEWAVETool):
         # ETAPA 2: Buscar por nome da usina
         usinas_df = modif.usina(df=True)
         if usinas_df is not None and not usinas_df.empty:
-            print(f"[TOOL] Usinas disponíveis no arquivo:")
+            debug_print(f"[TOOL] Usinas disponíveis no arquivo:")
             for _, row in usinas_df.iterrows():
                 codigo = int(row.get('codigo'))
                 nome = str(row.get('nome', '')).strip()
@@ -210,7 +211,7 @@ class ModifOperacaoTool(NEWAVETool):
                 
                 # Match exato do nome completo
                 if nome_usina_lower == query_lower.strip():
-                    print(f"[TOOL] ✅ Código {codigo_usina} encontrado por match exato '{nome_usina}'")
+                    debug_print(f"[TOOL] ✅ Código {codigo_usina} encontrado por match exato '{nome_usina}'")
                     return codigo_usina
                 
                 # Match exato do nome completo dentro da query (com espaços/pontuação)
@@ -220,7 +221,7 @@ class ModifOperacaoTool(NEWAVETool):
                         # Verificar se está como palavra completa (não parte de outra palavra)
                         pattern = r'\b' + re.escape(nome_usina_lower) + r'\b'
                         if re.search(pattern, query_lower):
-                            print(f"[TOOL] ✅ Código {codigo_usina} encontrado por nome completo '{nome_usina}' na query")
+                            debug_print(f"[TOOL] ✅ Código {codigo_usina} encontrado por nome completo '{nome_usina}' na query")
                             return codigo_usina
             
             # ETAPA 2.2: Buscar por palavras-chave do nome (apenas se match exato não encontrou)
@@ -259,10 +260,10 @@ class ModifOperacaoTool(NEWAVETool):
                     palavras_candidatas,
                     key=lambda x: (x['tamanho'], x['tamanho_nome'])
                 )
-                print(f"[TOOL] ✅ Código {melhor_match['codigo']} encontrado por palavra-chave '{melhor_match['palavra']}' do nome '{melhor_match['nome']}'")
+                debug_print(f"[TOOL] ✅ Código {melhor_match['codigo']} encontrado por palavra-chave '{melhor_match['palavra']}' do nome '{melhor_match['nome']}'")
                 return melhor_match['codigo']
         
-        print("[TOOL] ⚠️ Nenhuma usina específica detectada na query")
+        debug_print("[TOOL] ⚠️ Nenhuma usina específica detectada na query")
         return None
     
     def _get_all_modifications(self, modif: Modif, codigo_usina: Optional[int] = None) -> Dict[str, pd.DataFrame]:
@@ -283,11 +284,11 @@ class ModifOperacaoTool(NEWAVETool):
         
         if codigo_usina is not None:
             # Abordagem detalhada: usar modificacoes_usina() para obter todos os registros completos
-            print(f"[TOOL] Obtendo modificações detalhadas da usina {codigo_usina}...")
+            debug_print(f"[TOOL] Obtendo modificações detalhadas da usina {codigo_usina}...")
             modificacoes_usina_list = modif.modificacoes_usina(codigo_usina)
             
             if not modificacoes_usina_list:
-                print(f"[TOOL] ⚠️ Nenhuma modificação encontrada para usina {codigo_usina}")
+                debug_print(f"[TOOL] ⚠️ Nenhuma modificação encontrada para usina {codigo_usina}")
                 return modificacoes_por_tipo
             
             # Obter informações da usina
@@ -405,11 +406,11 @@ class ModifOperacaoTool(NEWAVETool):
                 if registros:
                     df = pd.DataFrame(registros)
                     modificacoes_por_tipo[tipo] = df
-                    print(f"[TOOL] ✅ {len(registros)} registro(s) do tipo {tipo} extraído(s) com sucesso")
+                    debug_print(f"[TOOL] ✅ {len(registros)} registro(s) do tipo {tipo} extraído(s) com sucesso")
         
         else:
             # Abordagem genérica: usar métodos específicos para todas as usinas
-            print("[TOOL] Obtendo modificações de todas as usinas...")
+            debug_print("[TOOL] Obtendo modificações de todas as usinas...")
             
             # Lista de métodos disponíveis
             metodos = {
@@ -453,9 +454,9 @@ class ModifOperacaoTool(NEWAVETool):
                     resultado = metodo()
                     if resultado is not None and not resultado.empty:
                         modificacoes_por_tipo[tipo] = resultado
-                        print(f"[TOOL] ✅ {len(resultado)} registro(s) do tipo {tipo} encontrado(s)")
+                        debug_print(f"[TOOL] ✅ {len(resultado)} registro(s) do tipo {tipo} encontrado(s)")
                 except Exception as e:
-                    print(f"[TOOL] ⚠️ Erro ao obter {tipo}: {e}")
+                    debug_print(f"[TOOL] ⚠️ Erro ao obter {tipo}: {e}")
         
         return modificacoes_por_tipo
     
@@ -469,13 +470,13 @@ class ModifOperacaoTool(NEWAVETool):
         3. Identifica filtros (usina, tipo de modificação)
         4. Processa e retorna dados agrupados por tipo
         """
-        print(f"[TOOL] {self.get_name()}: Iniciando execução...")
-        print(f"[TOOL] Query: {query[:100]}")
-        print(f"[TOOL] Deck path: {self.deck_path}")
+        debug_print(f"[TOOL] {self.get_name()}: Iniciando execução...")
+        debug_print(f"[TOOL] Query: {query[:100]}")
+        debug_print(f"[TOOL] Deck path: {self.deck_path}")
         
         try:
             # ETAPA 1: Verificar existência do arquivo
-            print("[TOOL] ETAPA 1: Verificando existência do arquivo MODIF.DAT...")
+            debug_print("[TOOL] ETAPA 1: Verificando existência do arquivo MODIF.DAT...")
             modif_path = os.path.join(self.deck_path, "MODIF.DAT")
             
             if not os.path.exists(modif_path):
@@ -483,55 +484,55 @@ class ModifOperacaoTool(NEWAVETool):
                 if os.path.exists(modif_path_lower):
                     modif_path = modif_path_lower
                 else:
-                    print(f"[TOOL] ❌ Arquivo MODIF.DAT não encontrado")
+                    safe_print(f"[TOOL] ❌ Arquivo MODIF.DAT não encontrado")
                     return {
                         "success": False,
                         "error": f"Arquivo MODIF.DAT não encontrado em {self.deck_path}",
                         "tool": self.get_name()
                     }
             
-            print(f"[TOOL] ✅ Arquivo encontrado: {modif_path}")
+            debug_print(f"[TOOL] ✅ Arquivo encontrado: {modif_path}")
             
             # ETAPA 2: Ler arquivo usando inewave
-            print("[TOOL] ETAPA 2: Lendo arquivo com inewave...")
+            debug_print("[TOOL] ETAPA 2: Lendo arquivo com inewave...")
             modif = Modif.read(modif_path)
-            print("[TOOL] ✅ Arquivo lido com sucesso")
+            debug_print("[TOOL] ✅ Arquivo lido com sucesso")
             
             # ETAPA 3: Verificar se há dados
             usinas_df = modif.usina(df=True)
             if usinas_df is None or usinas_df.empty:
-                print("[TOOL] ⚠️ Nenhuma usina modificada encontrada")
+                debug_print("[TOOL] ⚠️ Nenhuma usina modificada encontrada")
                 return {
                     "success": False,
                     "error": "Nenhuma modificação encontrada no arquivo MODIF.DAT",
                     "tool": self.get_name()
                 }
             
-            print(f"[TOOL] ✅ {len(usinas_df)} usina(s) modificada(s) encontrada(s)")
+            debug_print(f"[TOOL] ✅ {len(usinas_df)} usina(s) modificada(s) encontrada(s)")
             
             # ETAPA 4: Identificar filtros
-            print("[TOOL] ETAPA 4: Identificando filtros...")
+            debug_print("[TOOL] ETAPA 4: Identificando filtros...")
             codigo_usina = self._extract_usina_from_query(query, modif)
             tipo_modificacao = self._extract_tipo_modificacao(query)
             
             if codigo_usina is not None:
-                print(f"[TOOL] ✅ Filtro por usina: {codigo_usina}")
+                debug_print(f"[TOOL] ✅ Filtro por usina: {codigo_usina}")
             if tipo_modificacao is not None:
-                print(f"[TOOL] ✅ Filtro por tipo de modificação: {tipo_modificacao}")
+                debug_print(f"[TOOL] ✅ Filtro por tipo de modificação: {tipo_modificacao}")
             
             # ETAPA 5: Obter todas as modificações
-            print("[TOOL] ETAPA 5: Obtendo modificações...")
+            debug_print("[TOOL] ETAPA 5: Obtendo modificações...")
             modificacoes_por_tipo = self._get_all_modifications(modif, codigo_usina)
             
             if not modificacoes_por_tipo:
-                print("[TOOL] ⚠️ Nenhuma modificação encontrada")
+                debug_print("[TOOL] ⚠️ Nenhuma modificação encontrada")
                 return {
                     "success": False,
                     "error": "Nenhuma modificação encontrada com os filtros aplicados",
                     "tool": self.get_name()
                 }
             
-            print(f"[TOOL] ✅ {len(modificacoes_por_tipo)} tipo(s) de modificação encontrado(s)")
+            debug_print(f"[TOOL] ✅ {len(modificacoes_por_tipo)} tipo(s) de modificação encontrado(s)")
             
             # ETAPA 6: Filtrar por tipo se especificado
             if tipo_modificacao is not None:
@@ -540,7 +541,7 @@ class ModifOperacaoTool(NEWAVETool):
                 else:
                     # Caso especial: se não encontrou VAZMIN mas existe VAZMINT, oferecer alternativa
                     if tipo_modificacao == "VAZMIN" and "VAZMINT" in modificacoes_por_tipo:
-                        print(f"[TOOL] ⚠️ Tipo {tipo_modificacao} não encontrado, mas VAZMINT está disponível")
+                        debug_print(f"[TOOL] ⚠️ Tipo {tipo_modificacao} não encontrado, mas VAZMINT está disponível")
                         # Obter informações da usina para a mensagem
                         nome_usina_str = "a usina"
                         if codigo_usina is not None:
@@ -560,7 +561,7 @@ class ModifOperacaoTool(NEWAVETool):
                             "tool": self.get_name()
                         }
                     
-                    print(f"[TOOL] ⚠️ Tipo {tipo_modificacao} não encontrado")
+                    debug_print(f"[TOOL] ⚠️ Tipo {tipo_modificacao} não encontrado")
                     return {
                         "success": False,
                         "error": f"Tipo de modificação {tipo_modificacao} não encontrado",
@@ -568,7 +569,7 @@ class ModifOperacaoTool(NEWAVETool):
                     }
             
             # ETAPA 7: Processar dados para JSON
-            print("[TOOL] ETAPA 7: Processando dados...")
+            debug_print("[TOOL] ETAPA 7: Processando dados...")
             dados_por_tipo = {}
             stats_por_tipo = []
             
@@ -661,7 +662,7 @@ class ModifOperacaoTool(NEWAVETool):
                         })
             
             # ETAPA 9: Formatar resultado
-            print("[TOOL] ETAPA 9: Formatando resultado...")
+            debug_print("[TOOL] ETAPA 9: Formatando resultado...")
             
             # Informações sobre filtros aplicados
             filtro_info = {}
@@ -687,14 +688,14 @@ class ModifOperacaoTool(NEWAVETool):
             }
             
         except FileNotFoundError as e:
-            print(f"[TOOL] ❌ Erro FileNotFoundError: {e}")
+            safe_print(f"[TOOL] ❌ Erro FileNotFoundError: {e}")
             return {
                 "success": False,
                 "error": f"Arquivo não encontrado: {str(e)}",
                 "tool": self.get_name()
             }
         except Exception as e:
-            print(f"[TOOL] ❌ Erro ao processar: {type(e).__name__}: {e}")
+            safe_print(f"[TOOL] ❌ Erro ao processar: {type(e).__name__}: {e}")
             import traceback
             traceback.print_exc()
             return {

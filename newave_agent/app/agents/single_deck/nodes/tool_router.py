@@ -9,7 +9,7 @@ from typing import Optional, Dict, Any, List
 import os
 import json as json_module
 from newave_agent.app.agents.single_deck.state import SingleDeckState
-from newave_agent.app.agents.single_deck.tools import get_available_tools
+from newave_agent.app.tools import get_available_tools
 from newave_agent.app.tools.semantic_matcher import find_best_tool_semantic, find_top_tools_semantic
 from newave_agent.app.tools.base import NEWAVETool
 from newave_agent.app.config import (

@@ -8,6 +8,7 @@ import os
 import pandas as pd
 import re
 from typing import Dict, Any, List, Optional
+from newave_agent.app.config import debug_print, safe_print
 from newave_agent.app.utils.deck_loader import (
     list_available_decks,
     load_multiple_decks,
@@ -65,7 +66,7 @@ class MudancasVazaoMinimaTool(NEWAVETool):
                     for name in self.selected_decks
                 }
             except Exception as e:
-                print(f"[TOOL] ⚠️ Erro ao carregar decks: {e}")
+                debug_print(f"[TOOL] ⚠️ Erro ao carregar decks: {e}")
     
     def get_name(self) -> str:
         return "MudancasVazaoMinimaTool"
@@ -119,13 +120,13 @@ class MudancasVazaoMinimaTool(NEWAVETool):
         5. Ordena mudanças por magnitude
         6. Retorna dados formatados
         """
-        print(f"[TOOL] {self.get_name()}: Iniciando análise de mudanças de vazão mínima...")
-        print(f"[TOOL] Query: {query[:100]}")
-        print(f"[TOOL] Decks selecionados: {self.selected_decks}")
+        debug_print(f"[TOOL] {self.get_name()}: Iniciando análise de mudanças de vazão mínima...")
+        debug_print(f"[TOOL] Query: {query[:100]}")
+        debug_print(f"[TOOL] Decks selecionados: {self.selected_decks}")
         
         try:
             # ETAPA 1: Verificar decks disponíveis
-            print("[TOOL] ETAPA 1: Verificando decks...")
+            debug_print("[TOOL] ETAPA 1: Verificando decks...")
             
             if not self.deck_paths or len(self.deck_paths) < 2:
                 return {
@@ -136,7 +137,7 @@ class MudancasVazaoMinimaTool(NEWAVETool):
             
             # Verificar se há mais de 2 decks - usar matriz de comparação
             if len(self.selected_decks) > 2:
-                print(f"[TOOL] ✅ {len(self.selected_decks)} decks detectados - usando matriz de comparação")
+                debug_print(f"[TOOL] ✅ {len(self.selected_decks)} decks detectados - usando matriz de comparação")
                 return self._execute_multi_deck_matrix(query)
             
             # Para compatibilidade, usar primeiro e último deck (2 decks)
@@ -145,11 +146,11 @@ class MudancasVazaoMinimaTool(NEWAVETool):
             deck_december_name = self.deck_display_names.get(self.selected_decks[0], "Deck Anterior")
             deck_january_name = self.deck_display_names.get(self.selected_decks[-1], "Deck Atual")
             
-            print(f"[TOOL] ✅ Deck Anterior: {deck_december_path} ({deck_december_name})")
-            print(f"[TOOL] ✅ Deck Atual: {deck_january_path} ({deck_january_name})")
+            debug_print(f"[TOOL] ✅ Deck Anterior: {deck_december_path} ({deck_december_name})")
+            debug_print(f"[TOOL] ✅ Deck Atual: {deck_january_path} ({deck_january_name})")
             
             # ETAPA 2: Ler MODIF.DAT de ambos os decks
-            print("[TOOL] ETAPA 2: Lendo arquivos MODIF.DAT...")
+            debug_print("[TOOL] ETAPA 2: Lendo arquivos MODIF.DAT...")
             modif_dec = self._read_modif_file(deck_december_path)
             modif_jan = self._read_modif_file(deck_january_path)
             
@@ -168,21 +169,21 @@ class MudancasVazaoMinimaTool(NEWAVETool):
                 }
             
             # ETAPA 3: Criar mapeamento código -> nome das usinas
-            print("[TOOL] ETAPA 3: Criando mapeamento código -> nome das usinas...")
+            debug_print("[TOOL] ETAPA 3: Criando mapeamento código -> nome das usinas...")
             mapeamento_codigo_nome = self._create_codigo_nome_mapping(modif_dec, modif_jan)
-            print(f"[TOOL] ✅ Mapeamento criado: {len(mapeamento_codigo_nome)} usinas mapeadas")
+            debug_print(f"[TOOL] ✅ Mapeamento criado: {len(mapeamento_codigo_nome)} usinas mapeadas")
             
             # ETAPA 3.5: Extrair usina da query (se especificada)
-            print("[TOOL] ETAPA 3.5: Verificando se há filtro por usina na query...")
+            debug_print("[TOOL] ETAPA 3.5: Verificando se há filtro por usina na query...")
             codigo_usina_filtro = self._extract_usina_from_query(query, modif_dec, modif_jan, mapeamento_codigo_nome)
             if codigo_usina_filtro is not None:
                 nome_usina_filtro = mapeamento_codigo_nome.get(codigo_usina_filtro, f"Usina {codigo_usina_filtro}")
-                print(f"[TOOL] ✅ Filtro por usina detectado: {codigo_usina_filtro} - {nome_usina_filtro}")
+                debug_print(f"[TOOL] ✅ Filtro por usina detectado: {codigo_usina_filtro} - {nome_usina_filtro}")
             else:
-                print("[TOOL] ℹ️ Nenhum filtro por usina detectado - retornando todas as mudanças")
+                debug_print("[TOOL] ℹ️ Nenhum filtro por usina detectado - retornando todas as mudanças")
             
             # ETAPA 4: Filtrar apenas registros de VAZMIN e VAZMINT
-            print("[TOOL] ETAPA 4: Filtrando registros de VAZMIN e VAZMINT...")
+            debug_print("[TOOL] ETAPA 4: Filtrando registros de VAZMIN e VAZMINT...")
             vazmin_dec = self._extract_vazmin_records(modif_dec)
             vazmin_jan = self._extract_vazmin_records(modif_jan)
             
@@ -190,31 +191,31 @@ class MudancasVazaoMinimaTool(NEWAVETool):
             if codigo_usina_filtro is not None:
                 vazmin_dec = [r for r in vazmin_dec if r.get('codigo_usina') == codigo_usina_filtro]
                 vazmin_jan = [r for r in vazmin_jan if r.get('codigo_usina') == codigo_usina_filtro]
-                print(f"[TOOL] ✅ Dados filtrados por usina {codigo_usina_filtro}")
+                debug_print(f"[TOOL] ✅ Dados filtrados por usina {codigo_usina_filtro}")
             
-            print(f"[TOOL] ✅ Registros VAZMIN/VAZMINT Dezembro: {len(vazmin_dec)}")
-            print(f"[TOOL] ✅ Registros VAZMIN/VAZMINT Janeiro: {len(vazmin_jan)}")
+            debug_print(f"[TOOL] ✅ Registros VAZMIN/VAZMINT Dezembro: {len(vazmin_dec)}")
+            debug_print(f"[TOOL] ✅ Registros VAZMIN/VAZMINT Janeiro: {len(vazmin_jan)}")
             
             # Debug: mostrar todos os registros antes da comparação
-            print(f"[TOOL] [DEBUG] Registros dezembro detalhados:")
+            debug_print(f"[TOOL] [DEBUG] Registros dezembro detalhados:")
             for i, r in enumerate(vazmin_dec):
-                print(f"[TOOL] [DEBUG]   [{i}] codigo={r.get('codigo_usina')}, tipo={r.get('tipo_vazao')}, vazao={r.get('vazao')}, periodo={r.get('periodo_inicio')}")
-            print(f"[TOOL] [DEBUG] Registros janeiro detalhados:")
+                debug_print(f"[TOOL] [DEBUG]   [{i}] codigo={r.get('codigo_usina')}, tipo={r.get('tipo_vazao')}, vazao={r.get('vazao')}, periodo={r.get('periodo_inicio')}")
+            debug_print(f"[TOOL] [DEBUG] Registros janeiro detalhados:")
             for i, r in enumerate(vazmin_jan):
-                print(f"[TOOL] [DEBUG]   [{i}] codigo={r.get('codigo_usina')}, tipo={r.get('tipo_vazao')}, vazao={r.get('vazao')}, periodo={r.get('periodo_inicio')}")
+                debug_print(f"[TOOL] [DEBUG]   [{i}] codigo={r.get('codigo_usina')}, tipo={r.get('tipo_vazao')}, vazao={r.get('vazao')}, periodo={r.get('periodo_inicio')}")
             
             # ETAPA 5: Comparar e identificar mudanças
-            print("[TOOL] ETAPA 5: Identificando mudanças...")
+            debug_print("[TOOL] ETAPA 5: Identificando mudanças...")
             mudancas = self._identify_changes(
                 vazmin_dec, vazmin_jan, 
                 deck_december_name, deck_january_name, 
                 mapeamento_codigo_nome
             )
             
-            print(f"[TOOL] ✅ Total de mudanças identificadas: {len(mudancas)}")
+            debug_print(f"[TOOL] ✅ Total de mudanças identificadas: {len(mudancas)}")
             
             # ETAPA 6: Ordenar por tipo e magnitude
-            print("[TOOL] ETAPA 6: Ordenando mudanças por tipo e magnitude...")
+            debug_print("[TOOL] ETAPA 6: Ordenando mudanças por tipo e magnitude...")
             ordem_tipo = {"aumento": 0, "queda": 1, "remocao": 2, "novo": 3, "sem_mudanca": 4}
             mudancas_ordenadas = sorted(mudancas, key=lambda x: (
                 ordem_tipo.get(x.get('tipo_mudanca', 'N/A'), 99),
@@ -287,7 +288,7 @@ class MudancasVazaoMinimaTool(NEWAVETool):
             }
             
         except Exception as e:
-            print(f"[TOOL] ❌ Erro ao processar: {type(e).__name__}: {e}")
+            safe_print(f"[TOOL] ❌ Erro ao processar: {type(e).__name__}: {e}")
             import traceback
             traceback.print_exc()
             return {
@@ -311,11 +312,11 @@ class MudancasVazaoMinimaTool(NEWAVETool):
         Returns:
             Dicionário com dados formatados para matriz de comparação expandida por mês
         """
-        print("[TOOL] Executando análise de matriz para múltiplos decks...")
+        debug_print("[TOOL] Executando análise de matriz para múltiplos decks...")
         
         try:
             # ETAPA 1: Ler MODIF.DAT de todos os decks
-            print("[TOOL] ETAPA 1: Lendo arquivos MODIF.DAT de todos os decks...")
+            debug_print("[TOOL] ETAPA 1: Lendo arquivos MODIF.DAT de todos os decks...")
             decks_modif = {}
             decks_vazmin = {}
             deck_names = []
@@ -327,13 +328,13 @@ class MudancasVazaoMinimaTool(NEWAVETool):
                 
                 modif = self._read_modif_file(deck_path)
                 if modif is None:
-                    print(f"[TOOL] ⚠️ Arquivo MODIF.DAT não encontrado em {deck_path}")
+                    debug_print(f"[TOOL] ⚠️ Arquivo MODIF.DAT não encontrado em {deck_path}")
                     continue
                 
                 decks_modif[deck_display_name] = modif
                 vazmin_records = self._extract_vazmin_records(modif)
                 decks_vazmin[deck_display_name] = vazmin_records
-                print(f"[TOOL] ✅ Deck {deck_display_name}: {len(vazmin_records)} registros VAZMIN/VAZMINT")
+                debug_print(f"[TOOL] ✅ Deck {deck_display_name}: {len(vazmin_records)} registros VAZMIN/VAZMINT")
             
             if len(decks_modif) < 2:
                 return {
@@ -343,18 +344,18 @@ class MudancasVazaoMinimaTool(NEWAVETool):
                 }
             
             # ETAPA 2: Criar mapeamento código -> nome das usinas (usar primeiro e último deck como base)
-            print("[TOOL] ETAPA 2: Criando mapeamento código -> nome das usinas...")
+            debug_print("[TOOL] ETAPA 2: Criando mapeamento código -> nome das usinas...")
             first_modif = list(decks_modif.values())[0]
             last_modif = list(decks_modif.values())[-1]
             mapeamento_codigo_nome = self._create_codigo_nome_mapping(first_modif, last_modif)
-            print(f"[TOOL] ✅ Mapeamento criado: {len(mapeamento_codigo_nome)} usinas mapeadas")
+            debug_print(f"[TOOL] ✅ Mapeamento criado: {len(mapeamento_codigo_nome)} usinas mapeadas")
             
             # ETAPA 3: Extrair usina da query (opcional)
-            print("[TOOL] ETAPA 3: Verificando se há filtro por usina na query...")
+            debug_print("[TOOL] ETAPA 3: Verificando se há filtro por usina na query...")
             codigo_usina_filtro = self._extract_usina_from_query(query, first_modif, last_modif, mapeamento_codigo_nome)
             if codigo_usina_filtro is not None:
                 nome_usina_filtro = mapeamento_codigo_nome.get(codigo_usina_filtro, f"Usina {codigo_usina_filtro}")
-                print(f"[TOOL] ✅ Filtro por usina detectado: {codigo_usina_filtro} - {nome_usina_filtro}")
+                debug_print(f"[TOOL] ✅ Filtro por usina detectado: {codigo_usina_filtro} - {nome_usina_filtro}")
                 # Aplicar filtro
                 for deck_name in decks_vazmin:
                     decks_vazmin[deck_name] = [
@@ -363,7 +364,7 @@ class MudancasVazaoMinimaTool(NEWAVETool):
                     ]
             
             # ETAPA 4: Coletar todos os meses únicos (períodos) de todos os registros VAZMINT
-            print("[TOOL] ETAPA 4: Coletando todos os meses do horizonte...")
+            debug_print("[TOOL] ETAPA 4: Coletando todos os meses do horizonte...")
             all_months = set()
             for vazmin_list in decks_vazmin.values():
                 for record in vazmin_list:
@@ -374,20 +375,20 @@ class MudancasVazaoMinimaTool(NEWAVETool):
             
             # Ordenar meses cronologicamente
             all_months_sorted = sorted(list(all_months))
-            print(f"[TOOL] ✅ Meses encontrados: {all_months_sorted}")
+            debug_print(f"[TOOL] ✅ Meses encontrados: {all_months_sorted}")
             
             # ETAPA 5: Coletar todas as usinas únicas com VAZMINT
-            print("[TOOL] ETAPA 5: Coletando usinas com VAZMINT...")
+            debug_print("[TOOL] ETAPA 5: Coletando usinas com VAZMINT...")
             usinas_com_vazmint = set()
             for vazmin_list in decks_vazmin.values():
                 for record in vazmin_list:
                     if record.get('tipo_vazao') == 'VAZMINT':
                         usinas_com_vazmint.add(record.get('codigo_usina'))
             
-            print(f"[TOOL] ✅ Usinas com VAZMINT: {len(usinas_com_vazmint)}")
+            debug_print(f"[TOOL] ✅ Usinas com VAZMINT: {len(usinas_com_vazmint)}")
             
             # ETAPA 6: Construir dados expandidos (Usina x Deck x Mês) - PRIMEIRO SEM FORWARD FILL
-            print("[TOOL] ETAPA 6: Construindo matriz expandida (dados brutos)...")
+            debug_print("[TOOL] ETAPA 6: Construindo matriz expandida (dados brutos)...")
             expanded_data = []
             
             for codigo_usina in usinas_com_vazmint:
@@ -438,17 +439,17 @@ class MudancasVazaoMinimaTool(NEWAVETool):
                     }
                     expanded_data.append(expanded_row)
                     
-                    print(f"[TOOL] [DEBUG] {nome_usina} - {deck_display_name}: {len(periodo_valor)} valores originais em {list(periodo_valor.keys())}")
+                    debug_print(f"[TOOL] [DEBUG] {nome_usina} - {deck_display_name}: {len(periodo_valor)} valores originais em {list(periodo_valor.keys())}")
             
-            print(f"[TOOL] ✅ Dados brutos coletados: {len(expanded_data)} linhas (Usina x Deck)")
+            debug_print(f"[TOOL] ✅ Dados brutos coletados: {len(expanded_data)} linhas (Usina x Deck)")
             
             # ETAPA 6.5: APLICAR FORWARD FILL NA MATRIZ JÁ FORMADA
-            print("[TOOL] ETAPA 6.5: Aplicando forward fill na matriz...")
+            debug_print("[TOOL] ETAPA 6.5: Aplicando forward fill na matriz...")
             expanded_data = self._apply_forward_fill_to_matrix(expanded_data, all_months_sorted)
-            print(f"[TOOL] ✅ Forward fill aplicado em {len(expanded_data)} linhas")
+            debug_print(f"[TOOL] ✅ Forward fill aplicado em {len(expanded_data)} linhas")
             
             # ETAPA 7: Também processar VAZMIN (sem período) - mantém estrutura antiga
-            print("[TOOL] ETAPA 7: Processando VAZMIN (sem período)...")
+            debug_print("[TOOL] ETAPA 7: Processando VAZMIN (sem período)...")
             matrix_data_vazmin = []
             
             # Coletar chaves VAZMIN únicas
@@ -522,7 +523,7 @@ class MudancasVazaoMinimaTool(NEWAVETool):
                     
                     matrix_data_vazmin.append(matrix_row)
             
-            print(f"[TOOL] ✅ VAZMIN: {len(matrix_data_vazmin)} registros com variações")
+            debug_print(f"[TOOL] ✅ VAZMIN: {len(matrix_data_vazmin)} registros com variações")
             
             # ETAPA 8: Calcular estatísticas
             stats = {
@@ -551,7 +552,7 @@ class MudancasVazaoMinimaTool(NEWAVETool):
             }
             
         except Exception as e:
-            print(f"[TOOL] ❌ Erro ao processar: {type(e).__name__}: {e}")
+            safe_print(f"[TOOL] ❌ Erro ao processar: {type(e).__name__}: {e}")
             import traceback
             traceback.print_exc()
             return {
@@ -577,14 +578,14 @@ class MudancasVazaoMinimaTool(NEWAVETool):
             if os.path.exists(modif_path_lower):
                 modif_path = modif_path_lower
             else:
-                print(f"[TOOL] ⚠️ Arquivo MODIF.DAT não encontrado em {deck_path}")
+                debug_print(f"[TOOL] ⚠️ Arquivo MODIF.DAT não encontrado em {deck_path}")
                 return None
         
         try:
             modif = Modif.read(modif_path)
             return modif
         except Exception as e:
-            print(f"[TOOL] ❌ Erro ao ler MODIF.DAT: {e}")
+            safe_print(f"[TOOL] ❌ Erro ao ler MODIF.DAT: {e}")
             return None
     
     def _create_codigo_nome_mapping(self, modif_dec: Modif, modif_jan: Modif) -> Dict[int, str]:
@@ -611,7 +612,7 @@ class MudancasVazaoMinimaTool(NEWAVETool):
                         nome = str(row.get('nome', '')).strip()
                         if nome and nome != 'nan' and nome.lower() != 'none' and nome != '' and not pd.isna(row.get('nome')):
                             mapeamento[codigo] = nome
-                            print(f"[TOOL] Mapeamento: {codigo} -> {nome}")
+                            debug_print(f"[TOOL] Mapeamento: {codigo} -> {nome}")
         
         # Processar deck de janeiro (sobrescreve se houver nome melhor)
         if modif_jan is not None:
@@ -625,7 +626,7 @@ class MudancasVazaoMinimaTool(NEWAVETool):
                             # Sobrescrever se não existia ou se o nome é mais completo
                             if codigo not in mapeamento or len(nome) > len(mapeamento.get(codigo, '')):
                                 mapeamento[codigo] = nome
-                                print(f"[TOOL] Mapeamento: {codigo} -> {nome}")
+                                debug_print(f"[TOOL] Mapeamento: {codigo} -> {nome}")
         
         # Se ainda faltam nomes, tentar cruzar com HIDR.DAT
         # Identificar códigos sem nome corretamente (códigos que não estão no mapeamento)
@@ -641,7 +642,7 @@ class MudancasVazaoMinimaTool(NEWAVETool):
         codigos_sem_nome = list(set(codigos_sem_nome))
         
         if codigos_sem_nome:
-            print(f"[TOOL] ⚠️ {len(codigos_sem_nome)} usinas sem nome no MODIF, tentando HIDR.DAT...")
+            debug_print(f"[TOOL] ⚠️ {len(codigos_sem_nome)} usinas sem nome no MODIF, tentando HIDR.DAT...")
             try:
                 from inewave.newave import Hidr
                 # Usar primeiro deck disponível como referência
@@ -659,9 +660,9 @@ class MudancasVazaoMinimaTool(NEWAVETool):
                                 nome_hidr = str(hidr_row.get('nome_usina', '')).strip()
                                 if nome_hidr and nome_hidr != 'nan' and nome_hidr != '':
                                     mapeamento[codigo_hidr] = nome_hidr
-                                    print(f"[TOOL] ✅ Nome do HIDR.DAT: {codigo_hidr} -> {nome_hidr}")
+                                    debug_print(f"[TOOL] ✅ Nome do HIDR.DAT: {codigo_hidr} -> {nome_hidr}")
             except Exception as e:
-                print(f"[TOOL] ⚠️ Erro ao ler HIDR.DAT para nomes: {e}")
+                debug_print(f"[TOOL] ⚠️ Erro ao ler HIDR.DAT para nomes: {e}")
         
         return mapeamento
     
@@ -714,16 +715,16 @@ class MudancasVazaoMinimaTool(NEWAVETool):
                 try:
                     codigo = int(match.group(1))
                     if codigo in codigos_validos:
-                        print(f"[TOOL] ✅ Código {codigo} encontrado por padrão numérico")
+                        debug_print(f"[TOOL] ✅ Código {codigo} encontrado por padrão numérico")
                         return codigo
                 except ValueError:
                     continue
         
         # ETAPA 2: Buscar por nome da usina usando o mapeamento
-        print(f"[TOOL] Buscando usina por nome na query: '{query}'")
+        debug_print(f"[TOOL] Buscando usina por nome na query: '{query}'")
         
         if not mapeamento_codigo_nome:
-            print("[TOOL] ⚠️ Mapeamento de nomes não disponível")
+            debug_print("[TOOL] ⚠️ Mapeamento de nomes não disponível")
             return None
         
         # Criar mapeamento reverso nome -> código (ordenado por tamanho do nome, maior primeiro)
@@ -748,7 +749,7 @@ class MudancasVazaoMinimaTool(NEWAVETool):
             
             # Match exato do nome completo
             if nome_lower == query_lower.strip():
-                print(f"[TOOL] ✅ Código {codigo} encontrado por match exato '{nome_original}'")
+                debug_print(f"[TOOL] ✅ Código {codigo} encontrado por match exato '{nome_original}'")
                 return codigo
             
             # Match exato do nome completo dentro da query (com word boundaries)
@@ -758,7 +759,7 @@ class MudancasVazaoMinimaTool(NEWAVETool):
                     # Verificar se está como palavra completa (não parte de outra palavra)
                     pattern = r'\b' + re.escape(nome_lower) + r'\b'
                     if re.search(pattern, query_lower):
-                        print(f"[TOOL] ✅ Código {codigo} encontrado por nome completo '{nome_original}' na query")
+                        debug_print(f"[TOOL] ✅ Código {codigo} encontrado por nome completo '{nome_original}' na query")
                         return codigo
         
         # ETAPA 2.2: Buscar por palavras-chave do nome (apenas se match exato não encontrou)
@@ -793,10 +794,10 @@ class MudancasVazaoMinimaTool(NEWAVETool):
             # Ordenar por pontuação (maior primeiro)
             candidatos.sort(key=lambda x: x[2], reverse=True)
             melhor_candidato = candidatos[0]
-            print(f"[TOOL] ✅ Código {melhor_candidato[0]} encontrado por palavras-chave '{melhor_candidato[1]}' (score: {melhor_candidato[2]})")
+            debug_print(f"[TOOL] ✅ Código {melhor_candidato[0]} encontrado por palavras-chave '{melhor_candidato[1]}' (score: {melhor_candidato[2]})")
             return melhor_candidato[0]
         
-        print("[TOOL] ⚠️ Nenhuma usina encontrada na query")
+        debug_print("[TOOL] ⚠️ Nenhuma usina encontrada na query")
         return None
     
     def _extract_vazmin_records(self, modif: Modif) -> List[Dict[str, Any]]:
@@ -858,13 +859,13 @@ class MudancasVazaoMinimaTool(NEWAVETool):
                     data_inicio = registro.data_inicio if hasattr(registro, 'data_inicio') else None
                     
                     if data_inicio is None:
-                        print(f"[TOOL] [WARNING] VAZMINT sem data_inicio para usina {codigo_usina}, ignorando...")
+                        debug_print(f"[TOOL] [WARNING] VAZMINT sem data_inicio para usina {codigo_usina}, ignorando...")
                         continue
                     
                     periodo_inicio = self._format_date(data_inicio)
                     
                     if periodo_inicio == "N/A":
-                        print(f"[TOOL] [WARNING] VAZMINT com data_inicio inválida para usina {codigo_usina}, ignorando...")
+                        debug_print(f"[TOOL] [WARNING] VAZMINT com data_inicio inválida para usina {codigo_usina}, ignorando...")
                         continue
                     
                     registros.append({
@@ -876,7 +877,7 @@ class MudancasVazaoMinimaTool(NEWAVETool):
                         "periodo_inicio": periodo_inicio,
                         "periodo_fim": None  # VAZMINT não tem data_fim explícita
                     })
-                    print(f"[TOOL] [DEBUG] VAZMINT extraído: usina={codigo_usina}, periodo={periodo_inicio}, vazao={vazao_val}")
+                    debug_print(f"[TOOL] [DEBUG] VAZMINT extraído: usina={codigo_usina}, periodo={periodo_inicio}, vazao={vazao_val}")
                 
                 elif is_vazmin:
                     # VAZMIN (sem data)
@@ -891,7 +892,7 @@ class MudancasVazaoMinimaTool(NEWAVETool):
                             "periodo_inicio": None,
                             "periodo_fim": None
                         })
-                        print(f"[TOOL] [DEBUG] VAZMIN extraído: usina={codigo_usina}, vazao={vazao_val}")
+                        debug_print(f"[TOOL] [DEBUG] VAZMIN extraído: usina={codigo_usina}, vazao={vazao_val}")
         
         return registros
     
@@ -929,8 +930,8 @@ class MudancasVazaoMinimaTool(NEWAVETool):
         vazmin_only_dec = [r for r in vazmin_dec if r.get("tipo_vazao") == "VAZMIN"]
         vazmin_only_jan = [r for r in vazmin_jan if r.get("tipo_vazao") == "VAZMIN"]
         
-        print(f"[TOOL] [DEBUG] VAZMINT: Dezembro={len(vazmint_dec)}, Janeiro={len(vazmint_jan)}")
-        print(f"[TOOL] [DEBUG] VAZMIN: Dezembro={len(vazmin_only_dec)}, Janeiro={len(vazmin_only_jan)}")
+        debug_print(f"[TOOL] [DEBUG] VAZMINT: Dezembro={len(vazmint_dec)}, Janeiro={len(vazmint_jan)}")
+        debug_print(f"[TOOL] [DEBUG] VAZMIN: Dezembro={len(vazmin_only_dec)}, Janeiro={len(vazmin_only_jan)}")
         
         # ============================================================
         # PARTE 1: VAZMINT (com período) - Lógica similar ao GTMIN
@@ -956,7 +957,7 @@ class MudancasVazaoMinimaTool(NEWAVETool):
         
         # Comparar registros VAZMINT
         all_vazmint_keys = set(vazmint_dec_indexed.keys()) | set(vazmint_jan_indexed.keys())
-        print(f"[TOOL] [DEBUG] Total de chaves VAZMINT únicas: {len(all_vazmint_keys)}")
+        debug_print(f"[TOOL] [DEBUG] Total de chaves VAZMINT únicas: {len(all_vazmint_keys)}")
         
         for key in all_vazmint_keys:
             codigo_usina, periodo_inicio = key
@@ -1034,7 +1035,7 @@ class MudancasVazaoMinimaTool(NEWAVETool):
                     else:
                         periodo_display = "N/A"
                 
-                print(f"[TOOL] [DEBUG] VAZMINT mudança: {nome_usina}, período={periodo_display}, {tipo_mudanca}, vazao_dec={vazao_dec_val}, vazao_jan={vazao_jan_val}")
+                debug_print(f"[TOOL] [DEBUG] VAZMINT mudança: {nome_usina}, período={periodo_display}, {tipo_mudanca}, vazao_dec={vazao_dec_val}, vazao_jan={vazao_jan_val}")
                 
                 mudanca = {
                     "codigo_usina": int(codigo_usina),
@@ -1075,7 +1076,7 @@ class MudancasVazaoMinimaTool(NEWAVETool):
         
         # Todas as usinas com VAZMIN
         all_vazmin_usinas = set(vazmin_dec_by_usina.keys()) | set(vazmin_jan_by_usina.keys())
-        print(f"[TOOL] [DEBUG] Total de usinas com VAZMIN: {len(all_vazmin_usinas)}")
+        debug_print(f"[TOOL] [DEBUG] Total de usinas com VAZMIN: {len(all_vazmin_usinas)}")
         
         for codigo_usina in all_vazmin_usinas:
             dec_records = vazmin_dec_by_usina.get(codigo_usina, [])
@@ -1096,7 +1097,7 @@ class MudancasVazaoMinimaTool(NEWAVETool):
             vazoes_dec = sorted([self._sanitize_number(r.get("vazao")) for r in dec_records if self._sanitize_number(r.get("vazao")) is not None])
             vazoes_jan = sorted([self._sanitize_number(r.get("vazao")) for r in jan_records if self._sanitize_number(r.get("vazao")) is not None])
             
-            print(f"[TOOL] [DEBUG] VAZMIN usina {codigo_usina} ({nome_usina}): Dez={vazoes_dec}, Jan={vazoes_jan}")
+            debug_print(f"[TOOL] [DEBUG] VAZMIN usina {codigo_usina} ({nome_usina}): Dez={vazoes_dec}, Jan={vazoes_jan}")
             
             # Comparar conjuntos de vazões
             # Identificar inclusões, exclusões e alterações
@@ -1119,7 +1120,7 @@ class MudancasVazaoMinimaTool(NEWAVETool):
             # Registrar valores sem mudança
             for vazao in vazoes_sem_mudanca:
                 if abs(vazao) > 0.01:
-                    print(f"[TOOL] [DEBUG] VAZMIN sem mudança: {nome_usina}, vazão={vazao}")
+                    debug_print(f"[TOOL] [DEBUG] VAZMIN sem mudança: {nome_usina}, vazão={vazao}")
                     mudanca = {
                         "codigo_usina": int(codigo_usina),
                         "nome_usina": str(nome_usina).strip(),
@@ -1137,7 +1138,7 @@ class MudancasVazaoMinimaTool(NEWAVETool):
             # Registrar remoções
             for vazao in vazoes_removidas:
                 if abs(vazao) > 0.01:
-                    print(f"[TOOL] [DEBUG] VAZMIN remoção: {nome_usina}, vazão={vazao}")
+                    debug_print(f"[TOOL] [DEBUG] VAZMIN remoção: {nome_usina}, vazão={vazao}")
                     mudanca = {
                         "codigo_usina": int(codigo_usina),
                         "nome_usina": str(nome_usina).strip(),
@@ -1155,7 +1156,7 @@ class MudancasVazaoMinimaTool(NEWAVETool):
             # Registrar adições
             for vazao in vazoes_adicionadas:
                 if abs(vazao) > 0.01:
-                    print(f"[TOOL] [DEBUG] VAZMIN adição: {nome_usina}, vazão={vazao}")
+                    debug_print(f"[TOOL] [DEBUG] VAZMIN adição: {nome_usina}, vazão={vazao}")
                     mudanca = {
                         "codigo_usina": int(codigo_usina),
                         "nome_usina": str(nome_usina).strip(),
@@ -1256,7 +1257,7 @@ class MudancasVazaoMinimaTool(NEWAVETool):
         Returns:
             Lista de linhas com forward fill aplicado
         """
-        print(f"[TOOL] [FORWARD FILL] Processando {len(expanded_data)} linhas...")
+        debug_print(f"[TOOL] [FORWARD FILL] Processando {len(expanded_data)} linhas...")
         
         for row in expanded_data:
             monthly_values = row.get("monthly_values", {})
@@ -1287,12 +1288,12 @@ class MudancasVazaoMinimaTool(NEWAVETool):
             # Log de debug
             nome_usina = row.get("nome_usina", "?")
             deck_name = row.get("deck_name", "?")
-            print(f"[TOOL] [FORWARD FILL] {nome_usina} - {deck_name}:")
-            print(f"[TOOL]   Originais: {original_periods}")
-            print(f"[TOOL]   Antes: {len(valores_antes)} valores -> Depois: {len(valores_depois)} valores")
+            debug_print(f"[TOOL] [FORWARD FILL] {nome_usina} - {deck_name}:")
+            debug_print(f"[TOOL]   Originais: {original_periods}")
+            debug_print(f"[TOOL]   Antes: {len(valores_antes)} valores -> Depois: {len(valores_depois)} valores")
             if len(valores_depois) > len(valores_antes):
                 preenchidos = len(valores_depois) - len(valores_antes)
-                print(f"[TOOL]   ✅ {preenchidos} meses preenchidos via forward fill")
+                debug_print(f"[TOOL]   ✅ {preenchidos} meses preenchidos via forward fill")
         
         return expanded_data
     

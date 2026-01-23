@@ -2,7 +2,7 @@
 Formatter de comparação para gerações GNL (Registro GL) no multi deck DECOMP.
 Formata como tabela com série temporal completa (uma linha por registro) e 3 gráficos (um por patamar) com múltiplas séries temporais.
 """
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List
 from decomp_agent.app.agents.multi_deck.formatting.base import ComparisonFormatter, DeckData
 from decomp_agent.app.config import safe_print
 

@@ -8,7 +8,7 @@ from decomp_agent.app.agents.single_deck.state import SingleDeckState
 from decomp_agent.app.config import safe_print
 from shared.utils.text_utils import clean_response_text
 from decomp_agent.app.agents.single_deck.formatters.registry import get_formatter_for_tool
-from decomp_agent.app.agents.single_deck.tools import get_available_tools
+from decomp_agent.app.tools import get_available_tools
 
 
 # Função auxiliar para escrever no log de debug de forma segura

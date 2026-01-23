@@ -14,6 +14,7 @@ import pandas as pd
 import re
 from typing import Dict, Any, Optional
 from difflib import SequenceMatcher
+from newave_agent.app.config import debug_print, safe_print
 
 
 class ConfhdTool(NEWAVETool):
@@ -95,7 +96,7 @@ class ConfhdTool(NEWAVETool):
         # Verificar se há usinas
         usinas_df = confhd.usinas
         if usinas_df is None or usinas_df.empty:
-            print("[TOOL] ⚠️ DataFrame de usinas vazio ou inexistente")
+            debug_print("[TOOL] ⚠️ DataFrame de usinas vazio ou inexistente")
             return None
         
         # ETAPA 1: Tentar extrair número explícito (código da usina)
@@ -121,24 +122,24 @@ class ConfhdTool(NEWAVETool):
                         row = usinas_df[mask].iloc[0]
                         nome = str(row.get('nome_usina', '')).strip()
                         idx_real = row.name
-                        print(f"[TOOL] ✅ Código {codigo} encontrado por padrão numérico: '{nome}' (idx_real={idx_real})")
+                        debug_print(f"[TOOL] ✅ Código {codigo} encontrado por padrão numérico: '{nome}' (idx_real={idx_real})")
                         return (codigo, idx_real)
                 except (ValueError, IndexError):
                     continue
         
         # ETAPA 2: Buscar por nome da usina
-        print(f"[TOOL] Buscando usina por nome na query: '{query}'")
-        print(f"[TOOL] Total de usinas no CONFHD: {len(usinas_df)}")
+        debug_print(f"[TOOL] Buscando usina por nome na query: '{query}'")
+        debug_print(f"[TOOL] Total de usinas no CONFHD: {len(usinas_df)}")
         
         # Palavras comuns a ignorar
         palavras_ignorar = {'de', 'da', 'do', 'das', 'dos', 'e', 'a', 'o', 'as', 'os', 'em', 'na', 'no', 'nas', 'nos', 'a', 'à', 'ao', 'aos', 'informacoes', 'informações', 'dados', 'usina', 'hidrelétrica', 'hidreletrica', 'configuração', 'configuracao', 'confhd'}
         
         # Extrair palavras significativas da query
         palavras_query = [p for p in query_lower.split() if len(p) > 2 and p not in palavras_ignorar]
-        print(f"[TOOL] Palavras significativas extraídas da query: {palavras_query}")
+        debug_print(f"[TOOL] Palavras significativas extraídas da query: {palavras_query}")
         
         # Lista todas as usinas disponíveis
-        print(f"[TOOL] Usinas disponíveis no arquivo:")
+        debug_print(f"[TOOL] Usinas disponíveis no arquivo:")
         usinas_list = []
         for idx, row in usinas_df.iterrows():
             codigo = int(row.get('codigo_usina', 0))
@@ -148,7 +149,7 @@ class ConfhdTool(NEWAVETool):
                 print(f"[TOOL]   - Código {codigo}: \"{nome}\"")
         
         if not usinas_list:
-            print("[TOOL] ⚠️ Nenhuma usina com nome encontrada")
+            debug_print("[TOOL] ⚠️ Nenhuma usina com nome encontrada")
             return None
         
         # Ordenar por tamanho do nome (maior primeiro) para priorizar matches mais específicos
@@ -166,7 +167,7 @@ class ConfhdTool(NEWAVETool):
             # Match exato do nome completo
             if nome_usina_lower == query_lower.strip():
                 idx_real = usina['idx']
-                print(f"[TOOL] ✅ Código {codigo_usina} encontrado por match exato '{nome_usina}' (idx_real={idx_real})")
+                debug_print(f"[TOOL] ✅ Código {codigo_usina} encontrado por match exato '{nome_usina}' (idx_real={idx_real})")
                 return (codigo_usina, idx_real)
             
             # Match exato do nome completo dentro da query (como palavra completa)
@@ -174,7 +175,7 @@ class ConfhdTool(NEWAVETool):
                 pattern = r'\b' + re.escape(nome_usina_lower) + r'\b'
                 if re.search(pattern, query_lower):
                     idx_real = usina['idx']
-                    print(f"[TOOL] ✅ Código {codigo_usina} encontrado por nome completo '{nome_usina}' na query (idx_real={idx_real})")
+                    debug_print(f"[TOOL] ✅ Código {codigo_usina} encontrado por nome completo '{nome_usina}' na query (idx_real={idx_real})")
                     return (codigo_usina, idx_real)
         
         # ETAPA 2.2: Buscar por similaridade e palavras-chave
@@ -194,7 +195,7 @@ class ConfhdTool(NEWAVETool):
             # PRIORIDADE 3: Match exato de todas as palavras significativas
             if palavras_nome and all(palavra in query_lower for palavra in palavras_nome):
                 idx_real = usina['idx']
-                print(f"[TOOL] ✅ Código {codigo_usina} encontrado: todas as palavras significativas de '{nome_usina}' estão na query (idx_real={idx_real})")
+                debug_print(f"[TOOL] ✅ Código {codigo_usina} encontrado: todas as palavras significativas de '{nome_usina}' estão na query (idx_real={idx_real})")
                 return (codigo_usina, idx_real)
             
             # PRIORIDADE 4: Similaridade de string
@@ -228,10 +229,10 @@ class ConfhdTool(NEWAVETool):
             # Ordenar por tipo (similarity primeiro) e depois por score
             candidatos.sort(key=lambda x: (x['tipo'] == 'similarity', x['score']), reverse=True)
             melhor = candidatos[0]
-            print(f"[TOOL] ✅ Código {melhor['codigo']} encontrado por {melhor['tipo']} (score: {melhor['score']:.2f}): '{melhor['nome']}' (idx_real={melhor['idx_real']})")
+            debug_print(f"[TOOL] ✅ Código {melhor['codigo']} encontrado por {melhor['tipo']} (score: {melhor['score']:.2f}): '{melhor['nome']}' (idx_real={melhor['idx_real']})")
             return (melhor['codigo'], melhor['idx_real'])
         
-        print("[TOOL] ⚠️ Nenhuma usina específica detectada na query")
+        debug_print("[TOOL] ⚠️ Nenhuma usina específica detectada na query")
         return None
     
     def _extract_ree_from_query(self, query: str) -> Optional[int]:
@@ -325,46 +326,46 @@ class ConfhdTool(NEWAVETool):
         3. Identifica filtros (usina, REE, status)
         4. Retorna dados filtrados
         """
-        print(f"[TOOL] {self.get_name()}: Iniciando execução...")
-        print(f"[TOOL] Query: {query[:100]}")
-        print(f"[TOOL] Deck path: {self.deck_path}")
+        debug_print(f"[TOOL] {self.get_name()}: Iniciando execução...")
+        debug_print(f"[TOOL] Query: {query[:100]}")
+        debug_print(f"[TOOL] Deck path: {self.deck_path}")
         
         try:
             # ETAPA 1: Verificar existência do arquivo
-            print("[TOOL] ETAPA 1: Verificando existência do arquivo CONFHD.DAT...")
+            debug_print("[TOOL] ETAPA 1: Verificando existência do arquivo CONFHD.DAT...")
             confhd_path = os.path.join(self.deck_path, "CONFHD.DAT")
             
             if not os.path.exists(confhd_path):
                 confhd_path = os.path.join(self.deck_path, "confhd.dat")
                 if not os.path.exists(confhd_path):
-                    print(f"[TOOL] ❌ Arquivo CONFHD.DAT não encontrado")
+                    safe_print(f"[TOOL] ❌ Arquivo CONFHD.DAT não encontrado")
                     return {
                         "success": False,
                         "error": f"Arquivo CONFHD.DAT não encontrado em {self.deck_path}",
                         "tool": self.get_name()
                     }
             
-            print(f"[TOOL] ✅ Arquivo encontrado: {confhd_path}")
+            debug_print(f"[TOOL] ✅ Arquivo encontrado: {confhd_path}")
             
             # ETAPA 2: Ler arquivo usando inewave
-            print("[TOOL] ETAPA 2: Lendo arquivo com inewave...")
+            debug_print("[TOOL] ETAPA 2: Lendo arquivo com inewave...")
             confhd = Confhd.read(confhd_path)
-            print("[TOOL] ✅ Arquivo lido com sucesso")
+            debug_print("[TOOL] ✅ Arquivo lido com sucesso")
             
             # ETAPA 3: Verificar se há dados
             usinas_df = confhd.usinas
             if usinas_df is None or usinas_df.empty:
-                print("[TOOL] ⚠️ Nenhuma usina encontrada no CONFHD")
+                debug_print("[TOOL] ⚠️ Nenhuma usina encontrada no CONFHD")
                 return {
                     "success": False,
                     "error": "Nenhuma usina encontrada no arquivo CONFHD.DAT",
                     "tool": self.get_name()
                 }
             
-            print(f"[TOOL] ✅ {len(usinas_df)} usina(s) encontrada(s) no CONFHD")
+            debug_print(f"[TOOL] ✅ {len(usinas_df)} usina(s) encontrada(s) no CONFHD")
             
             # ETAPA 4: Identificar filtros da query
-            print("[TOOL] ETAPA 4: Identificando filtros...")
+            debug_print("[TOOL] ETAPA 4: Identificando filtros...")
             codigo_usina = None
             ree = self._extract_ree_from_query(query)
             status = self._extract_status_from_query(query)
@@ -373,16 +374,16 @@ class ConfhdTool(NEWAVETool):
             resultado_usina = self._extract_usina_from_query(query, confhd)
             if resultado_usina is not None:
                 codigo_usina, _ = resultado_usina
-                print(f"[TOOL] ✅ Filtro por usina: {codigo_usina}")
+                debug_print(f"[TOOL] ✅ Filtro por usina: {codigo_usina}")
             
             if ree is not None:
-                print(f"[TOOL] ✅ Filtro por REE: {ree}")
+                debug_print(f"[TOOL] ✅ Filtro por REE: {ree}")
             
             if status is not None:
-                print(f"[TOOL] ✅ Filtro por status: {status}")
+                debug_print(f"[TOOL] ✅ Filtro por status: {status}")
             
             # ETAPA 5: Aplicar filtros
-            print("[TOOL] ETAPA 5: Aplicando filtros...")
+            debug_print("[TOOL] ETAPA 5: Aplicando filtros...")
             resultado_df = usinas_df.copy()
             
             if codigo_usina is not None:
@@ -394,10 +395,10 @@ class ConfhdTool(NEWAVETool):
             if status is not None:
                 resultado_df = resultado_df[resultado_df['usina_existente'] == status]
             
-            print(f"[TOOL] ✅ {len(resultado_df)} usina(s) após filtros")
+            debug_print(f"[TOOL] ✅ {len(resultado_df)} usina(s) após filtros")
             
             # ETAPA 6: Formatar resultados
-            print("[TOOL] ETAPA 6: Formatando resultados...")
+            debug_print("[TOOL] ETAPA 6: Formatando resultados...")
             dados_lista = []
             for _, row in resultado_df.iterrows():
                 dados_lista.append(self._format_usina_data(row))
@@ -422,7 +423,7 @@ class ConfhdTool(NEWAVETool):
                 stats['volume_inicial_medio_por_ree'] = {k: round(v, 2) for k, v in volume_medio_por_ree.items()}
             
             # ETAPA 8: Formatar resultado final
-            print("[TOOL] ETAPA 8: Formatando resultado final...")
+            debug_print("[TOOL] ETAPA 8: Formatando resultado final...")
             
             filtros_aplicados = {}
             if codigo_usina is not None:
@@ -442,14 +443,14 @@ class ConfhdTool(NEWAVETool):
             }
             
         except FileNotFoundError as e:
-            print(f"[TOOL] ❌ Erro FileNotFoundError: {e}")
+            safe_print(f"[TOOL] ❌ Erro FileNotFoundError: {e}")
             return {
                 "success": False,
                 "error": f"Arquivo não encontrado: {str(e)}",
                 "tool": self.get_name()
             }
         except Exception as e:
-            print(f"[TOOL] ❌ Erro ao processar: {type(e).__name__}: {e}")
+            safe_print(f"[TOOL] ❌ Erro ao processar: {type(e).__name__}: {e}")
             import traceback
             traceback.print_exc()
             return {
