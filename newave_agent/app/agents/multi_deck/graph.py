@@ -10,13 +10,6 @@ import json as json_module
 from typing import Generator, Any, Optional, List, Dict
 from langgraph.graph import StateGraph, END
 from newave_agent.app.agents.multi_deck.state import MultiDeckState
-from newave_agent.app.agents.multi_deck.nodes.rag_nodes import (
-    rag_simple_node,
-    rag_enhanced_node,
-)
-from newave_agent.app.agents.multi_deck.nodes.llm_nodes import (
-    llm_planner_node,
-)
 from newave_agent.app.utils.observability import get_langfuse_handler
 from newave_agent.app.config import safe_print
 from newave_agent.app.utils.deck_loader import (
@@ -61,55 +54,17 @@ def _clean_nan_for_json(obj: Any) -> Any:
 
 # Descrições dos nodes para streaming
 NODE_DESCRIPTIONS = {
-    "rag_simple": {
-        "name": "RAG Simplificado",
-        "icon": "[DOC]",
-        "description": "Buscando documentacao no abstract..."
-    },
-    "rag_enhanced": {
-        "name": "RAG Enhanced",
-        "icon": "[DOCS+]",
-        "description": "Buscando em toda documentacao + tools_context.md..."
-    },
-    "llm_planner": {
-        "name": "LLM Planner",
-        "icon": "[PLAN]",
-        "description": "Gerando instrucoes detalhadas baseadas no contexto..."
-    },
     "comparison_tool_router": {
         "name": "Comparison Tool Router",
         "icon": "[TOOL]",
         "description": "Verificando se ha tool de comparacao disponivel..."
     },
-    "comparison_coder": {
-        "name": "Code Generator", 
-        "icon": "[CODE]",
-        "description": "Gerando codigo Python para comparar os decks..."
-    },
-    "comparison_executor": {
-        "name": "Code Executor",
-        "icon": "[EXEC]",
-        "description": "Executando o codigo gerado nos decks selecionados..."
-    },
     "comparison_interpreter": {
         "name": "Comparison Interpreter",
         "icon": "[AI]",
-        "description": "Analisando resultados e gerando comparacao..."
-    },
-    "retry_check": {
-        "name": "Retry Check",
-        "icon": "[RETRY]",
-        "description": "Verificando se precisa tentar novamente..."
+        "description": "Formatando comparacao..."
     }
 }
-
-
-def should_use_llm_mode(state: MultiDeckState) -> str:
-    """Verifica se deve usar modo LLM."""
-    llm_instructions = state.get("llm_instructions")
-    if llm_instructions:
-        return "llm"
-    return "normal"
 
 
 def should_continue_after_tool_router(state: MultiDeckState) -> str:
@@ -119,42 +74,9 @@ def should_continue_after_tool_router(state: MultiDeckState) -> str:
     
     if disambiguation:
         return END
-    elif tool_route:
-        return "comparison_interpreter"
     else:
-        return "rag_simple"
-
-
-def should_retry(state: MultiDeckState) -> str:
-    """Decide se deve tentar novamente após erro de execução."""
-    execution_result = state.get("execution_result") or {}
-    success = execution_result.get("success", False)
-    retry_count = state.get("retry_count", 0)
-    max_retries = state.get("max_retries", MAX_RETRIES)
-    
-    if success or retry_count >= max_retries:
+        # Sempre vai para comparison_interpreter (com ou sem tool)
         return "comparison_interpreter"
-    
-    return "comparison_coder"
-
-
-def retry_check_node(state: MultiDeckState) -> dict:
-    """Node que atualiza o estado para retry."""
-    execution_result = state.get("execution_result") or {}
-    success = execution_result.get("success", False)
-    
-    if not success:
-        retry_count = state.get("retry_count", 0) + 1
-        error_history = list(state.get("error_history", []))
-        error_msg = execution_result.get("stderr", "Erro desconhecido")
-        error_history.append(error_msg)
-        
-        return {
-            "retry_count": retry_count,
-            "error_history": error_history
-        }
-    
-    return {}
 
 
 def create_multi_deck_agent() -> StateGraph:
@@ -163,71 +85,31 @@ def create_multi_deck_agent() -> StateGraph:
     
     Fluxo:
     1. Comparison Tool Router: Verifica se há tool de comparação disponível
-       - Se tool executou: vai direto para Comparison Interpreter
-       - Se tool não executou: continua para RAG Simplificado
-    2. RAG Simplificado: Busca no abstract.md
-    3. Comparison Coder: Gera código que processa os decks selecionados
-    4. Comparison Executor: Executa código em paralelo nos N decks
-    5. Retry Check: Verifica se precisa retry
-    6. Comparison Interpreter: Interpreta e formata comparação
+       - Se tool executou: vai direto para Comparison Interpreter para formatar resultado
+       - Se tool não executou: vai para Comparison Interpreter que retorna mensagem informando
+    2. Comparison Interpreter: Formata resultado da tool ou retorna mensagem quando não há tool
     """
     # Importar nodes específicos do multi-deck
     from newave_agent.app.agents.multi_deck.nodes import (
         comparison_tool_router_node,
-        comparison_coder_node,
-        comparison_executor_node,
         comparison_interpreter_node,
     )
     
     workflow = StateGraph(MultiDeckState)
     
     # Nodes disponíveis
-    workflow.add_node("rag_simple", rag_simple_node)
-    workflow.add_node("rag_enhanced", rag_enhanced_node)
-    workflow.add_node("llm_planner", llm_planner_node)
     workflow.add_node("comparison_tool_router", comparison_tool_router_node)
-    workflow.add_node("comparison_coder", comparison_coder_node)
-    workflow.add_node("comparison_executor", comparison_executor_node)
-    workflow.add_node("retry_check", retry_check_node)
     workflow.add_node("comparison_interpreter", comparison_interpreter_node)
     
-    # Entry point condicional: LLM Mode ou Normal
-    workflow.set_conditional_entry_point(
-        should_use_llm_mode,
-        {
-            "llm": "rag_enhanced",
-            "normal": "comparison_tool_router"
-        }
-    )
+    # Entry point: sempre começa com Comparison Tool Router
+    workflow.set_entry_point("comparison_tool_router")
     
-    # Fluxo LLM Mode: rag_enhanced → llm_planner → comparison_coder → comparison_executor → retry_check → comparison_interpreter
-    workflow.add_edge("rag_enhanced", "llm_planner")
-    workflow.add_edge("llm_planner", "comparison_coder")
-    
-    # Fluxo modo normal: comparison_tool_router → (comparison_interpreter ou rag_simple → comparison_coder)
+    # Fluxo: comparison_tool_router → comparison_interpreter (sempre, exceto disambiguation que termina)
     workflow.add_conditional_edges(
         "comparison_tool_router",
         should_continue_after_tool_router,
         {
             END: END,
-            "comparison_interpreter": "comparison_interpreter",
-            "rag_simple": "rag_simple"
-        }
-    )
-    
-    # RAG simplificado sempre vai para Comparison Coder
-    workflow.add_edge("rag_simple", "comparison_coder")
-    
-    # Comparison Coder → Comparison Executor
-    workflow.add_edge("comparison_coder", "comparison_executor")
-    workflow.add_edge("comparison_executor", "retry_check")
-    
-    # Decisão condicional: retry ou comparison_interpreter
-    workflow.add_conditional_edges(
-        "retry_check",
-        should_retry,
-        {
-            "comparison_coder": "comparison_coder",
             "comparison_interpreter": "comparison_interpreter"
         }
     )
@@ -257,8 +139,7 @@ def reset_multi_deck_agent():
 def get_initial_state(
     query: str, 
     deck_path: str, 
-    selected_decks: Optional[List[str]] = None,
-    llm_mode: bool = False
+    selected_decks: Optional[List[str]] = None
 ) -> dict:
     """
     Retorna o estado inicial para uma query multi-deck.
@@ -267,7 +148,6 @@ def get_initial_state(
         query: A pergunta do usuário
         deck_path: Caminho do deck principal (para compatibilidade)
         selected_decks: Lista de nomes dos decks selecionados
-        llm_mode: Se True, usa modo LLM
         
     Returns:
         Estado inicial do agent
@@ -326,7 +206,6 @@ def get_initial_state(
         "tool_used": None,
         "disambiguation": None,
         "comparison_data": None,
-        "llm_instructions": None if not llm_mode else "",
         # Campos para escolha do usuário (requires_user_choice)
         "requires_user_choice": None,
         "alternative_type": None
@@ -337,12 +216,11 @@ def run_query(
     query: str, 
     deck_path: str, 
     session_id: Optional[str] = None, 
-    selected_decks: Optional[List[str]] = None,
-    llm_mode: bool = False
+    selected_decks: Optional[List[str]] = None
 ) -> dict:
     """Executa uma query no Multi-Deck Agent."""
     agent = get_multi_deck_agent()
-    initial_state = get_initial_state(query, deck_path, selected_decks, llm_mode)
+    initial_state = get_initial_state(query, deck_path, selected_decks)
     
     safe_print("[LANGFUSE DEBUG] ===== INÍCIO: run_query (multi-deck) =====")
     safe_print(f"[LANGFUSE DEBUG] Query: {query[:100]}")
@@ -385,12 +263,11 @@ def run_query_stream(
     query: str, 
     deck_path: str, 
     session_id: Optional[str] = None, 
-    selected_decks: Optional[List[str]] = None,
-    llm_mode: bool = False
+    selected_decks: Optional[List[str]] = None
 ) -> Generator[str, None, None]:
     """Executa uma query no Multi-Deck Agent com streaming de eventos."""
     agent = get_multi_deck_agent()
-    initial_state = get_initial_state(query, deck_path, selected_decks, llm_mode)
+    initial_state = get_initial_state(query, deck_path, selected_decks)
     
     safe_print("[LANGFUSE DEBUG] ===== INÍCIO: run_query_stream (multi-deck) =====")
     safe_print(f"[LANGFUSE DEBUG] Query: {query[:100]}")
@@ -434,17 +311,10 @@ def run_query_stream(
                     "description": f"Executando {node_name}..."
                 })
                 
-                if node_name == "comparison_coder" and current_retry > 0:
-                    node_info = {
-                        **node_info,
-                        "name": f"Code Generator (Tentativa {current_retry + 1})",
-                        "description": f"Corrigindo código... (tentativa {current_retry + 1}/{MAX_RETRIES})"
-                    }
-                
                 if not (node_name == "comparison_tool_router" and node_output.get("disambiguation")):
                     yield f"data: {json.dumps({'type': 'node_start', 'node': node_name, 'info': node_info, 'retry': current_retry})}\n\n"
                 
-                # Detalhes específicos de cada node (similar ao single deck)
+                # Detalhes específicos de cada node
                 if node_name == "comparison_tool_router":
                     disambiguation = node_output.get("disambiguation")
                     tool_route = node_output.get("tool_route", False)
@@ -475,7 +345,7 @@ def run_query_stream(
                             total_registros = summary.get("total_registros", 0)
                         yield f"data: {json.dumps({'type': 'node_detail', 'node': node_name, 'detail': f' {total_registros} registros processados'})}\n\n"
                     else:
-                        yield f"data: {json.dumps({'type': 'node_detail', 'node': node_name, 'detail': '⚠️ Nenhuma tool disponível, continuando fluxo normal'})}\n\n"
+                        yield f"data: {json.dumps({'type': 'node_detail', 'node': node_name, 'detail': '⚠️ Nenhuma tool disponível'})}\n\n"
                 
                 elif node_name == "comparison_interpreter":
                     response = node_output.get("final_response") if node_output else None

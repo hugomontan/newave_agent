@@ -97,8 +97,7 @@ def get_formatter_for_tool(
         safe_print(f"[GET FORMATTER FOR TOOL] ✅ Selecionado {selected.__class__.__name__} (primeiro com prioridade máxima)")
         return selected
     
-    # TODO: Criar LLMFreeFormatter como fallback
-    # Por enquanto, retornar None e tratar no código chamador
+    # Fallback: retornar None e tratar no código chamador
     safe_print(f"[GET FORMATTER FOR TOOL] ❌ Nenhum formatter encontrado para {tool_name}")
     return None
 

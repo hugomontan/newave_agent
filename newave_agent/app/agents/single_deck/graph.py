@@ -11,11 +11,6 @@ from langgraph.graph import StateGraph, END
 from newave_agent.app.agents.single_deck.state import SingleDeckState
 from newave_agent.app.agents.single_deck.nodes.rag_nodes import (
     rag_retriever_node,
-    rag_simple_node,
-    rag_enhanced_node,
-)
-from newave_agent.app.agents.single_deck.nodes.llm_nodes import (
-    llm_planner_node,
 )
 from newave_agent.app.utils.observability import get_langfuse_handler
 from newave_agent.app.config import safe_print
@@ -64,60 +59,17 @@ NODE_DESCRIPTIONS = {
         "icon": "[DOCS]",
         "description": "Buscando documentacao e validando arquivos relevantes..."
     },
-    "rag_simple": {
-        "name": "RAG Simplificado",
-        "icon": "[DOC]",
-        "description": "Buscando documentacao no abstract..."
-    },
-    "rag_enhanced": {
-        "name": "RAG Enhanced",
-        "icon": "[DOCS+]",
-        "description": "Buscando em toda documentacao + tools_context.md..."
-    },
-    "llm_planner": {
-        "name": "LLM Planner",
-        "icon": "[PLAN]",
-        "description": "Gerando instrucoes detalhadas baseadas no contexto..."
-    },
     "tool_router": {
         "name": "Tool Router",
         "icon": "[TOOL]",
         "description": "Verificando se ha tool pre-programada disponivel..."
     },
-    "coder": {
-        "name": "Code Generator", 
-        "icon": "[CODE]",
-        "description": "Gerando codigo Python para analisar o deck NEWAVE..."
-    },
-    "executor": {
-        "name": "Code Executor",
-        "icon": "[EXEC]",
-        "description": "Executando o codigo gerado..."
-    },
     "interpreter": {
         "name": "Interpreter",
         "icon": "[AI]",
-        "description": "Analisando resultados e gerando resposta..."
-    },
-    "retry_check": {
-        "name": "Retry Check",
-        "icon": "[RETRY]",
-        "description": "Verificando se precisa tentar novamente..."
+        "description": "Formatando resposta..."
     }
 }
-
-
-def should_use_llm_mode(state: SingleDeckState) -> str:
-    """
-    Verifica se deve usar modo LLM baseado em llm_instructions.
-    
-    Returns:
-        "llm" se llm_instructions existe, "normal" caso contrário
-    """
-    llm_instructions = state.get("llm_instructions")
-    if llm_instructions:
-        return "llm"
-    return "normal"
 
 
 def should_continue_after_tool_router(state: SingleDeckState) -> str:
@@ -125,8 +77,7 @@ def should_continue_after_tool_router(state: SingleDeckState) -> str:
     Decide o próximo passo após Tool Router.
     
     - Se disambiguation: termina o fluxo (disambiguation já foi emitida)
-    - Se tool executou: vai para interpreter
-    - Se tool não executou: faz RAG simplificado para preparar contexto para coder
+    - Caso contrário: sempre vai para interpreter (com ou sem tool)
     """
     tool_route = state.get("tool_route", False)
     disambiguation = state.get("disambiguation")
@@ -138,7 +89,7 @@ def should_continue_after_tool_router(state: SingleDeckState) -> str:
         "hypothesisId": "A",
         "location": "graph.py:106",
         "message": "Should continue after tool router",
-        "data": {"tool_route": tool_route, "has_disambiguation": bool(disambiguation), "next_node": "interpreter" if tool_route else ("END" if disambiguation else "rag_simple")},
+        "data": {"tool_route": tool_route, "has_disambiguation": bool(disambiguation), "next_node": "END" if disambiguation else "interpreter"},
         "timestamp": int(__import__('time').time() * 1000)
     })
     # #endregion
@@ -146,76 +97,25 @@ def should_continue_after_tool_router(state: SingleDeckState) -> str:
     if disambiguation:
         # Disambiguation detectada - terminar fluxo imediatamente
         return END
-    elif tool_route:
-        # Tool foi executada, ir direto para interpreter
-        return "interpreter"
     else:
-        # Nenhuma tool disponível, fazer RAG simplificado para coder
-        return "rag_simple"
-
-
-def should_retry(state: SingleDeckState) -> str:
-    """
-    Decide se deve tentar novamente após erro de execução.
-    """
-    execution_result = state.get("execution_result") or {}
-    success = execution_result.get("success", False)
-    retry_count = state.get("retry_count", 0)
-    max_retries = state.get("max_retries", MAX_RETRIES)
-    
-    if success or retry_count >= max_retries:
+        # Sempre vai para interpreter (com ou sem tool)
+        # O interpreter vai verificar se há tool_result e processar adequadamente
         return "interpreter"
-    
-    return "coder"
-
-
-def retry_check_node(state: SingleDeckState) -> dict:
-    """Node que atualiza o estado para retry."""
-    execution_result = state.get("execution_result") or {}
-    success = execution_result.get("success", False)
-    
-    if not success:
-        retry_count = state.get("retry_count", 0) + 1
-        error_history = list(state.get("error_history", []))
-        error_msg = execution_result.get("stderr", "Erro desconhecido")
-        error_history.append(error_msg)
-        
-        return {
-            "retry_count": retry_count,
-            "error_history": error_history
-        }
-    
-    return {}
 
 
 def create_single_deck_agent() -> StateGraph:
     """
     Cria o grafo do Single Deck Agent.
     
-    Fluxo otimizado (modo normal):
+    Fluxo:
     1. Tool Router (entry point): Verifica se há tool pré-programada
-       - Se tool executou: vai direto para Interpreter ✅
-       - Se tool não executou: continua para RAG Simplificado
-    2. RAG Simplificado: Busca apenas no abstract.md (sem validação iterativa)
-       - Retorna contexto para Coder
-    3. Coder: Gera código Python usando contexto do abstract
-    4. Executor: Executa o código
-    5. Retry Check: Verifica se precisa retry
-    6. Interpreter: Interpreta resultados e gera resposta
-    
-    Fluxo LLM Mode (quando llm_instructions está presente):
-    1. RAG Enhanced: Busca em toda documentação + tools_context.md
-    2. LLM Planner: Gera instruções detalhadas baseadas no contexto
-    3. Coder: Gera código usando instruções enriquecidas
-    4. Executor: Executa o código
-    5. Retry Check: Verifica se precisa retry
-    6. Interpreter: Interpreta resultados e gera resposta
+       - Se tool executou: vai direto para Interpreter para formatar resultado
+       - Se tool não executou: vai para Interpreter que retorna mensagem informando
+    2. Interpreter: Formata resultado da tool ou retorna mensagem quando não há tool
     """
     # Importar nodes específicos do single deck
     from newave_agent.app.agents.single_deck.nodes import (
         tool_router_node,
-        coder_node,
-        executor_node,
         interpreter_node,
     )
     
@@ -223,52 +123,18 @@ def create_single_deck_agent() -> StateGraph:
     
     # Nodes disponíveis
     workflow.add_node("rag", rag_retriever_node)  # Mantido para uso futuro/fallback
-    workflow.add_node("rag_simple", rag_simple_node)  # RAG simplificado (modo normal)
-    workflow.add_node("rag_enhanced", rag_enhanced_node)  # RAG completo (modo LLM)
-    workflow.add_node("llm_planner", llm_planner_node)  # LLM Planner (modo LLM)
     workflow.add_node("tool_router", tool_router_node)
-    workflow.add_node("coder", coder_node)
-    workflow.add_node("executor", executor_node)
-    workflow.add_node("retry_check", retry_check_node)
     workflow.add_node("interpreter", interpreter_node)
     
-    # Entry point condicional: LLM Mode ou Normal
-    workflow.set_conditional_entry_point(
-        should_use_llm_mode,
-        {
-            "llm": "rag_enhanced",  # Modo LLM: começa com RAG Enhanced
-            "normal": "tool_router"  # Modo normal: começa com Tool Router
-        }
-    )
+    # Entry point: sempre começa com Tool Router
+    workflow.set_entry_point("tool_router")
     
-    # Fluxo LLM Mode: rag_enhanced → llm_planner → coder → executor → retry_check → interpreter
-    workflow.add_edge("rag_enhanced", "llm_planner")
-    workflow.add_edge("llm_planner", "coder")
-    
-    # Fluxo modo normal: tool_router → (interpreter ou rag_simple → coder)
+    # Fluxo: tool_router → interpreter (sempre, exceto disambiguation que termina)
     workflow.add_conditional_edges(
         "tool_router",
         should_continue_after_tool_router,
         {
             END: END,  # Termina fluxo quando há disambiguation
-            "interpreter": "interpreter",
-            "rag_simple": "rag_simple"
-        }
-    )
-    
-    # RAG simplificado sempre vai para Coder
-    workflow.add_edge("rag_simple", "coder")
-    
-    # Coder → Executor (comum para ambos os modos)
-    workflow.add_edge("coder", "executor")
-    workflow.add_edge("executor", "retry_check")
-    
-    # Decisão condicional: retry ou interpreter
-    workflow.add_conditional_edges(
-        "retry_check",
-        should_retry,
-        {
-            "coder": "coder",
             "interpreter": "interpreter"
         }
     )
@@ -295,7 +161,7 @@ def reset_single_deck_agent():
     _agent = None
 
 
-def get_initial_state(query: str, deck_path: str, llm_mode: bool = False) -> dict:
+def get_initial_state(query: str, deck_path: str) -> dict:
     """Retorna o estado inicial para uma query single deck."""
     return {
         "query": query,
@@ -323,18 +189,16 @@ def get_initial_state(query: str, deck_path: str, llm_mode: bool = False) -> dic
         "tool_used": None,
         # Campos para Disambiguation
         "disambiguation": None,
-        # Campos para LLM Mode
-        "llm_instructions": None if not llm_mode else "",  # Será preenchido pelo LLM Planner
         # Campos para escolha do usuário (requires_user_choice)
         "requires_user_choice": None,
         "alternative_type": None
     }
 
 
-def run_query(query: str, deck_path: str, session_id: Optional[str] = None, llm_mode: bool = False) -> dict:
+def run_query(query: str, deck_path: str, session_id: Optional[str] = None) -> dict:
     """Executa uma query no Single Deck Agent."""
     agent = get_single_deck_agent()
-    initial_state = get_initial_state(query, deck_path, llm_mode)
+    initial_state = get_initial_state(query, deck_path)
     
     # Configurar Langfuse para observabilidade
     safe_print("[LANGFUSE DEBUG] ===== INÍCIO: run_query (single deck) =====")
@@ -375,10 +239,10 @@ def run_query(query: str, deck_path: str, session_id: Optional[str] = None, llm_
     return result
 
 
-def run_query_stream(query: str, deck_path: str, session_id: Optional[str] = None, llm_mode: bool = False) -> Generator[str, None, None]:
+def run_query_stream(query: str, deck_path: str, session_id: Optional[str] = None) -> Generator[str, None, None]:
     """Executa uma query no Single Deck Agent com streaming de eventos."""
     agent = get_single_deck_agent()
-    initial_state = get_initial_state(query, deck_path, llm_mode)
+    initial_state = get_initial_state(query, deck_path)
     
     # Configurar Langfuse para observabilidade
     safe_print("[LANGFUSE DEBUG] ===== INÍCIO: run_query_stream (single deck) =====")
@@ -417,17 +281,10 @@ def run_query_stream(query: str, deck_path: str, session_id: Optional[str] = Non
                     "description": f"Executando {node_name}..."
                 })
                 
-                if node_name == "coder" and current_retry > 0:
-                    node_info = {
-                        **node_info,
-                        "name": f"Code Generator (Tentativa {current_retry + 1})",
-                        "description": f"Corrigindo código... (tentativa {current_retry + 1}/{MAX_RETRIES})"
-                    }
-                
                 if not (node_name == "tool_router" and node_output.get("disambiguation")):
                     yield f"data: {json.dumps({'type': 'node_start', 'node': node_name, 'info': node_info, 'retry': current_retry})}\n\n"
                 
-                # Detalhes específicos de cada node (similar ao código original)
+                # Detalhes específicos de cada node
                 if node_name == "rag":
                     rag_status = node_output.get("rag_status", "success")
                     selected_files = node_output.get("selected_files") or []
@@ -443,26 +300,6 @@ def run_query_stream(query: str, deck_path: str, session_id: Optional[str] = Non
                         if colunas:
                             detail += f' | Colunas: {", ".join(colunas[:5])}'
                         yield f"data: {json.dumps({'type': 'node_detail', 'node': node_name, 'detail': detail})}\n\n"
-                
-                elif node_name == "rag_enhanced":
-                    rag_status = node_output.get("rag_status", "success")
-                    relevant_docs = node_output.get("relevant_docs", [])
-                    if relevant_docs:
-                        total_chars = sum(len(doc) for doc in relevant_docs)
-                        yield f"data: {json.dumps({'type': 'node_detail', 'node': node_name, 'detail': f'✅ Contexto completo preparado ({total_chars} caracteres) - documentacao NEWAVE + tools_context.md'})}\n\n"
-                
-                elif node_name == "llm_planner":
-                    llm_instructions = node_output.get("llm_instructions")
-                    if llm_instructions:
-                        yield f"data: {json.dumps({'type': 'node_detail', 'node': node_name, 'detail': f'✅ Instrucoes detalhadas geradas ({len(llm_instructions)} caracteres)'})}\n\n"
-                
-                elif node_name == "coder":
-                    code = node_output.get("generated_code", "")
-                    if code:
-                        yield f"data: {json.dumps({'type': 'code_start', 'node': node_name})}\n\n"
-                        for i, line in enumerate(code.split('\n')):
-                            yield f"data: {json.dumps({'type': 'code_line', 'line': line, 'line_number': i + 1})}\n\n"
-                        yield f"data: {json.dumps({'type': 'code_complete', 'code': code})}\n\n"
                 
                 elif node_name == "tool_router":
                     tool_route = node_output.get("tool_route", False)
@@ -494,17 +331,7 @@ def run_query_stream(query: str, deck_path: str, session_id: Optional[str] = Non
                             summary = tool_result.get("summary", {})
                             yield f"data: {json.dumps({'type': 'node_detail', 'node': node_name, 'detail': f' {summary.get("total_registros", 0)} registros processados'})}\n\n"
                     else:
-                        yield f"data: {json.dumps({'type': 'node_detail', 'node': node_name, 'detail': '⚠️ Nenhuma tool disponível, continuando fluxo normal'})}\n\n"
-                
-                elif node_name == "executor":
-                    result = node_output.get("execution_result") or {}
-                    yield f"data: {json.dumps({'type': 'execution_result', 'success': result.get('success', False), 'stdout': result.get('stdout', ''), 'stderr': result.get('stderr', '')})}\n\n"
-                
-                elif node_name == "retry_check":
-                    new_retry = node_output.get("retry_count", current_retry)
-                    if new_retry > current_retry:
-                        current_retry = new_retry
-                        yield f"data: {json.dumps({'type': 'retry', 'retry_count': current_retry, 'max_retries': MAX_RETRIES, 'message': f'Erro detectado. Tentando novamente ({current_retry}/{MAX_RETRIES})...'})}\n\n"
+                        yield f"data: {json.dumps({'type': 'node_detail', 'node': node_name, 'detail': '⚠️ Nenhuma tool disponível'})}\n\n"
                 
                 elif node_name == "interpreter":
                     response = node_output.get("final_response") if node_output else None

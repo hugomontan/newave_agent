@@ -273,7 +273,7 @@ export async function sendQuery(
 export async function* sendQueryStream(
   sessionId: string,
   query: string,
-  analysisMode?: "single" | "comparison" | "llm"
+  analysisMode?: "single" | "comparison"
 ): AsyncGenerator<StreamEvent> {
   const response = await fetch(`${NEWAVE_API_URL}/query/stream`, {
     method: "POST",
@@ -475,7 +475,7 @@ export async function uploadDecompDeck(file: File): Promise<UploadResponse> {
 export async function* queryDecompStream(
   sessionId: string,
   query: string,
-  analysisMode?: "single" | "comparison" | "llm"
+  analysisMode?: "single" | "comparison"
 ): AsyncGenerator<StreamEvent> {
   const response = await fetch(`${DECOMP_API_URL}/query/stream`, {
     method: "POST",

@@ -5,9 +5,15 @@ from decomp_agent.app.agents.multi_deck.formatting.registry import format_compar
 from shared.utils.text_utils import clean_response_text
 
 def comparison_interpreter_node(state: MultiDeckState) -> dict:
+    """
+    Node que formata os resultados de comparação e gera a resposta final.
+    
+    Prioridades:
+    1. Se tool_result existe: formata resultado da tool usando formatters
+    2. Caso contrário: retorna mensagem informando que não há tool disponível
+    """
     tool_result = state.get("tool_result")
     tool_used = state.get("tool_used")
-    execution_result = state.get("execution_result", {})
     query = state.get("query", "")
     deck_display_names = state.get("deck_display_names", {})
     
@@ -45,17 +51,21 @@ def comparison_interpreter_node(state: MultiDeckState) -> dict:
                 "comparison_data": tool_result.get("comparison_data")
             }
     
-    # Formatação básica de execução
-    success = execution_result.get("success", False)
-    stdout = execution_result.get("stdout", "")
-    stderr = execution_result.get("stderr", "")
-    
-    if success:
-        response = f"## Resultado da Comparação\n\n{stdout}"
-    else:
-        response = f"## Erro na Execução\n\n{stderr}"
-    
-    return {
-        "final_response": clean_response_text(response, max_emojis=2),
-        "comparison_data": None
-    }
+    # Se não há tool_result, retornar mensagem
+    safe_print(f"[COMPARISON INTERPRETER DECOMP] Nenhuma tool disponível para processar a consulta de comparação")
+    no_tool_msg = """## Nenhuma tool disponível para sua consulta de comparação
+
+Não encontrei uma tool pré-programada que possa processar sua solicitação de comparação.
+
+### Sugestões de perguntas válidas:
+
+- "Compare a carga ANDE entre dezembro e janeiro"
+- "Quais são as diferenças nos limites de intercâmbio?"
+- "Compare as restrições elétricas entre os períodos"
+- "Compare as gerações GNL entre os decks"
+
+### Tools disponíveis:
+
+Consulte a documentação para ver todas as tools disponíveis para comparação de decks DECOMP."""
+    no_tool_msg = clean_response_text(no_tool_msg, max_emojis=2)
+    return {"final_response": no_tool_msg, "comparison_data": None}

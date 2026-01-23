@@ -49,9 +49,6 @@ class MultiDeckState(TypedDict):
     # Campos para Comparação Multi-Deck
     comparison_data: Optional[dict]  # Dados de comparação multi-deck
     
-    # Campos para LLM Mode
-    llm_instructions: Optional[str]
-    
     # Campos para escolha do usuário (requires_user_choice)
     requires_user_choice: Optional[bool]
     alternative_type: Optional[str]

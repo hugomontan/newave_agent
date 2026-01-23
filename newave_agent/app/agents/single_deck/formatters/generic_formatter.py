@@ -1,15 +1,15 @@
 """
-Formatter genérico para single deck - usa LLM para formatar qualquer tool.
+Formatter genérico para single deck - formata qualquer tool usando formatação padrão.
 """
 
 from typing import Dict, Any
 from newave_agent.app.agents.single_deck.formatters.base import SingleDeckFormatter
-from newave_agent.app.agents.single_deck.nodes.helpers.tool_formatting.llm_formatter import format_tool_response_with_llm
+from newave_agent.app.agents.single_deck.nodes.helpers.tool_formatting.base import format_tool_response
 
 
 class GenericSingleDeckFormatter(SingleDeckFormatter):
     """
-    Formatter genérico que usa LLM para formatar qualquer tool.
+    Formatter genérico que usa formatação padrão para qualquer tool.
     Fallback quando não há formatter específico.
     """
     
@@ -28,6 +28,6 @@ class GenericSingleDeckFormatter(SingleDeckFormatter):
         query: str
     ) -> Dict[str, Any]:
         """
-        Formata resposta usando LLM (compartilhado).
+        Formata resposta usando formatação padrão.
         """
-        return format_tool_response_with_llm(tool_result, tool_name, query)
+        return format_tool_response(tool_result, tool_name)

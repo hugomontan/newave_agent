@@ -22,9 +22,6 @@ from .data_formatters.cadastro_formatters import (
 from .data_formatters.table_formatters import (
     TableComparisonFormatter,
 )
-from .data_formatters.llm_free_formatters import (
-    LLMFreeFormatter,
-)
 from .data_formatters.gtmin_formatters import (
     MudancasGeracoesTermicasFormatter,
 )
@@ -49,8 +46,7 @@ FORMATTERS = [
     LimitesIntercambioComparisonFormatter(),
     DiffComparisonFormatter(),
     CadastroComparisonFormatter(),
-    TableComparisonFormatter(),
-    LLMFreeFormatter(),  # Fallback - sempre deve ser o último
+    TableComparisonFormatter(),  # Fallback - sempre deve ser o último
 ]
 
 
@@ -66,7 +62,7 @@ def get_formatter_for_tool(
         result_structure: Estrutura do resultado da tool (para verificar campos disponíveis)
         
     Returns:
-        Formatador apropriado (ou LLMFreeFormatter como fallback)
+        Formatador apropriado (ou TableComparisonFormatter como fallback)
     """
     candidates = [
         f for f in FORMATTERS 
@@ -77,8 +73,8 @@ def get_formatter_for_tool(
         # Retornar o formatador com maior prioridade
         return max(candidates, key=lambda f: f.get_priority())
     
-    # Fallback para LLMFreeFormatter se nenhum formatador pode processar
-    return LLMFreeFormatter()
+    # Fallback para TableComparisonFormatter se nenhum formatador pode processar
+    return TableComparisonFormatter()
 
 
 def format_comparison_response(
@@ -124,8 +120,6 @@ def format_comparison_response(
         format_restricao_eletrica_simple_comparison,
         generate_fallback_comparison_response
     )
-    from .text_formatters.llm_structured import format_with_llm_structured
-    from .text_formatters.llm_free import format_with_llm_free
     
     # Converter para formato de List[DeckData]
     decks_data = convert_legacy_result_to_decks_data(tool_result, deck_display_names)
@@ -461,30 +455,11 @@ def format_comparison_response(
             deck_names=deck_displays
         )
     else:
-        # Gerar resposta do LLM baseada no tipo de visualização
-        try:
-            safe_print(f"[INTERPRETER] [COMPARISON] Gerando interpretação com LLM (tipo: {visualization_type})...")
-            
-            # Escolher prompt baseado no tipo de visualização
-            if visualization_type in ["diff_list", "llm_free"]:
-                final_response = format_with_llm_free(
-                    deck_1_full, deck_2_full, tool_used, query,
-                    deck_1_name, deck_2_name, formatted
-                )
-            else:
-                final_response = format_with_llm_structured(
-                    deck_1_full, deck_2_full, tool_used, query,
-                    deck_1_name, deck_2_name, formatted
-                )
-            
-        except Exception as e:
-            safe_print(f"[INTERPRETER] [ERRO] Erro ao gerar interpretação com LLM: {e}")
-            import traceback
-            traceback.print_exc()
-            # Fallback para resposta padrão
-            final_response = generate_fallback_comparison_response(
-                query, deck_1_name, deck_2_name, tool_used, formatted.get("comparison_table")
-            )
+        # Usar fallback para resposta padrão
+        safe_print(f"[INTERPRETER] [COMPARISON] Gerando resposta fallback (tipo: {visualization_type})...")
+        final_response = generate_fallback_comparison_response(
+            query, deck_1_name, deck_2_name, tool_used, formatted.get("comparison_table")
+        )
     
     # Debug: verificar se chart_data está presente
     safe_print(f"[INTERPRETER] [COMPARISON] Retornando comparison_data com chart_data: {comparison_data.get('chart_data') is not None}")

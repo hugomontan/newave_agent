@@ -16,7 +16,6 @@ from .table_formatters import TableComparisonFormatter
 from .gtmin_formatters import MudancasGeracoesTermicasFormatter
 from .vazao_minima_formatters import MudancasVazaoMinimaFormatter
 from .variacao_reservatorio_inicial_formatters import VariacaoReservatorioInicialFormatter
-from .llm_free_formatters import LLMFreeFormatter
 
 __all__ = [
     "ClastComparisonFormatter",
@@ -30,5 +29,4 @@ __all__ = [
     "MudancasGeracoesTermicasFormatter",
     "MudancasVazaoMinimaFormatter",
     "VariacaoReservatorioInicialFormatter",
-    "LLMFreeFormatter",
 ]

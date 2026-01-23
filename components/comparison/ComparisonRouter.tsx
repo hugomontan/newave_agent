@@ -344,7 +344,6 @@ export function ComparisonRouter({ comparison }: ComparisonRouterProps) {
       }
       break;
 
-    case "llm_free":
     case "unknown":
     case "desconhecido":
       // Tentar renderizar com base no tool_name e dados disponíveis

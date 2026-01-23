@@ -29,8 +29,7 @@ class MultiDeckAgent:
         self,
         query: str,
         deck_path: str,
-        session_id: Optional[str] = None,
-        llm_mode: bool = False
+        session_id: Optional[str] = None
     ) -> dict:
         """
         Executa uma query de comparação no agent.
@@ -39,20 +38,18 @@ class MultiDeckAgent:
             query: Query do usuário
             deck_path: Caminho do deck principal (usado para contexto)
             session_id: ID da sessão (opcional)
-            llm_mode: Se True, usa modo LLM (RAG Enhanced + LLM Planner)
             
         Returns:
             Dict com resultado da comparação
         """
         from .graph import run_query as _run_query
-        return _run_query(query, deck_path, session_id, llm_mode)
+        return _run_query(query, deck_path, session_id)
     
     def run_query_stream(
         self,
         query: str,
         deck_path: str,
-        session_id: Optional[str] = None,
-        llm_mode: bool = False
+        session_id: Optional[str] = None
     ) -> Generator[str, None, None]:
         """
         Executa uma query de comparação no agent com streaming.
@@ -61,10 +58,9 @@ class MultiDeckAgent:
             query: Query do usuário
             deck_path: Caminho do deck principal (usado para contexto)
             session_id: ID da sessão (opcional)
-            llm_mode: Se True, usa modo LLM (RAG Enhanced + LLM Planner)
             
         Yields:
             Strings no formato SSE (Server-Sent Events)
         """
         from .graph import run_query_stream as _run_query_stream
-        return _run_query_stream(query, deck_path, session_id, llm_mode)
+        return _run_query_stream(query, deck_path, session_id)

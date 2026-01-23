@@ -15,8 +15,6 @@ from .simple import (
     format_restricao_eletrica_simple_comparison,
     generate_fallback_comparison_response,
 )
-from .llm_structured import format_with_llm_structured
-from .llm_free import format_with_llm_free
 
 __all__ = [
     "format_clast_simple_comparison",
@@ -29,6 +27,4 @@ __all__ = [
     "format_usinas_nao_simuladas_simple_comparison",
     "format_restricao_eletrica_simple_comparison",
     "generate_fallback_comparison_response",
-    "format_with_llm_structured",
-    "format_with_llm_free",
 ]

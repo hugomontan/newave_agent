@@ -7,7 +7,6 @@ import json as json_module
 from newave_agent.app.agents.single_deck.state import SingleDeckState
 from newave_agent.app.config import safe_print
 from newave_agent.app.utils.text_utils import clean_response_text
-from newave_agent.app.agents.single_deck.nodes.helpers.code_execution.formatter import format_code_execution_response
 from newave_agent.app.agents.single_deck.formatters.registry import get_formatter_for_tool
 from newave_agent.app.tools import get_available_tools
 
@@ -29,12 +28,12 @@ def _write_debug_log(data: dict):
 
 def interpreter_node(state: SingleDeckState) -> dict:
     """
-    Node que interpreta os resultados e gera a resposta final formatada em Markdown.
+    Node que formata os resultados e gera a resposta final em Markdown.
     
     Prioridades:
-    1. Se tool_result existe: processa resultado da tool
-    2. Se rag_status == "fallback": retorna resposta de fallback
-    3. Caso contrário: interpreta resultados de execução de código
+    1. Se tool_result existe: formata resultado da tool usando formatters
+    2. Se disambiguation existe: retorna resposta vazia (frontend cria mensagem)
+    3. Caso contrário: retorna mensagem informando que não há tool disponível
     """
     # #region agent log
     _write_debug_log({
@@ -153,19 +152,11 @@ def interpreter_node(state: SingleDeckState) -> dict:
             safe_print(f"[INTERPRETER] Processando disambiguation com {len(disambiguation.get('options', []))} opções")
             return {"final_response": ""}  # Vazio - frontend já cria a mensagem
         
-        # Verificar se é um caso de fallback
-        rag_status = state.get("rag_status", "success")
-        
-        if rag_status == "fallback":
-            fallback_response = state.get("fallback_response", "")
-            if fallback_response:
-                fallback_response = clean_response_text(fallback_response, max_emojis=2)
-                return {"final_response": fallback_response}
-            
-            # Fallback genérico se não houver resposta
-            fallback_msg = """## Não foi possível processar sua solicitação
+        # Se não há tool_result e não há disambiguation, retornar mensagem
+        safe_print(f"[INTERPRETER] Nenhuma tool disponível para processar a consulta")
+        no_tool_msg = """## Nenhuma tool disponível para sua consulta
 
-Não encontrei arquivos de dados adequados para responder sua pergunta.
+Não encontrei uma tool pré-programada que possa processar sua solicitação.
 
 ### Sugestões de perguntas válidas:
 
@@ -175,54 +166,17 @@ Não encontrei arquivos de dados adequados para responder sua pergunta.
 - "Qual a demanda do submercado Sudeste?"
 - "Quais são as vazões históricas do posto 1?"
 
-### Dados disponíveis para consulta:
+### Tools disponíveis:
 
-- **HIDR.DAT**: Cadastro de usinas hidrelétricas (potência, volumes, características)
-- **MANUTT.DAT**: Manutenções de térmicas
-- **CLAST.DAT**: Custos de classes térmicas
-- **SISTEMA.DAT**: Demandas e intercâmbios entre submercados
-- **VAZOES.DAT**: Séries históricas de vazões
-"""
-            fallback_msg = clean_response_text(fallback_msg, max_emojis=2)
-            return {"final_response": fallback_msg}
-        
-        # Fluxo normal - interpretar resultados de execução
-        execution_result = state.get("execution_result") or {}
-        generated_code = state.get("generated_code", "")
-        query = state.get("query", "")
-        
-        # Limpar query se vier de disambiguation (remover tag __DISAMBIG__)
-        if query.startswith("__DISAMBIG__:"):
-            try:
-                parts = query.split(":", 2)
-                if len(parts) == 3:
-                    query = parts[2].strip()  # Usar apenas a query original
-                    safe_print(f"[INTERPRETER] Query limpa de disambiguation: {query}")
-            except Exception as e:
-                safe_print(f"[INTERPRETER] ⚠️ Erro ao limpar query de disambiguation: {e}")
-        # Formato antigo (compatibilidade)
-        elif " - " in query:
-            query = query.split(" - ", 1)[0].strip()
-            safe_print(f"[INTERPRETER] Query limpa de disambiguation (formato antigo): {query}")
-        
-        relevant_docs = state.get("relevant_docs", [])
-        retry_count = state.get("retry_count", 0)
-        max_retries = state.get("max_retries", 3)
-        
-        return format_code_execution_response(
-            execution_result=execution_result,
-            generated_code=generated_code,
-            query=query,
-            relevant_docs=relevant_docs,
-            retry_count=retry_count,
-            max_retries=max_retries
-        )
+Consulte a documentação para ver todas as tools disponíveis para análise de decks NEWAVE."""
+        no_tool_msg = clean_response_text(no_tool_msg, max_emojis=2)
+        return {"final_response": no_tool_msg}
         
     except Exception as e:
         safe_print(f"[INTERPRETER ERROR] {str(e)}")
         import traceback
         traceback.print_exc()
-        error_msg = f"## Erro ao interpretar resultados\n\nOcorreu um erro ao gerar a resposta: {str(e)}\n\nConsulte a saída da execução do código para ver os dados."
+        error_msg = f"## Erro ao processar resultado\n\nOcorreu um erro ao formatar a resposta: {str(e)}"
         error_msg = clean_response_text(error_msg, max_emojis=2)
         return {"final_response": error_msg}
 

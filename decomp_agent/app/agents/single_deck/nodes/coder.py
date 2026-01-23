@@ -118,19 +118,9 @@ def coder_node(state: SingleDeckState) -> dict:
         temperature=0
     )
     
-    # Verificar se há instruções do LLM Planner (modo LLM)
-    llm_instructions = state.get("llm_instructions")
+    # Usar apenas relevant_docs
     relevant_docs = state.get("relevant_docs", [])
-    
-    if llm_instructions:
-        # Modo LLM: usar instruções enriquecidas do LLM Planner
-        if relevant_docs:
-            relevant_docs_str = f"{llm_instructions}\n\n=== DOCUMENTAÇÃO ADICIONAL ===\n\n" + "\n\n".join(relevant_docs)
-        else:
-            relevant_docs_str = llm_instructions
-    else:
-        # Modo normal: usar apenas relevant_docs
-        relevant_docs_str = "\n\n".join(relevant_docs)
+    relevant_docs_str = "\n\n".join(relevant_docs)
     
     # Verificar se é um retry
     retry_count = state.get("retry_count", 0)

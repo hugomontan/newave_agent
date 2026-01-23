@@ -26,12 +26,12 @@ def _write_debug_log(data: dict):
 
 def interpreter_node(state: SingleDeckState) -> dict:
     """
-    Node que interpreta os resultados e gera a resposta final formatada em Markdown.
+    Node que formata os resultados e gera a resposta final em Markdown.
     
     Prioridades:
-    1. Se tool_result existe: processa resultado da tool
-    2. Se rag_status == "fallback": retorna resposta de fallback
-    3. Caso contrário: interpreta resultados de execução de código
+    1. Se tool_result existe: formata resultado da tool usando formatters
+    2. Se disambiguation existe: retorna resposta vazia (frontend cria mensagem)
+    3. Caso contrário: retorna mensagem informando que não há tool disponível
     """
     try:
         tool_result = state.get("tool_result")
@@ -113,19 +113,11 @@ def interpreter_node(state: SingleDeckState) -> dict:
             safe_print(f"[INTERPRETER DECOMP] Processando disambiguation com {len(disambiguation.get('options', []))} opções")
             return {"final_response": ""}  # Vazio - frontend já cria a mensagem
         
-        # Verificar se é um caso de fallback
-        rag_status = state.get("rag_status", "success")
-        
-        if rag_status == "fallback":
-            fallback_response = state.get("fallback_response", "")
-            if fallback_response:
-                fallback_response = clean_response_text(fallback_response, max_emojis=2)
-                return {"final_response": fallback_response}
-            
-            # Fallback genérico se não houver resposta
-            fallback_msg = """## Não foi possível processar sua solicitação
+        # Se não há tool_result e não há disambiguation, retornar mensagem
+        safe_print(f"[INTERPRETER DECOMP] Nenhuma tool disponível para processar a consulta")
+        no_tool_msg = """## Nenhuma tool disponível para sua consulta
 
-Não encontrei arquivos de dados adequados para responder sua pergunta.
+Não encontrei uma tool pré-programada que possa processar sua solicitação.
 
 ### Sugestões de perguntas válidas:
 
@@ -133,51 +125,18 @@ Não encontrei arquivos de dados adequados para responder sua pergunta.
 - "Quais são os limites de intercâmbio?"
 - "Quais são as restrições elétricas?"
 - "Quais são as manutenções programadas?"
+- "Quais são as gerações GNL?"
 
-### Dados disponíveis para consulta:
+### Tools disponíveis:
 
-- **dadger.rvx**: Arquivo principal DECOMP com todos os dados de entrada
-"""
-            fallback_msg = clean_response_text(fallback_msg, max_emojis=2)
-            return {"final_response": fallback_msg}
-        
-        # Fluxo normal - interpretar resultados de execução
-        execution_result = state.get("execution_result") or {}
-        generated_code = state.get("generated_code", "")
-        query = state.get("query", "")
-        
-        # Limpar query se vier de disambiguation
-        if query.startswith("__DISAMBIG__:"):
-            try:
-                parts = query.split(":", 2)
-                if len(parts) == 3:
-                    query = parts[2].strip()
-            except Exception:
-                pass
-        elif " - " in query:
-            query = query.split(" - ", 1)[0].strip()
-        
-        # Formatação básica de resposta
-        success = execution_result.get("success", False)
-        stdout = execution_result.get("stdout", "")
-        stderr = execution_result.get("stderr", "")
-        
-        if success:
-            response = f"## Resultado da Análise\n\n{stdout}"
-        else:
-            response = f"## Erro na Execução\n\n{stderr}\n\nCódigo gerado:\n```python\n{generated_code}\n```"
-        
-        response = clean_response_text(response, max_emojis=2)
-        
-        return {
-            "final_response": response,
-            "visualization_data": None
-        }
+Consulte a documentação para ver todas as tools disponíveis para análise de decks DECOMP."""
+        no_tool_msg = clean_response_text(no_tool_msg, max_emojis=2)
+        return {"final_response": no_tool_msg, "visualization_data": None}
         
     except Exception as e:
         safe_print(f"[INTERPRETER DECOMP ERROR] {str(e)}")
         import traceback
         traceback.print_exc()
-        error_msg = f"## Erro ao interpretar resultados\n\nOcorreu um erro ao gerar a resposta: {str(e)}\n\nConsulte a saída da execução do código para ver os dados."
+        error_msg = f"## Erro ao processar resultado\n\nOcorreu um erro ao formatar a resposta: {str(e)}"
         error_msg = clean_response_text(error_msg, max_emojis=2)
-        return {"final_response": error_msg}
+        return {"final_response": error_msg, "visualization_data": None}

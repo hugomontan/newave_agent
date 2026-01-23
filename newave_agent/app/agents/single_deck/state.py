@@ -45,9 +45,6 @@ class SingleDeckState(TypedDict):
     # Campos para Visualização Single Deck
     visualization_data: Optional[dict]  # Dados de visualização estruturados
     
-    # Campos para LLM Mode
-    llm_instructions: Optional[str]
-    
     # Campos para escolha do usuário (requires_user_choice)
     requires_user_choice: Optional[bool]  # True quando tool requer escolha do usuário
     alternative_type: Optional[str]  # Tipo alternativo disponível (ex: VAZMINT quando VAZMIN não existe)

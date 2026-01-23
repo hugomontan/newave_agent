@@ -6,8 +6,7 @@ from typing import Dict, Any, Optional
 from newave_agent.app.agents.multi_deck.state import MultiDeckState
 from newave_agent.app.config import safe_print
 from newave_agent.app.utils.text_utils import clean_response_text
-from newave_agent.app.agents.multi_deck.nodes.helpers.tool_formatting.llm_formatter import format_tool_response_with_llm
-from newave_agent.app.agents.multi_deck.nodes.helpers.code_execution.formatter import format_code_execution_response
+from newave_agent.app.agents.multi_deck.nodes.helpers.tool_formatting.base import format_tool_response
 from newave_agent.app.agents.multi_deck.formatting.registry import format_comparison_response
 
 
@@ -15,12 +14,13 @@ from newave_agent.app.agents.multi_deck.formatting.registry import format_compar
 
 def comparison_interpreter_node(state: MultiDeckState) -> dict:
     """
-    Node que interpreta os resultados de comparação e gera a resposta final formatada.
+    Node que formata os resultados de comparação e gera a resposta final.
     
     Prioridades:
-    1. Se tool_result existe e é comparação: processa resultado da tool
-    2. Se tool_result existe mas não é comparação: processa normalmente
-    3. Caso contrário: interpreta resultados de execução de código
+    1. Se tool_result existe e é comparação: formata resultado da tool usando formatters
+    2. Se tool_result existe mas não é comparação: formata normalmente
+    3. Se disambiguation existe: retorna resposta vazia (frontend cria mensagem)
+    4. Caso contrário: retorna mensagem informando que não há tool disponível
     """
     try:
         tool_result = state.get("tool_result")
@@ -93,7 +93,7 @@ def comparison_interpreter_node(state: MultiDeckState) -> dict:
                 except Exception as e:
                     safe_print(f"[COMPARISON INTERPRETER] ⚠️ Erro ao limpar query de disambiguation: {e}")
             
-            result = format_tool_response_with_llm(tool_result, tool_used, query)
+            result = format_tool_response(tool_result, tool_used)
             safe_print(f"[COMPARISON INTERPRETER]   Resposta gerada: {len(result.get('final_response', ''))} caracteres")
             return result
         
@@ -103,61 +103,30 @@ def comparison_interpreter_node(state: MultiDeckState) -> dict:
             safe_print(f"[COMPARISON INTERPRETER] Processando disambiguation com {len(disambiguation.get('options', []))} opções")
             return {"final_response": ""}
         
-        # Verificar se é um caso de fallback
-        rag_status = state.get("rag_status", "success")
-        
-        if rag_status == "fallback":
-            fallback_response = state.get("fallback_response", "")
-            if fallback_response:
-                fallback_response = clean_response_text(fallback_response, max_emojis=2)
-                return {"final_response": fallback_response}
-            
-            fallback_msg = """## Não foi possível processar sua solicitação
+        # Se não há tool_result e não há disambiguation, retornar mensagem
+        safe_print(f"[COMPARISON INTERPRETER] Nenhuma tool disponível para processar a consulta de comparação")
+        no_tool_msg = """## Nenhuma tool disponível para sua consulta de comparação
 
-Não encontrei arquivos de dados adequados para responder sua pergunta de comparação.
+Não encontrei uma tool pré-programada que possa processar sua solicitação de comparação.
 
 ### Sugestões de perguntas válidas:
 
 - "Compare a carga mensal entre dezembro e janeiro"
 - "Quais são as diferenças nos limites de intercâmbio?"
-- "Compare os custos de classes térmicas"
-"""
-            fallback_msg = clean_response_text(fallback_msg, max_emojis=2)
-            return {"final_response": fallback_msg}
-        
-        # Fluxo normal - interpretar resultados de execução
-        execution_result = state.get("execution_result") or {}
-        generated_code = state.get("generated_code", "")
-        query = state.get("query", "")
-        
-        # Limpar query se vier de disambiguation (remover tag __DISAMBIG__)
-        if query.startswith("__DISAMBIG__:"):
-            try:
-                parts = query.split(":", 2)
-                if len(parts) == 3:
-                    query = parts[2].strip()  # Usar apenas a query original
-                    safe_print(f"[COMPARISON INTERPRETER] Query limpa de disambiguation: {query}")
-            except Exception as e:
-                safe_print(f"[COMPARISON INTERPRETER] ⚠️ Erro ao limpar query de disambiguation: {e}")
-        
-        relevant_docs = state.get("relevant_docs", [])
-        retry_count = state.get("retry_count", 0)
-        max_retries = state.get("max_retries", 3)
-        
-        return format_code_execution_response(
-            execution_result=execution_result,
-            generated_code=generated_code,
-            query=query,
-            relevant_docs=relevant_docs,
-            retry_count=retry_count,
-            max_retries=max_retries
-        )
+- "Compare os custos de classes térmicas entre os decks"
+- "Compare as vazões históricas entre os períodos"
+
+### Tools disponíveis:
+
+Consulte a documentação para ver todas as tools disponíveis para comparação de decks NEWAVE."""
+        no_tool_msg = clean_response_text(no_tool_msg, max_emojis=2)
+        return {"final_response": no_tool_msg, "comparison_data": None}
         
     except Exception as e:
         safe_print(f"[COMPARISON INTERPRETER ERROR] {str(e)}")
         import traceback
         traceback.print_exc()
-        error_msg = f"## Erro ao interpretar resultados de comparação\n\nOcorreu um erro ao gerar a resposta: {str(e)}\n\nConsulte a saída da execução do código para ver os dados."
+        error_msg = f"## Erro ao processar resultado de comparação\n\nOcorreu um erro ao formatar a resposta: {str(e)}"
         error_msg = clean_response_text(error_msg, max_emojis=2)
-        return {"final_response": error_msg}
+        return {"final_response": error_msg, "comparison_data": None}
 
