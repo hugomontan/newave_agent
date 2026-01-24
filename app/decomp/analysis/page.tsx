@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   queryDecompStream,
+  sendQueryStream,
   getSession,
   deleteSession,
   reindexDecompDocs,
@@ -197,7 +198,7 @@ export default function AnalysisPage() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const [maxRetries, setMaxRetries] = useState(3);
-  const [comparisonData, setComparisonData] = useState<Message["comparisonData"]>(null);
+  const [comparisonData, setComparisonData] = useState<Message["comparisonData"] | null>(null);
   const [disambiguationData, setDisambiguationData] = useState<{
     type: string;
     question: string;
@@ -208,8 +209,8 @@ export default function AnalysisPage() {
   // Refs para capturar estado durante streaming
   const streamingResponseRef = useRef("");
   const retryCountRef = useRef(0);
-  const comparisonDataRef = useRef<Message["comparisonData"]>(null);
-  const visualizationDataRef = useRef<Message["visualizationData"]>(null);
+  const comparisonDataRef = useRef<Message["comparisonData"] | null>(null);
+  const visualizationDataRef = useRef<Message["visualizationData"] | null>(null);
   const requiresUserChoiceRef = useRef(false);
   const alternativeTypeRef = useRef<string | undefined>(undefined);
   const disambiguationMessageIdRef = useRef<string | null>(null);
@@ -369,7 +370,7 @@ export default function AnalysisPage() {
             ...prev,
             {
               node: `retry_${event.retry_count}`,
-              name: `Tentativa ${event.retry_count + 1}/${event.max_retries || 3}`,
+              name: `Tentativa ${(event.retry_count || 0) + 1}/${event.max_retries || 3}`,
               icon: "🔄",
               description: event.message || "Corrigindo código com base no erro...",
               status: "running" as const,
@@ -448,7 +449,7 @@ export default function AnalysisPage() {
               if (msg.id === disambiguationMessageIdRef.current) {
                 return {
                   ...msg,
-                  comparisonData: event.comparison_data,
+                  comparisonData: event.comparison_data || undefined,
                 };
               }
               return msg;
@@ -947,9 +948,9 @@ export default function AnalysisPage() {
             ) : (
               <div className="space-y-8">
                 {messages.map((message) => (
-                  <ChatMessage 
-                    key={message.id} 
-                    message={message} 
+                  <ChatMessage
+                    key={message.id}
+                    message={message as any}
                     onOptionClick={handleDisambiguationOptionClick}
                   />
                 ))}

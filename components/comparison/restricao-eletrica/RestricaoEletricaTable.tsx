@@ -71,15 +71,16 @@ export function RestricaoEletricaTable({ data, deck1Name, deck2Name, deckNames }
 
   const handleDownloadCSV = () => {
     const csvData = data.map((row) => {
+      const rowData = row as any;
       const result: Record<string, string | number | null> = {
-        Restrição: row.restricao ? String(row.restricao) : "",
-        Patamar: row.patamar ? String(row.patamar) : "",
-        Período: row.periodo ? String(row.periodo) : "",
+        Restrição: rowData.restricao ? String(rowData.restricao) : "",
+        Patamar: rowData.patamar ? String(rowData.patamar) : "",
+        Período: rowData.periodo ? String(rowData.periodo) : "",
       };
       
       for (let i = 0; i < allDeckNames.length; i++) {
-        const deckKey = `deck_${i + 1}` as keyof TableRow;
-        result[allDeckNames[i]] = (row[deckKey] as number | null) ?? null;
+        const deckKey = `deck_${i + 1}`;
+        result[allDeckNames[i]] = (rowData[deckKey] as number | null) ?? null;
       }
       
       return result;
@@ -131,9 +132,10 @@ export function RestricaoEletricaTable({ data, deck1Name, deck2Name, deckNames }
             </thead>
             <tbody>
               {displayedData.map((row, index) => {
-                const restricao = row.restricao ? String(row.restricao) : "";
-                const patamar = row.patamar ? String(row.patamar) : "";
-                const periodo = row.periodo ? String(row.periodo) : "";
+                const rowData = row as any;
+                const restricao = rowData.restricao ? String(rowData.restricao) : "";
+                const patamar = rowData.patamar ? String(rowData.patamar) : "";
+                const periodo = rowData.periodo ? String(rowData.periodo) : "";
 
                 return (
                   <tr
@@ -150,8 +152,8 @@ export function RestricaoEletricaTable({ data, deck1Name, deck2Name, deckNames }
                       {periodo}
                     </td>
                     {allDeckNames.map((deckName, deckIdx) => {
-                      const deckKey = `deck_${deckIdx + 1}` as keyof TableRow;
-                      const value = (row[deckKey] as number | null) ?? null;
+                      const deckKey = `deck_${deckIdx + 1}`;
+                      const value = (rowData[deckKey] as number | null) ?? null;
                       return (
                         <td
                           key={deckName}

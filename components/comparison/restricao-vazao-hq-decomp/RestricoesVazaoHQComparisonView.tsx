@@ -18,7 +18,7 @@ export function RestricoesVazaoHQComparisonView({ comparison }: RestricoesVazaoH
     chart_config_gmin,
     chart_config_gmax,
     deck_names 
-  } = comparison;
+  } = comparison as any;
   
   // Validação: verificar se há dados para renderizar
   const hasTableData = comparison_table && comparison_table.length > 0;

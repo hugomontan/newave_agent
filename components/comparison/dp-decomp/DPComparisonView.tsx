@@ -11,7 +11,7 @@ interface DPComparisonViewProps {
 }
 
 export function DPComparisonView({ comparison }: DPComparisonViewProps) {
-  const { comparison_table, chart_data, chart_config, deck_names, submercados } = comparison;
+  const { comparison_table, chart_data, chart_config, deck_names, submercados } = comparison as any;
   
   // Validação: verificar se há dados para renderizar
   const hasTableData = comparison_table && comparison_table.length > 0;
@@ -32,7 +32,7 @@ export function DPComparisonView({ comparison }: DPComparisonViewProps) {
         <p className="text-sm text-muted-foreground">
           {deck_names && deck_names.length > 0 ? `${deck_names.length} decks comparados` : ""}
           {submercados && submercados.length > 0 && (
-            <> | Submercados: {submercados.map(s => s.nome).join(", ")}</>
+            <> | Submercados: {submercados.map((s: any) => s.nome).join(", ")}</>
           )}
         </p>
       </div>

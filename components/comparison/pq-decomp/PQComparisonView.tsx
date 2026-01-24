@@ -12,7 +12,7 @@ interface PQComparisonViewProps {
 
 export function PQComparisonView({ comparison }: PQComparisonViewProps) {
   // IMPORTANTE: Usar tipo_encontrado (tipo REAL nos dados) em vez de tipo_filtrado (tipo da query)
-  const { comparison_table, chart_data, chart_config, deck_names, tipos, tipo_filtrado, tipo_encontrado } = comparison;
+  const { comparison_table, chart_data, chart_config, deck_names, tipos, tipo_filtrado, tipo_encontrado } = comparison as any;
   const tipo_para_exibir = tipo_encontrado || tipo_filtrado;  // Priorizar tipo REAL encontrado
   
   // Validação: verificar se há dados para renderizar
@@ -44,7 +44,7 @@ export function PQComparisonView({ comparison }: PQComparisonViewProps) {
             </span>
           )}
           {!tipo_para_exibir && tipos && tipos.length > 0 && (
-            <> | Tipos: {tipos.map(t => t.tipo).join(", ")}</>
+            <> | Tipos: {tipos.map((t: { tipo: string }) => t.tipo).join(", ")}</>
           )}
         </p>
       </div>

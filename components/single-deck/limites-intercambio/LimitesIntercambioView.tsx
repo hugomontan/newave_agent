@@ -23,8 +23,8 @@ export function LimitesIntercambioView({ visualizationData }: LimitesIntercambio
       const key = row.par_key!;
       if (!grouped[key]) {
         grouped[key] = {
-          par: row.par || "",
-          sentido: row.sentido || "",
+          par: String(row.par || ""),
+          sentido: String(row.sentido || ""),
           rows: []
         };
       }

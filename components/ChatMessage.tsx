@@ -592,7 +592,7 @@ export function ChatMessage({ message, onOptionClick }: ChatMessageProps) {
               {/* Comparison View - mostrar mesmo durante loading de disambiguation */}
               {message.comparisonData && (
                 <div className="w-full max-w-full min-w-0">
-                  <ComparisonView comparison={message.comparisonData} />
+                  <ComparisonView comparison={message.comparisonData as any} />
                 </div>
               )}
 

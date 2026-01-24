@@ -19,7 +19,7 @@ interface VazaoMinimaViewProps {
 }
 
 export function VazaoMinimaView({ comparison }: VazaoMinimaViewProps) {
-  const { deck_1, deck_2, comparison_table, matrix_data, deck_displays, deck_count, visualization_type, deck_names, meses_ordenados } = comparison;
+  const { deck_1, deck_2, comparison_table, matrix_data, deck_displays, deck_count, visualization_type, deck_names, meses_ordenados } = comparison as any;
   
   // Obter nomes de todos os decks (suporte N decks)
   const allDeckNames = getDeckNames(comparison);
@@ -79,7 +79,7 @@ export function VazaoMinimaView({ comparison }: VazaoMinimaViewProps) {
       VAZMINT: {}
     };
     
-    comparison_table.forEach((row) => {
+    comparison_table.forEach((row: any) => {
       const tipoVazao = (row.tipo_vazao as string) || (row.classe as string) || "VAZMIN";
       const key = row.tipo_mudanca_key as string;
       
@@ -143,7 +143,7 @@ export function VazaoMinimaView({ comparison }: VazaoMinimaViewProps) {
       if (firstRow.classe === "VOLUME_INICIAL") {
         return "Usina";
       }
-      const hasAnoField = comparison_table.some(row => {
+      const hasAnoField = comparison_table.some((row: any) => {
         const anoValue = row.ano;
         return anoValue !== undefined && anoValue !== null && anoValue !== '';
       });

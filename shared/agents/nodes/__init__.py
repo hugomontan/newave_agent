@@ -1,0 +1,3 @@
+"""
+Nodes compartilhados para agentes.
+"""

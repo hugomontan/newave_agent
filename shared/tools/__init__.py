@@ -1,0 +1,3 @@
+"""
+Módulos compartilhados para tools.
+"""

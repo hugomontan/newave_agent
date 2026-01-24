@@ -25,7 +25,7 @@ export function LimitesIntercambioComparisonTable({
   const displayedData = isExpanded ? data : data.slice(0, INITIAL_ROWS);
 
   const handleDownloadCSV = () => {
-    exportToCSV(data, "limites-intercambio-comparison");
+    exportToCSV(data as any, "limites-intercambio-comparison");
   };
 
   const formatValue = (value: any): string => {
@@ -105,7 +105,7 @@ export function LimitesIntercambioComparisonTable({
                   {row.sentido ? String(row.sentido) : "-"}
                 </td>
                 <td className="px-3.5 sm:px-4.5 py-2.5 text-sm text-card-foreground whitespace-nowrap">
-                  {formatValue(row.mwmed)}
+                  {formatValue((row as any).mwmed)}
                 </td>
               </tr>
             ))}

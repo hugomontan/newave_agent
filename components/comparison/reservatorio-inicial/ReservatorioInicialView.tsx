@@ -11,7 +11,7 @@ interface ReservatorioInicialViewProps {
 }
 
 export function ReservatorioInicialView({ comparison }: ReservatorioInicialViewProps) {
-  const { deck_1, deck_2, comparison_table, chart_data } = comparison;
+  const { deck_1, deck_2, comparison_table, chart_data } = comparison as any;
 
   return (
     <motion.div

@@ -99,11 +99,11 @@ export function LimitesIntercambioComparisonChart({
                 key={index}
                 type="monotone"
                 dataKey={dataset.label}
-                stroke={dataset.borderColor || "rgb(59, 130, 246)"}
+                stroke={(dataset as any).borderColor || "rgb(59, 130, 246)"}
                 strokeWidth={2}
                 dot={false}
                 activeDot={false}
-                fill={dataset.backgroundColor || "rgba(59, 130, 246, 0.1)"}
+                fill={(dataset as any).backgroundColor || "rgba(59, 130, 246, 0.1)"}
               />
             ))}
           </LineChart>

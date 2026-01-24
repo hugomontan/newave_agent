@@ -12,7 +12,7 @@ interface RestricaoEletricaViewProps {
 }
 
 export function RestricaoEletricaView({ comparison }: RestricaoEletricaViewProps) {
-  const { deck_1, deck_2, comparison_table, charts_by_restricao, deck_displays, deck_count } = comparison;
+  const { deck_1, deck_2, comparison_table, charts_by_restricao, deck_displays, deck_count } = comparison as any;
   
   // Obter nomes de todos os decks (suporte N decks)
   const allDeckNames = getDeckNames(comparison);
@@ -30,7 +30,7 @@ export function RestricaoEletricaView({ comparison }: RestricaoEletricaViewProps
     if (!comparison_table || comparison_table.length === 0) return null;
     
     const grouped: Record<string, typeof comparison_table> = {};
-    comparison_table.forEach((row) => {
+    comparison_table.forEach((row: any) => {
       const restricao = row.restricao ? String(row.restricao) : "Sem nome";
       if (!grouped[restricao]) {
         grouped[restricao] = [];
@@ -85,7 +85,7 @@ export function RestricaoEletricaView({ comparison }: RestricaoEletricaViewProps
                   {Object.entries(restricaoCharts).map(([patamarNome, chartData]) => (
                     <RestricaoEletricaChart
                       key={patamarNome}
-                      data={chartData}
+                      data={chartData as any}
                       restricao={restricaoNome}
                       patamar={patamarNome}
                     />

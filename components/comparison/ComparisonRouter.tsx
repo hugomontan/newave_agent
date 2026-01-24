@@ -42,7 +42,7 @@ function matchesToolPattern(toolName: string, patterns: string[]): boolean {
 }
 
 export function ComparisonRouter({ comparison }: ComparisonRouterProps) {
-  const { visualization_type, tool_name, comparison_table, chart_data, chart_config } = comparison;
+  const { visualization_type, tool_name, comparison_table, chart_data, chart_config } = comparison as any;
 
   // Normalizar visualization_type (remover espaços, converter para string)
   const normalizedVizType = visualization_type?.toString().trim();

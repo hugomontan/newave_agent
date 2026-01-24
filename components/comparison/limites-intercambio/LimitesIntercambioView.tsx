@@ -12,7 +12,7 @@ interface LimitesIntercambioViewProps {
 }
 
 export function LimitesIntercambioView({ comparison }: LimitesIntercambioViewProps) {
-  const { deck_1, deck_2, comparison_table, charts_by_par, deck_displays, deck_count } = comparison;
+  const { deck_1, deck_2, comparison_table, charts_by_par, deck_displays, deck_count } = comparison as any;
   
   // Obter nomes de todos os decks (suporte N decks)
   const allDeckNames = getDeckNames(comparison);
@@ -23,7 +23,7 @@ export function LimitesIntercambioView({ comparison }: LimitesIntercambioViewPro
     if (!comparison_table[0]?.par_key) return null;
     
     const grouped: Record<string, { par: string; sentido: string; rows: TableRow[] }> = {};
-    comparison_table.forEach((row) => {
+    comparison_table.forEach((row: TableRow) => {
       const key = row.par_key!;
       if (!grouped[key]) {
         grouped[key] = {

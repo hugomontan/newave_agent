@@ -25,7 +25,7 @@ export function CargaAndeComparisonTable({
   const displayedData = isExpanded ? data : data.slice(0, INITIAL_ROWS);
 
   const handleDownloadCSV = () => {
-    exportToCSV(data, "carga-ande-comparison");
+    exportToCSV(data as any, "carga-ande-comparison");
   };
 
   const formatValue = (value: any): string => {
@@ -95,10 +95,10 @@ export function CargaAndeComparisonTable({
                 className="border-b border-border/50 hover:bg-background/30 transition-colors"
               >
                 <td className="px-3.5 sm:px-4.5 py-2.5 text-sm text-card-foreground whitespace-nowrap">
-                  {row.data ? String(row.data) : "-"}
+                  {(row as any).data ? String((row as any).data) : "-"}
                 </td>
                 <td className="px-3.5 sm:px-4.5 py-2.5 text-sm text-card-foreground whitespace-nowrap">
-                  {formatValue(row.mwmed)}
+                  {formatValue((row as any).mwmed)}
                 </td>
               </tr>
             ))}

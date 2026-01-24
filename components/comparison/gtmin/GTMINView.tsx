@@ -18,7 +18,7 @@ interface GTMINViewProps {
 }
 
 export function GTMINView({ comparison }: GTMINViewProps) {
-  const { deck_1, deck_2, comparison_table, matrix_data, deck_displays, deck_count, visualization_type, deck_names, meses_ordenados } = comparison;
+  const { deck_1, deck_2, comparison_table, matrix_data, deck_displays, deck_count, visualization_type, deck_names, meses_ordenados } = comparison as any;
   
   // Obter nomes de todos os decks (suporte N decks)
   const allDeckNames = getDeckNames(comparison);
@@ -36,7 +36,7 @@ export function GTMINView({ comparison }: GTMINViewProps) {
     
     // Se temos matrix_data mas não comparison_table, converter
     if (matrix_data && matrix_data.length > 0 && deck_names && deck_names.length > 0) {
-      return matrix_data.map((matrixRow) => {
+      return matrix_data.map((matrixRow: any) => {
         const nome_usina = matrixRow.nome_usina || "N/A";
         const periodo_inicio = matrixRow.periodo_inicio || "N/A";
         const periodo_fim = matrixRow.periodo_fim || periodo_inicio;
@@ -75,7 +75,7 @@ export function GTMINView({ comparison }: GTMINViewProps) {
         const periodo_coluna = formatPeriodoColuna(periodo_inicio, periodo_fim);
         
         // Criar linha da tabela comparativa
-        const tableRow: TableRow = {
+        const tableRow: any = {
           field: nome_usina,
           nome_usina: nome_usina,
           codigo_usina: matrixRow.codigo_usina,
@@ -88,7 +88,7 @@ export function GTMINView({ comparison }: GTMINViewProps) {
         };
         
         // Mapear gtmin_values[deck_name] para deck_1, deck_2, etc. na ordem de deck_names
-        deck_names.forEach((deckName, idx) => {
+        deck_names.forEach((deckName: string, idx: number) => {
           const deckKey = `deck_${idx + 1}` as keyof TableRow;
           const deckValueKey = `deck_${idx + 1}_value` as keyof TableRow;
           const value = gtmin_values[deckName];
@@ -114,7 +114,7 @@ export function GTMINView({ comparison }: GTMINViewProps) {
                        (row.data !== undefined ? String(row.data) : "");
     
     // Preservar field (nome da usina)
-    const fieldValue = row.field || row.nome_usina || "GTMIN";
+    const fieldValue = (row as any).field || (row as any).nome_usina || "GTMIN";
     
     const deck1Value = row.deck_1 ?? row.deck_1_value ?? null;
     const deck2Value = row.deck_2 ?? row.deck_2_value ?? null;
@@ -149,7 +149,7 @@ export function GTMINView({ comparison }: GTMINViewProps) {
     if (!convertedComparisonTable[0]?.tipo_mudanca_key) return null;
     
     const grouped: Record<string, { tipo: string; label: string; rows: TableRow[] }> = {};
-    convertedComparisonTable.forEach((row) => {
+    convertedComparisonTable.forEach((row: TableRow) => {
       const key = row.tipo_mudanca_key!;
       if (!grouped[key]) {
         grouped[key] = {
@@ -170,7 +170,7 @@ export function GTMINView({ comparison }: GTMINViewProps) {
       if (firstRow.classe === "VOLUME_INICIAL") {
         return "Usina";
       }
-      const hasAnoField = convertedComparisonTable.some(row => {
+      const hasAnoField = convertedComparisonTable.some((row: TableRow) => {
         const anoValue = row.ano;
         return anoValue !== undefined && anoValue !== null && anoValue !== '';
       });
@@ -201,7 +201,7 @@ export function GTMINView({ comparison }: GTMINViewProps) {
           // Se for matriz transposta, passar TableRows diretamente (preservando campos month_)
           // Caso contrário, mapear para Difference
           const rowsToPass = isTransposedMatrix 
-            ? group.rows.map(row => mapRowToDifference(row)) as any
+            ? group.rows.map((row: TableRow) => mapRowToDifference(row)) as any
             : group.rows.map(mapRowToDifference);
           
           return (
@@ -225,7 +225,7 @@ export function GTMINView({ comparison }: GTMINViewProps) {
         // Se for matriz transposta, passar TableRows diretamente (preservando campos month_)
         (() => {
           const rowsToPass = isTransposedMatrix
-            ? convertedComparisonTable.map(row => mapRowToDifference(row)) as any
+            ? convertedComparisonTable.map((row: TableRow) => mapRowToDifference(row)) as any
             : convertedComparisonTable.map(mapRowToDifference);
           
           return (

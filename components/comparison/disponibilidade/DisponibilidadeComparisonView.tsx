@@ -11,7 +11,7 @@ interface DisponibilidadeComparisonViewProps {
 }
 
 export function DisponibilidadeComparisonView({ comparison }: DisponibilidadeComparisonViewProps) {
-  const { comparison_table, chart_data, chart_config, deck_names } = comparison;
+  const { comparison_table, chart_data, chart_config, deck_names } = comparison as any;
   
   // Validação: verificar se há dados para renderizar
   const hasTableData = comparison_table && comparison_table.length > 0;

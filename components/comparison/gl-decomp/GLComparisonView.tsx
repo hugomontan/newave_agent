@@ -11,7 +11,7 @@ interface GLComparisonViewProps {
 }
 
 export function GLComparisonView({ comparison }: GLComparisonViewProps) {
-  const { comparison_table, charts_by_patamar, deck_names, usina } = comparison;
+  const { comparison_table, charts_by_patamar, deck_names, usina } = comparison as any;
   
   // Validação: verificar se há dados para renderizar
   const hasTableData = comparison_table && comparison_table.length > 0;
@@ -54,7 +54,7 @@ export function GLComparisonView({ comparison }: GLComparisonViewProps) {
       {/* Gráficos por patamar */}
       {hasChartsData && (
         <div className="space-y-6">
-          {Object.entries(charts_by_patamar).map(([patamarKey, patamarData]) => {
+          {Object.entries(charts_by_patamar).map(([patamarKey, patamarData]: [string, any]) => {
             const chartData = patamarData.chart_data;
             const chartConfig = patamarData.chart_config;
             const hasChartData = chartData && chartData.labels && chartData.labels.length > 0 && 

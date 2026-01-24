@@ -124,6 +124,15 @@ export interface ChartData {
   }>;
 }
 
+export interface ChartConfig {
+  type: string;
+  title: string;
+  x_axis: string;
+  y_axis: string;
+  tool_name?: string;
+  tipo_encontrado?: string;
+}
+
 export interface Difference {
   field: string;
   period: string;
@@ -166,6 +175,32 @@ export interface TableRow {
   periodo_coluna?: string;
   period?: string;
   is_inclusao_ou_exclusao?: boolean;
+  
+  // Campos para restrições elétricas
+  restricao?: string;
+  patamar?: string;
+  periodo?: string;
+  
+  // Campos para usinas
+  usina?: string;
+  codigo_usina?: string | number;
+  nome_usina?: string;
+  
+  // Campos para volumes e valores
+  volume_inicial?: number | null;
+  mwmed?: number | null;
+  
+  // Campos para vazões
+  tipo_vazao?: string;
+  periodo_inicio?: string;
+  
+  // Campos para datas
+  data_inicio?: string;
+  data_fim?: string;
+  
+  // Campos genéricos
+  tipo?: string;
+  field?: string;
   
   // Campos para análise histórica
   trend?: "up" | "down" | "stable";

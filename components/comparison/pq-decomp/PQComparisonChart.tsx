@@ -93,7 +93,7 @@ export function PQComparisonChart({
                 key={dataset.label}
                 type="monotone"
                 dataKey={dataset.label}
-                stroke={dataset.borderColor || `hsl(${index * 60}, 70%, 50%)`}
+                stroke={(dataset as any).borderColor || `hsl(${index * 60}, 70%, 50%)`}
                 strokeWidth={2}
                 dot={false}
                 activeDot={{ r: 4 }}

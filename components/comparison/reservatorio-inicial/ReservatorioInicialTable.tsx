@@ -30,7 +30,8 @@ export function ReservatorioInicialTable({ data, deck1Name, deck2Name }: Reserva
   const groupedByUsina = React.useMemo(() => {
     const grouped: Record<string, TableRow[]> = {};
     data.forEach((row) => {
-      const usinaKey = row.usina || `Usina ${row.codigo_usina || ""}`;
+      const rowData = row as any;
+      const usinaKey = rowData.usina || `Usina ${rowData.codigo_usina || ""}`;
       if (!grouped[usinaKey]) {
         grouped[usinaKey] = [];
       }
@@ -41,9 +42,10 @@ export function ReservatorioInicialTable({ data, deck1Name, deck2Name }: Reserva
 
   const handleDownloadCSV = () => {
     const csvData = data.map((row) => {
+      const rowData = row as any;
       return {
-        "Data (MM-YYYY)": row.data || row.periodo || "",
-        "Volume Inicial (%)": row.volume_inicial ?? null,
+        "Data (MM-YYYY)": rowData.data || rowData.periodo || "",
+        "Volume Inicial (%)": rowData.volume_inicial ?? null,
       };
     });
     exportToCSV(csvData, "reservatorio_inicial");
@@ -98,8 +100,9 @@ export function ReservatorioInicialTable({ data, deck1Name, deck2Name }: Reserva
             <tbody>
               {Object.entries(groupedByUsina).map(([usinaKey, rows], usinaIndex) => {
                 return rows.map((row, rowIndex) => {
-                  const dataValue = row.data || row.periodo || "";
-                  const volumeInicial = row.volume_inicial ?? null;
+                  const rowData = row as any;
+                  const dataValue = rowData.data || rowData.periodo || "";
+                  const volumeInicial = rowData.volume_inicial ?? null;
                   const isFirstUsina = usinaIndex === 0;
 
                   return (

@@ -89,10 +89,7 @@ export function RestricoesVazaoHQComparisonChart({
             <Legend />
             {data.datasets.map((dataset, index) => {
               // Extrair cor do borderColor do dataset se disponível
-              const strokeColor = dataset.borderColor || 
-                (typeof dataset === 'object' && 'borderColor' in dataset 
-                  ? (dataset as any).borderColor 
-                  : `hsl(${index * 60}, 70%, 50%)`);
+              const strokeColor = (dataset as any).borderColor || `hsl(${index * 60}, 70%, 50%)`;
               
               return (
                 <Line

@@ -20,6 +20,9 @@ import builtins
 # Forçar encoding UTF-8 no Windows
 if sys.platform == 'win32':
     os.environ['PYTHONIOENCODING'] = 'utf-8'
+    # Desativa buffer do stdout no worker (subprocesso do uvicorn --reload).
+    # Sem isso, prints do PRELOAD / tool_router / etc. não aparecem no terminal.
+    os.environ['PYTHONUNBUFFERED'] = '1'
 
 # Patch global do print para Windows (antes de importar uvicorn)
 _original_print = builtins.print

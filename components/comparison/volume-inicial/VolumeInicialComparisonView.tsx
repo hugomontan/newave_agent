@@ -11,7 +11,7 @@ interface VolumeInicialComparisonViewProps {
 }
 
 export function VolumeInicialComparisonView({ comparison }: VolumeInicialComparisonViewProps) {
-  const { comparison_table, chart_data, chart_config } = comparison;
+  const { comparison_table, chart_data, chart_config } = comparison as any;
 
   const hasTableData = comparison_table && comparison_table.length > 0;
   const hasChartData = chart_data && chart_data.labels && chart_data.labels.length > 0;

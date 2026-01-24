@@ -73,9 +73,10 @@ export default function LLMPage() {
           setAgentSteps((prev) => [
             ...prev.filter((s) => s.name !== event.info!.name),
             {
-              name: event.info.name,
-              icon: event.info.icon,
-              description: event.info.description,
+              node: event.node || "",
+              name: event.info!.name,
+              icon: event.info!.icon,
+              description: event.info!.description,
               status: "running",
             },
           ]);
@@ -353,7 +354,12 @@ export default function LLMPage() {
 
           {/* Agent Progress */}
           {agentSteps.length > 0 && (
-            <AgentProgress steps={agentSteps} />
+            <AgentProgress 
+              steps={agentSteps} 
+              currentCode=""
+              streamingResponse={streamingResponse}
+              isStreaming={isStreaming}
+            />
           )}
 
           {/* Input */}

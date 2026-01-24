@@ -12,7 +12,7 @@ interface CargaMensalViewProps {
 }
 
 export function CargaMensalView({ comparison }: CargaMensalViewProps) {
-  const { deck_1, deck_2, comparison_table, chart_data, deck_displays, deck_count } = comparison;
+  const { deck_1, deck_2, comparison_table, chart_data, deck_displays, deck_count } = comparison as any;
   
   // Obter nomes de todos os decks (suporte N decks)
   const allDeckNames = getDeckNames(comparison);

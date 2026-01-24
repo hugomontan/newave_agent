@@ -12,7 +12,7 @@ interface CVUViewProps {
 }
 
 export function CVUView({ comparison }: CVUViewProps) {
-  const { deck_1, deck_2, comparison_table, chart_data, deck_displays, deck_count, decks_raw } = comparison;
+  const { deck_1, deck_2, comparison_table, chart_data, deck_displays, deck_count, decks_raw } = comparison as any;
   
   // Obter nomes de todos os decks (suporte N decks)
   const allDeckNames = getDeckNames(comparison);

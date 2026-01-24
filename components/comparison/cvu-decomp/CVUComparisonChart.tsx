@@ -91,7 +91,7 @@ export function CVUComparisonChart({
                 key={dataset.label}
                 type="monotone"
                 dataKey={dataset.label}
-                stroke={dataset.borderColor || colors[index % colors.length]}
+                stroke={(dataset as any).borderColor || colors[index % colors.length]}
                 strokeWidth={2}
                 dot={false}
                 activeDot={false}

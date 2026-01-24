@@ -56,6 +56,12 @@ export interface SingleDeckVisualizationData {
     usina_especifica?: number;
     nome_usina?: string;
     ree?: number;
+    cvu_apenas?: boolean;
+    submercado?: number;
+    estagio?: number;
+    numero_patamares?: number;
+    tipo?: string;
+    regiao?: string;
   };
   todas_usinas?: Array<{
     codigo: number;
@@ -65,6 +71,8 @@ export interface SingleDeckVisualizationData {
     total_tipos?: number;
     total_registros?: number;
     tipos_encontrados?: string[];
+    regioes_encontradas?: string[];
+    total_mw_medio_geral?: number;
   };
   visualization_type?: string;
   chart_config?: ChartConfig;
@@ -97,13 +105,6 @@ export interface SingleDeckVisualizationData {
   }>;
   // Campos específicos para PQPequenasUsinasTool
   tables_by_regiao?: Record<string, TableRow[]>;
-  tables_by_tipo?: Record<string, TableRow[]>;
-  stats_geral?: {
-    total_registros?: number;
-    regioes_encontradas?: string[];
-    tipos_encontrados?: string[];
-    total_mw_medio_geral?: number;
-  };
   mw_medios_por_regiao?: Array<{
     regiao: string;
     mw_medio: number;
