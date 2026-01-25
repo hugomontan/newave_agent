@@ -1,8 +1,0 @@
-__pycache__
-.env
-data/
-uploads/
-.DS_Store
-.next
-.vscode
-node_modules

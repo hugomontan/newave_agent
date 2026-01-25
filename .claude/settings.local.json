@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(tree:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(LC_ALL=C grep:*)",
+      "Bash(find:*)"
     ]
   }
 }
