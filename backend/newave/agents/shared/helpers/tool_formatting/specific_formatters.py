@@ -395,7 +395,7 @@ def format_clast_valores_response(tool_result: dict, tool_used: str, query: str 
 
 def format_expt_operacao_response(tool_result: dict, tool_used: str) -> dict:
     """
-    Formata o resultado da ExptOperacaoTool em resposta Markdown.
+    Formata o resultado da ExptOperacaoTool em resposta Markdown simplificada.
     
     Args:
         tool_result: Resultado da execução da tool
@@ -406,69 +406,41 @@ def format_expt_operacao_response(tool_result: dict, tool_used: str) -> dict:
     """
     response_parts = []
     
-    # Cabeçalho
+    # Obter nome da usina dos filtros
     filtros = tool_result.get("filtros")
+    nome_usina = "USINA"
+    if filtros and 'usina' in filtros:
+        nome_usina = filtros['usina'].get('nome', 'USINA')
     
-    response_parts.append("## ✅ Dados de Operação Térmica do EXPT.DAT\n\n")
-    response_parts.append(f"*Processado pela tool: **{tool_used}***\n\n")
+    # Título simples
+    response_parts.append(f"## Dados de Operação Térmica - {nome_usina}\n\n")
     
-    # Informações sobre filtros
-    if filtros:
-        response_parts.append("### 🔍 Filtros Aplicados\n\n")
-        if 'usina' in filtros:
-            usina_info = filtros['usina']
-            response_parts.append(f"- **Usina**: {usina_info.get('nome')} (Código: {usina_info.get('codigo')})\n")
-        if 'tipo_modificacao' in filtros:
-            response_parts.append(f"- **Tipo de Modificação**: {filtros['tipo_modificacao']}\n")
-        if 'operacao_especifica' in filtros:
-            op = filtros['operacao_especifica']
-            op_nome = {
-                'desativacao': 'Desativações',
-                'repotenciacao': 'Repotenciações',
-                'expansao': 'Expansões'
-            }.get(op, op)
-            response_parts.append(f"- **Operação**: {op_nome}\n")
-        response_parts.append("\n")
-    
-    # Estatísticas gerais
-    stats_geral = tool_result.get("stats_geral")
-    if stats_geral:
-        response_parts.append("###  Resumo\n\n")
-        response_parts.append(f"- **Total de registros**: {stats_geral.get('total_registros', 0):,}\n")
-        response_parts.append(f"- **Usinas afetadas**: {stats_geral.get('total_usinas', 0)}\n")
-        tipos = stats_geral.get('tipos_modificacao', [])
-        if tipos:
-            response_parts.append(f"- **Tipos de modificação encontrados**: {', '.join(tipos)}\n")
-        response_parts.append("\n")
-    
-    # Dicionário de explicações para cada tipo
-    explicacoes_tipos = {
-        'POTEF': {
-            'nome': 'Potência Efetiva',
-            'descricao': 'Potência efetiva da usina térmica em MW. Modificações neste valor representam expansões (aumentos), repotenciações ou desativações (quando = 0).',
-            'unidade': 'MW'
-        },
+    # Dicionário de nomes e unidades para cada tipo
+    tipos_info = {
         'GTMIN': {
-            'nome': 'Geração Térmica Mínima',
-            'descricao': 'Geração térmica mínima obrigatória em MW. Define a geração mínima que a usina deve manter durante o período especificado.',
+            'nome': 'Geração Térmica Mínima (GTMIN)',
             'unidade': 'MW'
-        },
-        'FCMAX': {
-            'nome': 'Fator de Capacidade Máximo',
-            'descricao': 'Fator de capacidade máximo em percentual (0-100%). Limita a capacidade de geração da usina. Quando = 0, indica desativação.',
-            'unidade': '%'
         },
         'IPTER': {
-            'nome': 'Indisponibilidade Programada',
-            'descricao': 'Indisponibilidade programada em percentual (0-100%). Representa períodos de manutenção programada onde a usina não estará disponível.',
+            'nome': 'Indisponibilidade Programada (IPTER)',
             'unidade': '%'
         },
+        'POTEF': {
+            'nome': 'Potência Efetiva (POTEF)',
+            'unidade': 'MW'
+        },
         'TEIFT': {
-            'nome': 'Taxa Equivalente de Indisponibilidade Forçada',
-            'descricao': 'Taxa equivalente de indisponibilidade forçada em percentual (0-100%). Representa indisponibilidades não programadas (forçadas) da usina.',
+            'nome': 'Taxa Equivalente de Indisponibilidade Forçada (TEIFT)',
+            'unidade': '%'
+        },
+        'FCMAX': {
+            'nome': 'Fator de Capacidade Máximo (FCMAX)',
             'unidade': '%'
         }
     }
+    
+    # Ordem de exibição dos tipos
+    ordem_tipos = ['GTMIN', 'IPTER', 'POTEF', 'TEIFT', 'FCMAX']
     
     # Obter dados de expansões
     dados_expansoes = tool_result.get("dados_expansoes", [])
@@ -479,18 +451,19 @@ def format_expt_operacao_response(tool_result: dict, tool_used: str) -> dict:
         
         tipos_presentes = df_expansoes['tipo'].unique() if 'tipo' in df_expansoes.columns else []
         
-        # Para cada tipo, criar uma seção separada
-        for tipo in sorted(tipos_presentes):
+        # Para cada tipo na ordem especificada, criar uma seção
+        for tipo in ordem_tipos:
+            if tipo not in tipos_presentes:
+                continue
+                
             df_tipo = df_expansoes[df_expansoes['tipo'] == tipo]
-            explicacao = explicacoes_tipos.get(tipo, {
+            tipo_info = tipos_info.get(tipo, {
                 'nome': tipo,
-                'descricao': f'Modificações do tipo {tipo}',
                 'unidade': ''
             })
             
-            response_parts.append(f"### 🔧 {explicacao['nome']} ({tipo})\n\n")
-            response_parts.append(f"**Explicação**: {explicacao['descricao']}\n\n")
-            response_parts.append(f"**Total de registros**: {len(df_tipo)}\n\n")
+            # Título da seção (sem emoji)
+            response_parts.append(f"### {tipo_info['nome']}\n\n")
             
             # Tabela com os dados deste tipo
             response_parts.append("| Código | Nome Usina | Valor | Data Início | Data Fim |\n")
@@ -516,167 +489,16 @@ def format_expt_operacao_response(tool_result: dict, tool_used: str) -> dict:
                     fim = 'Até o final'
                 
                 # Formatar valor com unidade
-                if explicacao['unidade']:
-                    valor_str = f"{modificacao:,.2f} {explicacao['unidade']}"
+                if tipo_info['unidade']:
+                    valor_str = f"{modificacao:,.2f} {tipo_info['unidade']}"
                 else:
                     valor_str = f"{modificacao:,.2f}"
                 
                 response_parts.append(f"| {codigo} | {nome} | {valor_str} | {inicio} | {fim} |\n")
             
             response_parts.append("\n")
-            
-            # Estatísticas específicas deste tipo
-            if len(df_tipo) > 1:
-                valor_medio = df_tipo['modificacao'].mean()
-                valor_min = df_tipo['modificacao'].min()
-                valor_max = df_tipo['modificacao'].max()
-                unidade = explicacao['unidade']
-                
-                response_parts.append(f"**Estatísticas**:\n")
-                response_parts.append(f"- Valor médio: {valor_medio:,.2f} {unidade}\n")
-                response_parts.append(f"- Valor mínimo: {valor_min:,.2f} {unidade}\n")
-                response_parts.append(f"- Valor máximo: {valor_max:,.2f} {unidade}\n")
-                response_parts.append("\n")
-            
-            response_parts.append("---\n\n")
-    
-    # Estatísticas por tipo (resumo geral - já detalhado acima por tipo)
-    stats_por_tipo = tool_result.get("stats_por_tipo", [])
-    if stats_por_tipo and len(stats_por_tipo) > 1:
-        response_parts.append("### 📈 Resumo Estatístico por Tipo\n\n")
-        response_parts.append("| Tipo | Registros | Usinas | Valor Médio | Mínimo | Máximo |\n")
-        response_parts.append("|------|-----------|--------|-------------|--------|--------|\n")
-        
-        for stat in stats_por_tipo:
-            tipo = stat.get('tipo', 'N/A')
-            registros = stat.get('total_registros', 0)
-            usinas = stat.get('usinas_afetadas', 0)
-            medio = stat.get('valor_medio', 0)
-            minimo = stat.get('valor_min', 0)
-            maximo = stat.get('valor_max', 0)
-            
-            # Formatar unidade baseado no tipo
-            if tipo in ['POTEF', 'GTMIN']:
-                unidade = "MW"
-                response_parts.append(
-                    f"| {tipo} | {registros} | {usinas} | {medio:,.2f} {unidade} | {minimo:,.2f} {unidade} | {maximo:,.2f} {unidade} |\n"
-                )
-            else:
-                unidade = "%"
-                response_parts.append(
-                    f"| {tipo} | {registros} | {usinas} | {medio:,.2f} {unidade} | {minimo:,.2f} {unidade} | {maximo:,.2f} {unidade} |\n"
-                )
-        response_parts.append("\n")
-    
-    # Estatísticas por usina
-    stats_por_usina = tool_result.get("stats_por_usina", [])
-    if stats_por_usina:
-        response_parts.append("### 🏭 Modificações por Usina\n\n")
-        response_parts.append("| Código | Nome Usina | Total Modificações | Tipos |\n")
-        response_parts.append("|--------|------------|-------------------|-------|\n")
-        
-        for stat in stats_por_usina[:20]:  # Limitar a 20 para não sobrecarregar
-            codigo = stat.get('codigo_usina', 'N/A')
-            nome = stat.get('nome_usina', 'N/A')
-            total = stat.get('total_modificacoes', 0)
-            tipos = ', '.join(stat.get('tipos_modificacao', []))
-            
-            response_parts.append(f"| {codigo} | {nome} | {total} | {tipos} |\n")
-        
-        if len(stats_por_usina) > 20:
-            response_parts.append(f"\n*Exibindo 20 de {len(stats_por_usina)} usinas. Todas estão disponíveis no JSON.*\n")
-        response_parts.append("\n")
-    
-    # Desativações
-    desativacoes = tool_result.get("desativacoes")
-    if desativacoes:
-        response_parts.append("### ⚠️ Desativações de Usinas Térmicas\n\n")
-        response_parts.append("| Código | Nome Usina | Tipo | Data Início | Data Fim |\n")
-        response_parts.append("|--------|------------|------|-------------|----------|\n")
-        
-        for desat in desativacoes[:20]:
-            codigo = desat.get('codigo_usina', 'N/A')
-            nome = desat.get('nome_usina', 'N/A')
-            tipo = desat.get('tipo', 'N/A')
-            inicio = desat.get('data_inicio', 'N/A')
-            fim = desat.get('data_fim', 'N/A')
-            
-            # Formatar datas
-            if isinstance(inicio, str) and 'T' in inicio:
-                inicio = inicio.split('T')[0]
-            if isinstance(fim, str) and 'T' in fim:
-                fim = fim.split('T')[0]
-            
-            response_parts.append(f"| {codigo} | {nome} | {tipo} | {inicio} | {fim} |\n")
-        
-        if len(desativacoes) > 20:
-            response_parts.append(f"\n*Exibindo 20 de {len(desativacoes)} desativações. Todas estão disponíveis no JSON.*\n")
-        response_parts.append("\n")
-    
-    # Repotenciações
-    repotenciacoes = tool_result.get("repotenciacoes")
-    if repotenciacoes:
-        response_parts.append("### ⚡ Repotenciações\n\n")
-        response_parts.append("| Código | Nome Usina | Nova Potência (MW) | Data Início | Data Fim |\n")
-        response_parts.append("|--------|------------|-------------------|-------------|----------|\n")
-        
-        for repot in repotenciacoes[:20]:
-            codigo = repot.get('codigo_usina', 'N/A')
-            nome = repot.get('nome_usina', 'N/A')
-            potencia = repot.get('modificacao', 0)
-            inicio = repot.get('data_inicio', 'N/A')
-            fim = repot.get('data_fim', 'N/A')
-            
-            # Formatar datas
-            if isinstance(inicio, str) and 'T' in inicio:
-                inicio = inicio.split('T')[0]
-            if isinstance(fim, str) and 'T' in fim:
-                fim = fim.split('T')[0]
-            
-            response_parts.append(f"| {codigo} | {nome} | {potencia:,.2f} | {inicio} | {fim} |\n")
-        
-        if len(repotenciacoes) > 20:
-            response_parts.append(f"\n*Exibindo 20 de {len(repotenciacoes)} repotenciações. Todas estão disponíveis no JSON.*\n")
-        response_parts.append("\n")
-    
-    # Indisponibilidades
-    indisponibilidades = tool_result.get("indisponibilidades")
-    if indisponibilidades:
-        response_parts.append("### 🔧 Indisponibilidades\n\n")
-        response_parts.append("| Código | Nome Usina | Tipo | Taxa (%) | Data Início | Data Fim |\n")
-        response_parts.append("|--------|------------|------|----------|-------------|----------|\n")
-        
-        for indis in indisponibilidades[:20]:
-            codigo = indis.get('codigo_usina', 'N/A')
-            nome = indis.get('nome_usina', 'N/A')
-            tipo = indis.get('tipo', 'N/A')
-            taxa = indis.get('modificacao', 0)
-            inicio = indis.get('data_inicio', 'N/A')
-            fim = indis.get('data_fim', 'N/A')
-            
-            # Formatar datas
-            if isinstance(inicio, str) and 'T' in inicio:
-                inicio = inicio.split('T')[0]
-            if isinstance(fim, str) and 'T' in fim:
-                fim = fim.split('T')[0]
-            
-            response_parts.append(f"| {codigo} | {nome} | {tipo} | {taxa:,.2f} | {inicio} | {fim} |\n")
-        
-        if len(indisponibilidades) > 20:
-            response_parts.append(f"\n*Exibindo 20 de {len(indisponibilidades)} indisponibilidades. Todas estão disponíveis no JSON.*\n")
-        response_parts.append("\n")
-    
-    # Nota sobre dados completos (já apresentados acima por tipo)
-    dados_expansoes = tool_result.get("dados_expansoes", [])
-    if dados_expansoes:
-        response_parts.append("### 📋 Nota sobre Dados Completos\n\n")
-        response_parts.append(f"*Todos os {len(dados_expansoes)} registros foram apresentados acima, agrupados por tipo de modificação. Dados completos também estão disponíveis no JSON para download.*\n\n")
-    
-    response_parts.append("---\n\n")
-    response_parts.append("*Dados processados diretamente do arquivo EXPT.DAT usando tool pré-programada.*\n")
     
     response_text = "".join(response_parts)
-    response_text = clean_response_text(response_text, max_emojis=2)
     return {"final_response": response_text}
 
 def format_modif_operacao_response(tool_result: dict, tool_used: str) -> dict:

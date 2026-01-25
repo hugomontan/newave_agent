@@ -467,6 +467,14 @@ class DsvaguaTool(NEWAVETool):
             filtros_aplicados = {}
             if codigo_usina is not None:
                 filtros_aplicados['codigo_usina'] = codigo_usina
+                # Buscar nome da usina do mapeamento
+                mapeamento = self._carregar_mapeamento_usinas()
+                nome_usina = mapeamento.get(codigo_usina)
+                if nome_usina:
+                    filtros_aplicados['usina'] = {
+                        'codigo': codigo_usina,
+                        'nome': nome_usina
+                    }
             if periodo is not None:
                 filtros_aplicados['periodo'] = periodo
             

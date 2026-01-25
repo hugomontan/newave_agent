@@ -13,6 +13,7 @@ import { CadastroTermView } from "./cadastro-term";
 import { ConfhdView } from "./confhd";
 import { UsinasNaoSimuladasView } from "./usinas-nao-simuladas";
 import { ModifOperacaoView } from "./modif-operacao";
+import { ExptOperacaoView } from "./expt-operacao";
 import { RestricaoEletricaView } from "./restricao-eletrica";
 import { RestricaoVazaoHQView } from "./restricao-vazao-hq";
 import { UHView } from "./uh";
@@ -70,6 +71,9 @@ export function SingleDeckRouter({ visualizationData }: SingleDeckRouterProps) {
     
     case "ModifOperacaoTool":
       return <ModifOperacaoView visualizationData={visualizationData} />;
+    
+    case "ExptOperacaoTool":
+      return <ExptOperacaoView visualizationData={visualizationData} />;
     
     case "RestricaoEletricaTool":
     case "RestricoesEletricasDECOMPTool":

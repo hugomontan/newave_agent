@@ -12,7 +12,7 @@ class CadastroTermSingleDeckFormatter(SingleDeckFormatter):
     
     def can_format(self, tool_name: str, result_structure: Dict[str, Any]) -> bool:
         """Verifica se pode formatar TermCadastroTool."""
-        return tool_name == "TermCadastroTool" and ("data" in result_structure or "dados_usina" in result_structure)
+        return tool_name == "TermCadastroTool" and "data" in result_structure
     
     def get_priority(self) -> int:
         """Prioridade média."""

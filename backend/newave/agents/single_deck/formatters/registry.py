@@ -23,6 +23,7 @@ from backend.newave.agents.single_deck.formatters.data_formatters import (
     UsinasNaoSimuladasSingleDeckFormatter,
     ModifOperacaoSingleDeckFormatter,
     RestricaoEletricaSingleDeckFormatter,
+    ExptOperacaoSingleDeckFormatter,
 )
 
 # Formatter genérico (fallback)
@@ -41,6 +42,7 @@ SINGLE_DECK_FORMATTERS = [
     CadastroTermSingleDeckFormatter(),
     UsinasNaoSimuladasSingleDeckFormatter(),
     ModifOperacaoSingleDeckFormatter(),
+    ExptOperacaoSingleDeckFormatter(),
     RestricaoEletricaSingleDeckFormatter(),
     ConfhdSingleDeckFormatter(),
 ]

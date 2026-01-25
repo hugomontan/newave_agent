@@ -15,6 +15,7 @@ from .confhd_formatter import ConfhdSingleDeckFormatter
 from .usinas_nao_simuladas_formatter import UsinasNaoSimuladasSingleDeckFormatter
 from .modif_operacao_formatter import ModifOperacaoSingleDeckFormatter
 from .restricao_eletrica_formatter import RestricaoEletricaSingleDeckFormatter
+from .expt_operacao_formatter import ExptOperacaoSingleDeckFormatter
 
 __all__ = [
     "ClastSingleDeckFormatter",
@@ -29,4 +30,5 @@ __all__ = [
     "UsinasNaoSimuladasSingleDeckFormatter",
     "ModifOperacaoSingleDeckFormatter",
     "RestricaoEletricaSingleDeckFormatter",
+    "ExptOperacaoSingleDeckFormatter",
 ]

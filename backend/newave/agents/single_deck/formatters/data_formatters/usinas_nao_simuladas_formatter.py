@@ -152,8 +152,32 @@ class UsinasNaoSimuladasSingleDeckFormatter(SingleDeckFormatter):
         # Extrair informações para criar título descritivo
         fontes_info = sorted(list(tables_by_fonte.keys()))
         
+        # Verificar se há filtro de submercado aplicado
+        nome_submercado = None
+        filtros = tool_result.get("filtros_aplicados")
+        if filtros and isinstance(filtros, dict) and "submercado" in filtros:
+            submercado_info = filtros["submercado"]
+            if isinstance(submercado_info, dict):
+                nome_submercado = submercado_info.get("nome")
+        
+        # Se não encontrou nos filtros, verificar se todos os dados são do mesmo submercado
+        if not nome_submercado and dados:
+            submercados_unicos = set()
+            for record in dados:
+                submercado_info = record.get("submercado")
+                if submercado_info and isinstance(submercado_info, dict):
+                    nome = submercado_info.get("nome")
+                    if nome:
+                        submercados_unicos.add(nome)
+            
+            # Se há apenas um submercado único, usar no título
+            if len(submercados_unicos) == 1:
+                nome_submercado = list(submercados_unicos)[0]
+        
         # Criar título descritivo
         titulo_parts = ["Usinas Não Simuladas"]
+        if nome_submercado:
+            titulo_parts.append(f" - {nome_submercado}")
         if fontes_info:
             titulo_parts.append(f" - {', '.join(fontes_info)}")
         

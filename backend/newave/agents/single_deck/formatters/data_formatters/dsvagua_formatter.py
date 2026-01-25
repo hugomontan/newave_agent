@@ -28,7 +28,18 @@ class DsvaguaSingleDeckFormatter(SingleDeckFormatter):
         table_data = VazoesDataProcessor.extract_table_data(tool_result)
         chart_data = VazoesDataProcessor.extract_chart_data(tool_result)
         
-        final_response = format_dsvagua_simple(table_data)
+        # Obter nome da usina dos filtros
+        nome_usina = None
+        filtros = tool_result.get("filtros_aplicados") or {}
+        
+        # Prioridade: usar nome dos filtros (se disponível)
+        if filtros and 'usina' in filtros:
+            nome_usina = filtros['usina'].get('nome')
+        elif filtros and 'codigo_usina' in filtros:
+            codigo_usina = filtros.get('codigo_usina')
+            nome_usina = f"Usina {codigo_usina}"
+        
+        final_response = format_dsvagua_simple(table_data, nome_usina)
         
         return {
             "final_response": final_response,

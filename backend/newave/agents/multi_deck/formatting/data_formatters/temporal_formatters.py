@@ -1679,13 +1679,69 @@ class VazoesComparisonFormatter(ComparisonFormatter):
             
             comparison_table.append(table_row)
         
+        # Extrair nome do objeto (usina para DsvaguaTool, posto para VazoesTool)
+        objeto_nome = None
+        if tool_name == "DsvaguaTool":
+            # Tentar obter nome da usina dos filtros_aplicados
+            for deck_info in decks_info:
+                result = deck_info["deck"].result
+                filtros = result.get("filtros_aplicados")
+                if filtros and isinstance(filtros, dict) and "usina" in filtros:
+                    usina_info = filtros["usina"]
+                    if isinstance(usina_info, dict):
+                        objeto_nome = usina_info.get("nome")
+                        if objeto_nome:
+                            break
+            # Se não encontrou nos filtros, tentar extrair dos dados
+            if not objeto_nome:
+                for deck_info in decks_info:
+                    result = deck_info["deck"].result
+                    dados = result.get("dados", [])
+                    if dados and len(dados) > 0:
+                        # Verificar se há informação de usina nos dados
+                        primeiro_registro = dados[0]
+                        if isinstance(primeiro_registro, dict):
+                            # DsvaguaTool não retorna nome_usina diretamente, mas pode estar em submercado
+                            # Para DsvaguaTool, o objeto é a usina, mas não temos nome nos dados
+                            # Vamos usar o código se disponível
+                            codigo = primeiro_registro.get("codigo_usina")
+                            if codigo:
+                                objeto_nome = f"Usina {codigo}"
+                                break
+        elif tool_name == "VazoesTool":
+            # Para VazoesTool, tentar obter nome do posto
+            for deck_info in decks_info:
+                result = deck_info["deck"].result
+                dados = result.get("data", [])
+                if dados and len(dados) > 0:
+                    primeiro_registro = dados[0]
+                    if isinstance(primeiro_registro, dict):
+                        nome_posto = primeiro_registro.get("nome_posto") or primeiro_registro.get("posto_nome")
+                        if nome_posto:
+                            objeto_nome = nome_posto
+                            break
+        
+        # Construir título com nome do objeto se disponível
+        if tool_name == "VazoesTool":
+            titulo_base = "Vazões Históricas"
+            if objeto_nome:
+                titulo = f"{titulo_base} - {objeto_nome}"
+            else:
+                titulo = titulo_base
+        else:  # DsvaguaTool
+            titulo_base = "Desvios de Água"
+            if objeto_nome:
+                titulo = f"{titulo_base} - {objeto_nome}"
+            else:
+                titulo = titulo_base
+        
         return {
             "comparison_table": comparison_table,
             "chart_data": chart_data,
             "visualization_type": "line_chart",
             "chart_config": {
                 "type": "line",
-                "title": "Vazões Históricas" if tool_name == "VazoesTool" else "Desvios de Água",
+                "title": titulo,
                 "x_axis": "Período",
                 "y_axis": "Vazão (m³/s)" if tool_name == "VazoesTool" else "Desvio (m³/s)"
             },
@@ -1785,13 +1841,50 @@ class VazoesComparisonFormatter(ComparisonFormatter):
                     "difference_percent": round((diff / val_dec * 100) if val_dec != 0 else 0, 4)
                 })
         
+        # Extrair nome do objeto (usina para DsvaguaTool, posto para VazoesTool)
+        objeto_nome = None
+        if tool_name == "DsvaguaTool":
+            # Tentar obter nome da usina dos filtros_aplicados
+            filtros_dec = result_dec.get("filtros_aplicados")
+            filtros_jan = result_jan.get("filtros_aplicados")
+            filtros = filtros_dec or filtros_jan
+            if filtros and isinstance(filtros, dict) and "usina" in filtros:
+                usina_info = filtros["usina"]
+                if isinstance(usina_info, dict):
+                    objeto_nome = usina_info.get("nome")
+        elif tool_name == "VazoesTool":
+            # Para VazoesTool, tentar obter nome do posto
+            data_dec = result_dec.get("data", [])
+            data_jan = result_jan.get("data", [])
+            dados = data_dec if data_dec else data_jan
+            if dados and len(dados) > 0:
+                primeiro_registro = dados[0]
+                if isinstance(primeiro_registro, dict):
+                    nome_posto = primeiro_registro.get("nome_posto") or primeiro_registro.get("posto_nome")
+                    if nome_posto:
+                        objeto_nome = nome_posto
+        
+        # Construir título com nome do objeto se disponível
+        if tool_name == "VazoesTool":
+            titulo_base = "Vazões Históricas"
+            if objeto_nome:
+                titulo = f"{titulo_base} - {objeto_nome}"
+            else:
+                titulo = titulo_base
+        else:  # DsvaguaTool
+            titulo_base = "Desvios de Água"
+            if objeto_nome:
+                titulo = f"{titulo_base} - {objeto_nome}"
+            else:
+                titulo = titulo_base
+        
         return {
             "comparison_table": comparison_table,
             "chart_data": chart_data,
             "visualization_type": "line_chart",
             "chart_config": {
                 "type": "line",
-                "title": "Vazões Históricas" if tool_name == "VazoesTool" else "Desvios de Água",
+                "title": titulo,
                 "x_axis": "Período",
                 "y_axis": "Vazão (m³/s)" if tool_name == "VazoesTool" else "Desvio (m³/s)"
             }
@@ -2016,13 +2109,41 @@ class UsinasNaoSimuladasFormatter(ComparisonFormatter):
             "datasets": chart_datasets
         } if chart_labels else None
         
+        # Extrair nome do submercado dos filtros_aplicados ou dos dados
+        nome_submercado = None
+        # Tentar obter dos resultados
+        filtros_dec = result_dec.get("filtros_aplicados")
+        filtros_jan = result_jan.get("filtros_aplicados")
+        filtros_aplicados = filtros_dec or filtros_jan
+        if filtros_aplicados and isinstance(filtros_aplicados, dict) and "submercado" in filtros_aplicados:
+            submercado_info = filtros_aplicados["submercado"]
+            if isinstance(submercado_info, dict):
+                nome_submercado = submercado_info.get("nome")
+        
+        # Se não encontrou nos filtros, tentar extrair dos dados
+        if not nome_submercado:
+            dados = data_dec if data_dec else data_jan
+            if dados and len(dados) > 0:
+                primeiro_registro = dados[0]
+                if isinstance(primeiro_registro, dict):
+                    submercado_info = primeiro_registro.get("submercado")
+                    if isinstance(submercado_info, dict):
+                        nome_submercado = submercado_info.get("nome")
+        
+        # Construir título com nome do submercado se disponível
+        titulo_base = "Geração de Usinas Não Simuladas"
+        if nome_submercado:
+            titulo = f"{titulo_base} - {nome_submercado}"
+        else:
+            titulo = titulo_base
+        
         return {
             "comparison_table": [],
             "chart_data": chart_data,
             "visualization_type": "line_chart",  # Usar line_chart padrão
             "chart_config": {
                 "type": "line",
-                "title": "Geração de Usinas Não Simuladas",  # Título explícito e correto
+                "title": titulo,
                 "x_axis": "Período",
                 "y_axis": "Geração (MWméd)",
                 "tool_name": "UsinasNaoSimuladasTool"  # Incluir tool_name no chart_config também
@@ -2058,14 +2179,31 @@ class UsinasNaoSimuladasFormatter(ComparisonFormatter):
             ]
         } if chart_labels else None
         
-        # Criar título baseado nos filtros
+        # Extrair nome do submercado dos dados
+        nome_submercado = None
+        dados = data_dec if data_dec else data_jan
+        if dados and len(dados) > 0:
+            primeiro_registro = dados[0]
+            if isinstance(primeiro_registro, dict):
+                submercado_info = primeiro_registro.get("submercado")
+                if isinstance(submercado_info, dict):
+                    nome_submercado = submercado_info.get("nome")
+        
+        # Criar título baseado nos filtros e submercado
         titulo_parts = []
         if filtros["fonte"]:
             titulo_parts.append(filtros["fonte"].upper())
-        if filtros["submercado"]:
+        if nome_submercado:
+            titulo_parts.append(nome_submercado)
+        elif filtros["submercado"]:
             sub_nomes = {1: "Sudeste", 2: "Sul", 3: "Norte", 4: "Nordeste"}
             titulo_parts.append(sub_nomes.get(filtros["submercado"], f"Subsistema {filtros['submercado']}"))
-        titulo = " - ".join(titulo_parts) if titulo_parts else "Geração de Usinas Não Simuladas"
+        
+        titulo_base = "Geração de Usinas Não Simuladas"
+        if titulo_parts:
+            titulo = f"{titulo_base} - {' - '.join(titulo_parts)}"
+        else:
+            titulo = titulo_base
         
         return {
             "comparison_table": [],
@@ -2073,7 +2211,7 @@ class UsinasNaoSimuladasFormatter(ComparisonFormatter):
             "visualization_type": "line_chart",  # Usar line_chart padrão
             "chart_config": {
                 "type": "line",
-                "title": titulo if titulo else "Geração de Usinas Não Simuladas",  # Título explícito e correto
+                "title": titulo,
                 "x_axis": "Período",
                 "y_axis": "Geração (MWméd)",
                 "tool_name": "UsinasNaoSimuladasTool"  # Incluir tool_name no chart_config também
@@ -2191,13 +2329,46 @@ class UsinasNaoSimuladasFormatter(ComparisonFormatter):
             
             comparison_table.append(table_row)
         
+        # Extrair nome do submercado dos filtros_aplicados ou dos dados
+        nome_submercado = None
+        for deck_info in decks_info:
+            result = deck_info["deck"].result
+            filtros_aplicados = result.get("filtros_aplicados")
+            if filtros_aplicados and isinstance(filtros_aplicados, dict) and "submercado" in filtros_aplicados:
+                submercado_info = filtros_aplicados["submercado"]
+                if isinstance(submercado_info, dict):
+                    nome_submercado = submercado_info.get("nome")
+                    if nome_submercado:
+                        break
+        
+        # Se não encontrou nos filtros, tentar extrair dos dados
+        if not nome_submercado:
+            for deck_info in decks_info:
+                result = deck_info["deck"].result
+                dados = result.get("dados", [])
+                if dados and len(dados) > 0:
+                    primeiro_registro = dados[0]
+                    if isinstance(primeiro_registro, dict):
+                        submercado_info = primeiro_registro.get("submercado")
+                        if isinstance(submercado_info, dict):
+                            nome_submercado = submercado_info.get("nome")
+                            if nome_submercado:
+                                break
+        
+        # Construir título com nome do submercado se disponível
+        titulo_base = "Geração de Usinas Não Simuladas"
+        if nome_submercado:
+            titulo = f"{titulo_base} - {nome_submercado}"
+        else:
+            titulo = titulo_base
+        
         return {
             "comparison_table": comparison_table,
             "chart_data": chart_data,
             "visualization_type": "line_chart",  # Usar line_chart padrão para garantir que não use componente CVU
             "chart_config": {
                 "type": "line",
-                "title": "Geração de Usinas Não Simuladas",  # Título explícito e correto
+                "title": titulo,
                 "x_axis": "Período",
                 "y_axis": "Geração (MWméd)",
                 "tool_name": "UsinasNaoSimuladasTool"  # Incluir tool_name no chart_config também
@@ -2320,14 +2491,47 @@ class UsinasNaoSimuladasFormatter(ComparisonFormatter):
             
             comparison_table.append(table_row)
         
-        # Criar título baseado nos filtros
+        # Extrair nome do submercado dos filtros_aplicados ou dos dados
+        nome_submercado = None
+        for deck_info in decks_info:
+            result = deck_info["deck"].result
+            filtros_aplicados = result.get("filtros_aplicados")
+            if filtros_aplicados and isinstance(filtros_aplicados, dict) and "submercado" in filtros_aplicados:
+                submercado_info = filtros_aplicados["submercado"]
+                if isinstance(submercado_info, dict):
+                    nome_submercado = submercado_info.get("nome")
+                    if nome_submercado:
+                        break
+        
+        # Se não encontrou nos filtros, tentar extrair dos dados
+        if not nome_submercado:
+            for deck_info in decks_info:
+                result = deck_info["deck"].result
+                dados = result.get("dados", [])
+                if dados and len(dados) > 0:
+                    primeiro_registro = dados[0]
+                    if isinstance(primeiro_registro, dict):
+                        submercado_info = primeiro_registro.get("submercado")
+                        if isinstance(submercado_info, dict):
+                            nome_submercado = submercado_info.get("nome")
+                            if nome_submercado:
+                                break
+        
+        # Criar título baseado nos filtros e submercado
         titulo_parts = []
         if filtros["fonte"]:
             titulo_parts.append(filtros["fonte"].upper())
-        if filtros["submercado"]:
+        if nome_submercado:
+            titulo_parts.append(nome_submercado)
+        elif filtros["submercado"]:
             sub_nomes = {1: "Sudeste", 2: "Sul", 3: "Norte", 4: "Nordeste"}
             titulo_parts.append(sub_nomes.get(filtros["submercado"], f"Subsistema {filtros['submercado']}"))
-        titulo = " - ".join(titulo_parts) if titulo_parts else "Geração de Usinas Não Simuladas"
+        
+        titulo_base = "Geração de Usinas Não Simuladas"
+        if titulo_parts:
+            titulo = f"{titulo_base} - {' - '.join(titulo_parts)}"
+        else:
+            titulo = titulo_base
         
         return {
             "comparison_table": comparison_table,
@@ -2335,7 +2539,7 @@ class UsinasNaoSimuladasFormatter(ComparisonFormatter):
             "visualization_type": "line_chart",  # Usar line_chart padrão para garantir que não use componente CVU
             "chart_config": {
                 "type": "line",
-                "title": titulo if titulo else "Geração de Usinas Não Simuladas",  # Título explícito e correto
+                "title": titulo,
                 "x_axis": "Período",
                 "y_axis": "Geração (MWméd)",
                 "tool_name": "UsinasNaoSimuladasTool"  # Incluir tool_name no chart_config também
