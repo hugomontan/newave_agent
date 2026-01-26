@@ -56,6 +56,46 @@ class LimitesIntercambioTool(NEWAVETool):
         ]
         return any(kw in query_lower for kw in keywords)
     
+    def _detect_query_direction(self, query: str) -> str:
+        """
+        Detecta se a query é direcionada (um sentido) ou genérica (ambos os sentidos).
+        
+        Args:
+            query: Query do usuário
+            
+        Returns:
+            "direcionada" se a query especifica direção (ex: "X para Y", "X → Y")
+            "generica" se a query é genérica (ex: "entre X e Y")
+            None se não foi possível determinar
+        """
+        query_lower = query.lower()
+        
+        # Padrões que indicam direção específica
+        patterns_direcionados = [
+            r'\bpara\b',  # Palavra "para" isolada
+            r'→',  # Seta Unicode
+            r'->',  # Seta ASCII
+            r'de\s+[^para]+\s+para',  # "de X para Y" (X pode ter múltiplas palavras)
+            r'do\s+[^para]+\s+para',  # "do X para Y"
+            r'da\s+[^para]+\s+para',  # "da X para Y"
+        ]
+        
+        # Padrão que indica query genérica (ambos os sentidos)
+        pattern_generico = r'entre\s+[^e]+\s+e\s+[^e]+'
+        
+        # Verificar se é genérica primeiro
+        if re.search(pattern_generico, query_lower):
+            # Mas verificar se não tem "para" depois de "entre"
+            # Ex: "entre X e Y" = genérica, mas "entre X para Y" = direcionada
+            if not any(re.search(pattern, query_lower) for pattern in patterns_direcionados):
+                return "generica"
+        
+        # Verificar se é direcionada
+        if any(re.search(pattern, query_lower) for pattern in patterns_direcionados):
+            return "direcionada"
+        
+        return None
+    
     def _extract_submercados_from_query(self, query: str, sistema: Sistema) -> tuple:
         """
         Extrai códigos dos submercados de origem e destino da query.
@@ -65,7 +105,10 @@ class LimitesIntercambioTool(NEWAVETool):
             sistema: Objeto Sistema já lido
             
         Returns:
-            Tupla (submercado_de, submercado_para) ou (None, None) se não encontrado
+            Tupla (submercado_de, submercado_para, query_direcionada) onde:
+            - submercado_de: código do submercado de origem ou None
+            - submercado_para: código do submercado de destino ou None
+            - query_direcionada: True se query especifica direção, False se é genérica
         """
         query_lower = query.lower()
         
@@ -90,6 +133,12 @@ class LimitesIntercambioTool(NEWAVETool):
         
         # Aplicar normalização na query em minúsculas
         query_lower = _normalize_submercado_tokens(query_lower)
+        
+        # Detectar tipo de query (direcionada ou genérica)
+        query_direction = self._detect_query_direction(query)
+        # Se não foi possível determinar, assumir como direcionada (padrão mais comum)
+        is_direcionada = query_direction == "direcionada" if query_direction is not None else True
+        debug_print(f"[TOOL] Tipo de query detectado: {query_direction} (is_direcionada: {is_direcionada})")
         
         # Obter lista de subsistemas disponíveis
         subsistemas_disponiveis = []
@@ -119,14 +168,49 @@ class LimitesIntercambioTool(NEWAVETool):
                     sub_para = int(match.group(2))
                     codigos_validos = [s['codigo'] for s in subsistemas_disponiveis]
                     if sub_de in codigos_validos and sub_para in codigos_validos:
-                        debug_print(f"[TOOL] ✅ Códigos {sub_de} → {sub_para} encontrados por padrão numérico")
-                        return (sub_de, sub_para)
+                        # Verificar se o padrão indica direção ou é genérico
+                        pattern_str = pattern.pattern
+                        is_pattern_direcionado = 'para' in pattern_str or '->' in pattern_str or '→' in pattern_str
+                        is_pattern_generico = 'entre' in pattern_str and 'e' in pattern_str
+                        
+                        if is_pattern_generico:
+                            is_direcionada = False
+                        elif is_pattern_direcionado:
+                            is_direcionada = True
+                        
+                        debug_print(f"[TOOL] ✅ Códigos {sub_de} → {sub_para} encontrados por padrão numérico (direcionada: {is_direcionada})")
+                        return (sub_de, sub_para, is_direcionada)
                 except (ValueError, IndexError):
                     continue
         
         # ETAPA 2: Buscar por nomes de submercados
         # Ordenar por tamanho do nome (mais específico primeiro)
         subsistemas_ordenados = sorted(subsistemas_disponiveis, key=lambda x: len(x['nome']), reverse=True)
+        
+        # Função auxiliar para extrair palavras-chave do nome do submercado
+        def _extract_keywords(nome_completo: str) -> list:
+            """Extrai palavras-chave relevantes do nome do submercado."""
+            nome_lower = nome_completo.lower().strip()
+            # Palavras a ignorar
+            stopwords = {'subsistema', 'submercado', 'sistema', 'de', 'do', 'da', 'dos', 'das'}
+            # Extrair palavras que não são stopwords
+            palavras = re.findall(r'\b\w+\b', nome_lower)
+            keywords = [p for p in palavras if p not in stopwords and len(p) > 2]
+            # Se não encontrou keywords, usar o nome completo
+            return keywords if keywords else [nome_lower]
+        
+        # Criar mapeamento de keywords para submercados
+        keywords_to_subsistemas = {}
+        for subsistema in subsistemas_disponiveis:
+            nome_sub = subsistema['nome']
+            keywords = _extract_keywords(nome_sub)
+            for keyword in keywords:
+                if keyword not in keywords_to_subsistemas:
+                    keywords_to_subsistemas[keyword] = []
+                keywords_to_subsistemas[keyword].append(subsistema)
+        
+        debug_print(f"[TOOL] Submercados disponíveis: {[(s['codigo'], s['nome']) for s in subsistemas_disponiveis]}")
+        debug_print(f"[TOOL] Keywords mapeadas: {list(keywords_to_subsistemas.keys())}")
         
         sub_de = None
         sub_para = None
@@ -136,71 +220,126 @@ class LimitesIntercambioTool(NEWAVETool):
         if pattern_entre:
             nome_1 = pattern_entre.group(1).strip()
             nome_2 = pattern_entre.group(2).strip()
+            debug_print(f"[TOOL] Padrão 'entre X e Y' detectado: '{nome_1}' e '{nome_2}'")
             
-            # Buscar submercados que correspondem aos nomes
-            for subsistema in subsistemas_ordenados:
-                nome_sub_lower = subsistema['nome'].lower().strip()
-                if nome_sub_lower and nome_sub_lower in nome_1:
-                    sub_de = subsistema['codigo']
-                    debug_print(f"[TOOL] ✅ Código {sub_de} encontrado como origem (padrão 'entre X e Y'): '{subsistema['nome']}'")
-                    break
+            # Buscar submercados que correspondem aos nomes (usando keywords)
+            for keyword, subsistemas_list in keywords_to_subsistemas.items():
+                if re.search(rf'\b{re.escape(keyword)}\b', nome_1):
+                    if sub_de is None:
+                        sub_de = subsistemas_list[0]['codigo']
+                        debug_print(f"[TOOL] ✅ Código {sub_de} encontrado como origem (padrão 'entre X e Y'): '{subsistemas_list[0]['nome']}' (keyword: '{keyword}')")
+                        break
             
-            for subsistema in subsistemas_ordenados:
-                nome_sub_lower = subsistema['nome'].lower().strip()
-                if nome_sub_lower and nome_sub_lower in nome_2:
-                    if subsistema['codigo'] != sub_de:
-                        sub_para = subsistema['codigo']
-                        debug_print(f"[TOOL] ✅ Código {sub_para} encontrado como destino (padrão 'entre X e Y'): '{subsistema['nome']}'")
+            for keyword, subsistemas_list in keywords_to_subsistemas.items():
+                if re.search(rf'\b{re.escape(keyword)}\b', nome_2):
+                    for subsistema in subsistemas_list:
+                        if subsistema['codigo'] != sub_de:
+                            sub_para = subsistema['codigo']
+                            debug_print(f"[TOOL] ✅ Código {sub_para} encontrado como destino (padrão 'entre X e Y'): '{subsistema['nome']}' (keyword: '{keyword}')")
+                            break
+                    if sub_para is not None:
                         break
             
             if sub_de is not None and sub_para is not None:
-                return (sub_de, sub_para)
+                # Padrão "entre X e Y" é sempre genérico (ambos os sentidos)
+                debug_print(f"[TOOL] ✅ Par encontrado por padrão 'entre X e Y' (genérico): {sub_de} ↔ {sub_para}")
+                return (sub_de, sub_para, False)
         
-        # Padrão: "X para Y" ou "X → Y"
-        # Buscar primeiro submercado (origem)
-        for subsistema in subsistemas_ordenados:
-            codigo_sub = subsistema['codigo']
-            nome_sub = subsistema['nome']
-            nome_sub_lower = nome_sub.lower().strip()
+        # Padrão: "X para Y" ou "X → Y" ou "de X para Y" (direcionado)
+        # Primeiro, encontrar as posições dos indicadores de direção (busca global)
+        pos_para_global = query_lower.find(' para ')
+        pos_arrow_global = query_lower.find(' → ')
+        pos_arrow_simple_global = query_lower.find('->')
+        debug_print(f"[TOOL] Posições dos indicadores: 'para'={pos_para_global}, '→'={pos_arrow_global}, '->'={pos_arrow_simple_global}")
+        
+        # Buscar primeiro submercado (origem) - deve estar ANTES de "para", "→", etc
+        # Usar keywords para fazer match mais flexível
+        safe_print(f"[TOOL] Buscando origem (antes de 'para')...")
+        for keyword, subsistemas_list in keywords_to_subsistemas.items():
+            if sub_de is not None:
+                break
             
-            if nome_sub_lower and nome_sub_lower in query_lower:
-                # Verificar se não é o segundo submercado (depois de "para", "→", etc)
-                pos_nome = query_lower.find(nome_sub_lower)
-                pos_para = query_lower.find(' para ', pos_nome)
-                pos_arrow = query_lower.find(' → ', pos_nome)
+            # Verificar se a keyword aparece na query
+            keyword_match = re.search(rf'\b{re.escape(keyword)}\b', query_lower)
+            if keyword_match:
+                pos_keyword = keyword_match.start()
+                safe_print(f"[TOOL]   Keyword '{keyword}' encontrada na posição {pos_keyword} (subsistema: {subsistemas_list[0]['nome']})")
                 
-                if pos_para == -1 and pos_arrow == -1:
-                    sub_de = codigo_sub
-                    debug_print(f"[TOOL] ✅ Código {codigo_sub} encontrado como origem: '{nome_sub}'")
+                # Verificar padrão "de X para Y" explicitamente (usando keyword)
+                pattern_de_para = re.search(rf'de\s+{re.escape(keyword)}\s+para', query_lower)
+                
+                # É origem se:
+                # 1. Matches "de X para" pattern, OR
+                # 2. Aparece ANTES de um indicador de direção (para, →, ->)
+                is_origin = False
+                
+                if pattern_de_para is not None:
+                    is_origin = True
+                    safe_print(f"[TOOL]     → Matches padrão 'de X para'")
+                elif pos_para_global != -1 and pos_keyword < pos_para_global:
+                    is_origin = True
+                    safe_print(f"[TOOL]     → Está antes de 'para' (pos {pos_keyword} < {pos_para_global})")
+                elif pos_arrow_global != -1 and pos_keyword < pos_arrow_global:
+                    is_origin = True
+                    safe_print(f"[TOOL]     → Está antes de '→'")
+                elif pos_arrow_simple_global != -1 and pos_keyword < pos_arrow_simple_global:
+                    is_origin = True
+                    safe_print(f"[TOOL]     → Está antes de '->'")
+                
+                if is_origin:
+                    # Usar o primeiro subsistema associado à keyword
+                    sub_de = subsistemas_list[0]['codigo']
+                    safe_print(f"[TOOL] ✅ Código {sub_de} encontrado como origem: '{subsistemas_list[0]['nome']}' (keyword: '{keyword}')")
                     break
         
-        # Buscar segundo submercado (destino)
-        for subsistema in subsistemas_ordenados:
-            codigo_sub = subsistema['codigo']
-            nome_sub = subsistema['nome']
-            nome_sub_lower = nome_sub.lower().strip()
+        # Buscar segundo submercado (destino) - deve estar DEPOIS de "para", "→", etc
+        safe_print(f"[TOOL] Buscando destino (depois de 'para')...")
+        for keyword, subsistemas_list in keywords_to_subsistemas.items():
+            if sub_para is not None:
+                break
             
-            if nome_sub_lower and nome_sub_lower in query_lower:
-                # Verificar se está depois de "para", "→", etc
-                pos_para = query_lower.find(' para ')
-                pos_arrow = query_lower.find(' → ')
-                pos_nome = query_lower.find(nome_sub_lower)
+            # Verificar se a keyword aparece na query
+            keyword_match = re.search(rf'\b{re.escape(keyword)}\b', query_lower)
+            if keyword_match:
+                pos_keyword = keyword_match.start()
+                safe_print(f"[TOOL]   Keyword '{keyword}' encontrada na posição {pos_keyword} (subsistema: {subsistemas_list[0]['nome']})")
                 
-                if (pos_para != -1 and pos_nome > pos_para) or (pos_arrow != -1 and pos_nome > pos_arrow):
-                    if codigo_sub != sub_de:  # Não pode ser o mesmo
-                        sub_para = codigo_sub
-                        debug_print(f"[TOOL] ✅ Código {codigo_sub} encontrado como destino: '{nome_sub}'")
+                # É destino se aparece DEPOIS de um indicador de direção
+                is_destination = False
+                
+                if pos_para_global != -1 and pos_keyword > pos_para_global:
+                    is_destination = True
+                    safe_print(f"[TOOL]     → Está depois de 'para' (pos {pos_keyword} > {pos_para_global})")
+                elif pos_arrow_global != -1 and pos_keyword > pos_arrow_global:
+                    is_destination = True
+                    safe_print(f"[TOOL]     → Está depois de '→'")
+                elif pos_arrow_simple_global != -1 and pos_keyword > pos_arrow_simple_global:
+                    is_destination = True
+                    safe_print(f"[TOOL]     → Está depois de '->'")
+                
+                if is_destination:
+                    # Usar o primeiro subsistema associado à keyword que não seja o de origem
+                    for subsistema in subsistemas_list:
+                        if subsistema['codigo'] != sub_de:
+                            sub_para = subsistema['codigo']
+                            safe_print(f"[TOOL] ✅ Código {sub_para} encontrado como destino: '{subsistema['nome']}' (keyword: '{keyword}')")
+                            break
+                    if sub_para is not None:
                         break
         
         if sub_de is not None and sub_para is not None:
-            return (sub_de, sub_para)
+            # Se chegou aqui, é uma query direcionada (não foi padrão "entre X e Y")
+            safe_print(f"[TOOL] ✅ Par direcionado encontrado: {sub_de} → {sub_para}")
+            return (sub_de, sub_para, True)
         
         # Se encontrou apenas um, retornar None (precisa de par)
         if sub_de is not None or sub_para is not None:
-            debug_print("[TOOL] ⚠️ Apenas um submercado identificado, mas intercâmbio requer par")
+            safe_print(f"[TOOL] ⚠️ Apenas um submercado identificado: de={sub_de}, para={sub_para} (intercâmbio requer par)")
         
-        debug_print("[TOOL] ⚠️ Nenhum par de submercados específico detectado na query")
-        return (None, None)
+        safe_print(f"[TOOL] ⚠️ Nenhum par de submercados específico detectado na query")
+        safe_print(f"[TOOL]   Query processada: '{query_lower}'")
+        safe_print(f"[TOOL]   Submercados disponíveis: {[(s['codigo'], s['nome']) for s in subsistemas_disponiveis]}")
+        return (None, None, None)
     
     def execute(self, query: str, **kwargs) -> Dict[str, Any]:
         """
@@ -257,7 +396,10 @@ class LimitesIntercambioTool(NEWAVETool):
             
             # ETAPA 4: Identificar filtros da query
             debug_print("[TOOL] ETAPA 4: Identificando filtros...")
-            submercado_de, submercado_para = self._extract_submercados_from_query(query, sistema)
+            submercado_de, submercado_para, query_direcionada = self._extract_submercados_from_query(query, sistema)
+            
+            # Log importante usando safe_print para garantir visibilidade
+            safe_print(f"[TOOL] Submercados extraídos: de={submercado_de}, para={submercado_para}, direcionada={query_direcionada}")
             
             # Detectar tipo de limite solicitado
             query_lower = query.lower()
@@ -271,12 +413,39 @@ class LimitesIntercambioTool(NEWAVETool):
             
             # Aplicar filtros
             df_filtrado = df_limites.copy()
+            safe_print(f"[TOOL] DataFrame antes dos filtros: {len(df_filtrado)} registros")
+            if len(df_filtrado) > 0:
+                safe_print(f"[TOOL] Colunas disponíveis: {list(df_filtrado.columns)}")
+                if 'submercado_de' in df_filtrado.columns and 'submercado_para' in df_filtrado.columns:
+                    pares_unicos = df_filtrado[['submercado_de', 'submercado_para']].drop_duplicates()
+                    safe_print(f"[TOOL] Pares únicos no DataFrame: {pares_unicos.values.tolist()}")
             
-            if submercado_de is not None:
+            if submercado_de is not None and submercado_para is not None:
+                # Se query é genérica ("entre X e Y"), incluir ambos os sentidos
+                if query_direcionada is False:
+                    # Query genérica: incluir ambos os sentidos (X→Y e Y→X)
+                    mask = (
+                        ((df_filtrado['submercado_de'] == submercado_de) & 
+                         (df_filtrado['submercado_para'] == submercado_para)) |
+                        ((df_filtrado['submercado_de'] == submercado_para) & 
+                         (df_filtrado['submercado_para'] == submercado_de))
+                    )
+                    df_filtrado = df_filtrado[mask]
+                    debug_print(f"[TOOL] ✅ Filtrado por par genérico (ambos os sentidos): {submercado_de} ↔ {submercado_para}")
+                else:
+                    # Query direcionada: apenas um sentido (X→Y)
+                    mask = (
+                        (df_filtrado['submercado_de'] == submercado_de) & 
+                        (df_filtrado['submercado_para'] == submercado_para)
+                    )
+                    df_filtrado = df_filtrado[mask]
+                    debug_print(f"[TOOL] ✅ Filtrado por par direcionado: {submercado_de} → {submercado_para}")
+            elif submercado_de is not None:
+                # Apenas origem especificada
                 df_filtrado = df_filtrado[df_filtrado['submercado_de'] == submercado_de]
                 debug_print(f"[TOOL] ✅ Filtrado por submercado de origem: {submercado_de}")
-            
-            if submercado_para is not None:
+            elif submercado_para is not None:
+                # Apenas destino especificado
                 df_filtrado = df_filtrado[df_filtrado['submercado_para'] == submercado_para]
                 debug_print(f"[TOOL] ✅ Filtrado por submercado de destino: {submercado_para}")
             
@@ -284,7 +453,52 @@ class LimitesIntercambioTool(NEWAVETool):
                 df_filtrado = df_filtrado[df_filtrado['sentido'] == filtro_sentido]
                 debug_print(f"[TOOL] ✅ Filtrado por sentido: {filtro_sentido}")
             
+            safe_print(f"[TOOL] DataFrame após filtros: {len(df_filtrado)} registros")
+            
+            # Fallback: Se query é direcionada e não encontrou dados, verificar sentido inverso
+            # Os limites são armazenados em blocos que representam ambos os sentidos (A->B e B->A)
+            # Se não encontrou no sentido solicitado, buscar no sentido inverso mantendo o par e invertendo o sentido (0 ↔ 1)
+            if df_filtrado.empty and query_direcionada is True and submercado_de is not None and submercado_para is not None:
+                safe_print(f"[TOOL] ⚠️ Par {submercado_de}→{submercado_para} não encontrado, verificando sentido inverso...")
+                
+                # Buscar no sentido inverso (par invertido no arquivo)
+                mask_inverso = (
+                    (df_limites['submercado_de'] == submercado_para) & 
+                    (df_limites['submercado_para'] == submercado_de)
+                )
+                df_inverso = df_limites[mask_inverso].copy()
+                
+                if not df_inverso.empty:
+                    # Se há filtro de sentido, buscar o sentido invertido (0 ↔ 1)
+                    # Pois quando você inverte a direção, o sentido também é invertido
+                    if filtro_sentido is not None:
+                        sentido_invertido = 1 - filtro_sentido  # Inverte 0 ↔ 1
+                        df_inverso = df_inverso[df_inverso['sentido'] == sentido_invertido].copy()
+                        safe_print(f"[TOOL] ✅ Aplicando filtro de sentido invertido: {sentido_invertido} (solicitado: {filtro_sentido})")
+                    
+                    if not df_inverso.empty:
+                        # Manter o par original do arquivo durante a busca, mas ao final atualizar para refletir a direção solicitada
+                        # Inverter o sentido (0 ↔ 1) pois ao inverter a direção, o sentido também é invertido
+                        df_inverso = df_inverso.copy()
+                        df_inverso['sentido'] = 1 - df_inverso['sentido']  # Inverte 0 ↔ 1
+                        # Atualizar submercado_de e submercado_para para refletir a direção solicitada pelo usuário
+                        df_inverso['submercado_de'] = submercado_de
+                        df_inverso['submercado_para'] = submercado_para
+                        df_filtrado = df_inverso
+                        safe_print(f"[TOOL] ✅ Dados encontrados no sentido inverso {submercado_para}→{submercado_de}, mantendo par e invertendo sentido para {submercado_de}→{submercado_para}")
+            
             if df_filtrado.empty:
+                # Log detalhado do erro
+                safe_print(f"[TOOL] ❌ Nenhum resultado encontrado após filtros")
+                safe_print(f"[TOOL]   Filtros aplicados: de={submercado_de}, para={submercado_para}, direcionada={query_direcionada}, sentido={filtro_sentido}")
+                if submercado_de is not None and submercado_para is not None:
+                    # Verificar se o par existe no DataFrame original
+                    mask_de_para = (df_limites['submercado_de'] == submercado_de) & (df_limites['submercado_para'] == submercado_para)
+                    mask_para_de = (df_limites['submercado_de'] == submercado_para) & (df_limites['submercado_para'] == submercado_de)
+                    if mask_de_para.any() or mask_para_de.any():
+                        safe_print(f"[TOOL]   ⚠️ Par {submercado_de}→{submercado_para} existe no DataFrame, mas foi filtrado por outros critérios")
+                    else:
+                        safe_print(f"[TOOL]   ⚠️ Par {submercado_de}→{submercado_para} não existe no DataFrame")
                 return {
                     "success": False,
                     "error": "Nenhum limite de intercâmbio encontrado com os filtros especificados",
@@ -326,22 +540,43 @@ class LimitesIntercambioTool(NEWAVETool):
             pares_submercados = df_filtrado[['submercado_de', 'submercado_para']].drop_duplicates()
             anos = sorted(df_filtrado['ano'].unique().tolist()) if 'ano' in df_filtrado.columns else []
             
-            # Estatísticas por par de submercados
+            # Estatísticas por par de submercados e sentido
             stats_por_par = []
-            for _, row in pares_submercados.iterrows():
+            # Agrupar por par E sentido para separar mínimo e máximo
+            if 'sentido' in df_filtrado.columns:
+                pares_com_sentido = df_filtrado[['submercado_de', 'submercado_para', 'sentido']].drop_duplicates()
+            else:
+                # Se não tem coluna sentido, agrupar apenas por par
+                pares_com_sentido = df_filtrado[['submercado_de', 'submercado_para']].drop_duplicates()
+                pares_com_sentido['sentido'] = None
+            
+            for _, row in pares_com_sentido.iterrows():
                 sub_de = int(row['submercado_de'])
                 sub_para = int(row['submercado_para'])
-                df_par = df_filtrado[
+                sentido = row.get('sentido')
+                
+                # Filtrar por par e sentido
+                mask = (
                     (df_filtrado['submercado_de'] == sub_de) & 
                     (df_filtrado['submercado_para'] == sub_para)
-                ]
+                )
+                if sentido is not None and pd.notna(sentido):
+                    mask = mask & (df_filtrado['sentido'] == sentido)
+                
+                df_par = df_filtrado[mask]
                 
                 if len(df_par) > 0:
+                    sentido_desc = None
+                    if sentido is not None and pd.notna(sentido):
+                        sentido_desc = 'Intercâmbio mínimo obrigatório' if sentido == 1 else 'Limite máximo de intercâmbio'
+                    
                     stats_por_par.append({
                         'submercado_de': sub_de,
                         'submercado_para': sub_para,
                         'nome_de': nomes_submercados.get(sub_de, f'Subsistema {sub_de}'),
                         'nome_para': nomes_submercados.get(sub_para, f'Subsistema {sub_para}'),
+                        'sentido': int(sentido) if sentido is not None and pd.notna(sentido) else None,
+                        'sentido_descricao': sentido_desc,
                         'total_registros': len(df_par),
                         'valor_medio': float(df_par['valor'].mean()) if 'valor' in df_par.columns else 0,
                         'valor_min': float(df_par['valor'].min()) if 'valor' in df_par.columns else 0,

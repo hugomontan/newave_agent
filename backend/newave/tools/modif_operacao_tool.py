@@ -93,56 +93,132 @@ class ModifOperacaoTool(NEWAVETool):
         """
         query_lower = query.lower()
         
-        # Verificar primeiro "vazão mínima por período" (mais específico) antes de "vazão mínima" (genérico)
-        vazao_minima_por_periodo_patterns = [
-            "vazão mínima por período", "vazao minima por periodo",
-            "vazão minima por período", "vazao mínima por periodo",
-            "vazão mínima por periodo", "vazao minima por período",
-            "vazão mínima temporal", "vazao minima temporal"
+        # Lista ordenada: mais específicas primeiro, mais genéricas depois
+        # Isso garante que termos mais específicos sejam detectados antes dos genéricos
+        tipos_ordenados = [
+            # VAZMINT - vazão mínima por período (mais específico)
+            ("vazão mínima por período", "VAZMINT"),
+            ("vazao minima por periodo", "VAZMINT"),
+            ("vazão minima por período", "VAZMINT"),
+            ("vazao mínima por periodo", "VAZMINT"),
+            ("vazão mínima por periodo", "VAZMINT"),
+            ("vazao minima por período", "VAZMINT"),
+            ("vazão mínima temporal", "VAZMINT"),
+            ("vazao minima temporal", "VAZMINT"),
+            ("vazmint", "VAZMINT"),
+            
+            # VAZMIN - vazão mínima genérica
+            ("vazão mínima", "VAZMIN"),
+            ("vazao minima", "VAZMIN"),
+            ("vazmin", "VAZMIN"),
+            
+            # VAZMAXT - vazão máxima com data
+            ("vazão máxima com data", "VAZMAXT"),
+            ("vazao maxima com data", "VAZMAXT"),
+            ("vazão máxima temporal", "VAZMAXT"),
+            ("vazao maxima temporal", "VAZMAXT"),
+            ("vazão máxima", "VAZMAXT"),
+            ("vazao maxima", "VAZMAXT"),
+            ("vazmaxt", "VAZMAXT"),
+            
+            # VMINP - volume mínimo com penalidade
+            ("volume mínimo com penalidade", "VMINP"),
+            ("volume minimo com penalidade", "VMINP"),
+            ("vminp", "VMINP"),
+            
+            # VMINT - volume mínimo com data
+            ("volume mínimo com data", "VMINT"),
+            ("volume minimo com data", "VMINT"),
+            ("volume mínimo temporal", "VMINT"),
+            ("volume minimo temporal", "VMINT"),
+            ("vmint", "VMINT"),
+            
+            # VMAXT - volume máximo com data
+            ("volume máximo com data", "VMAXT"),
+            ("volume maximo com data", "VMAXT"),
+            ("volume máximo temporal", "VMAXT"),
+            ("volume maximo temporal", "VMAXT"),
+            ("vmaxt", "VMAXT"),
+            
+            # VOLMIN - volume mínimo genérico
+            ("volume mínimo", "VOLMIN"),
+            ("volume minimo", "VOLMIN"),
+            ("volmin", "VOLMIN"),
+            
+            # VOLMAX - volume máximo genérico
+            ("volume máximo", "VOLMAX"),
+            ("volume maximo", "VOLMAX"),
+            ("volmax", "VOLMAX"),
+            
+            # TURBMINT - turbinamento mínimo com data
+            ("turbinamento mínimo com data", "TURBMINT"),
+            ("turbinamento minimo com data", "TURBMINT"),
+            ("turbinamento mínimo temporal", "TURBMINT"),
+            ("turbinamento minimo temporal", "TURBMINT"),
+            ("turbinamento mínimo", "TURBMINT"),
+            ("turbinamento minimo", "TURBMINT"),
+            ("turbmint", "TURBMINT"),
+            
+            # TURBMAXT - turbinamento máximo com data
+            ("turbinamento máximo com data", "TURBMAXT"),
+            ("turbinamento maximo com data", "TURBMAXT"),
+            ("turbinamento máximo temporal", "TURBMAXT"),
+            ("turbinamento maximo temporal", "TURBMAXT"),
+            ("turbinamento máximo", "TURBMAXT"),
+            ("turbinamento maximo", "TURBMAXT"),
+            ("turbmaxt", "TURBMAXT"),
+            
+            # TEIF - taxa equivalente de indisponibilidade forçada
+            ("taxa equivalente de indisponibilidade forçada", "TEIF"),
+            ("taxa equivalente de indisponibilidade forcada", "TEIF"),
+            ("taxa equivalente indisponibilidade forçada", "TEIF"),
+            ("taxa equivalente indisponibilidade forcada", "TEIF"),
+            ("taxa indisponibilidade forçada", "TEIF"),
+            ("taxa indisponibilidade forcada", "TEIF"),
+            ("indisponibilidade forçada", "TEIF"),
+            ("indisponibilidade forcada", "TEIF"),
+            ("teif", "TEIF"),
+            
+            # IP - indisponibilidade programada
+            ("indisponibilidades programadas", "IP"),
+            ("indisponibilidade programada", "IP"),
+            ("ip", "IP"),
+            
+            # POTEFE - potência efetiva
+            ("potência efetiva hidrelétrica", "POTEFE"),
+            ("potencia efetiva hidreletrica", "POTEFE"),
+            ("potência efetiva", "POTEFE"),
+            ("potencia efetiva", "POTEFE"),
+            ("potefe", "POTEFE"),
+            
+            # CMONT - nível montante
+            ("nível montante", "CMONT"),
+            ("nivel montante", "CMONT"),
+            ("cmont", "CMONT"),
+            
+            # CFUGA - canal de fuga
+            ("canal de fuga", "CFUGA"),
+            ("canal fuga", "CFUGA"),
+            ("cfuga", "CFUGA"),
+            
+            # NUMCNJ - número de conjuntos
+            ("número de conjuntos", "NUMCNJ"),
+            ("numero de conjuntos", "NUMCNJ"),
+            ("numcnj", "NUMCNJ"),
+            
+            # NUMMAQ - número de máquinas
+            ("número de máquinas", "NUMMAQ"),
+            ("numero de maquinas", "NUMMAQ"),
+            ("nummaq", "NUMMAQ"),
         ]
         
-        if any(pattern in query_lower for pattern in vazao_minima_por_periodo_patterns):
-            return "VAZMINT"
-        
-        tipos = {
-            # Volumes
-            "volume mínimo": "VOLMIN",
-            "volume minimo": "VOLMIN",
-            "volmin": "VOLMIN",
-            "volume máximo": "VOLMAX",
-            "volume maximo": "VOLMAX",
-            "volmax": "VOLMAX",
-            "vmaxt": "VMAXT",
-            "vmint": "VMINT",
-            "vminp": "VMINP",
-            # Vazões
-            "vazão mínima": "VAZMIN",
-            "vazao minima": "VAZMIN",
-            "vazmin": "VAZMIN",
-            "vazmint": "VAZMINT",
-            "vazão máxima": "VAZMAXT",
-            "vazao maxima": "VAZMAXT",
-            "vazmaxt": "VAZMAXT",
-            # Níveis
-            "canal de fuga": "CFUGA",
-            "canal fuga": "CFUGA",
-            "cfuga": "CFUGA",
-            "nível montante": "CMONT",
-            "nivel montante": "CMONT",
-            "cmont": "CMONT",
-            # Turbinamento
-            "turbinamento máximo": "TURBMAXT",
-            "turbinamento maximo": "TURBMAXT",
-            "turbmaxt": "TURBMAXT",
-            "turbinamento mínimo": "TURBMINT",
-            "turbinamento minimo": "TURBMINT",
-            "turbmint": "TURBMINT",
-        }
-        
-        for key, value in tipos.items():
+        # Buscar do mais específico para o mais genérico
+        for key, value in tipos_ordenados:
             if key in query_lower:
+                debug_print(f"[TOOL] ✅ Tipo detectado: {value} (palavra-chave: '{key}')")
                 return value
         
+        debug_print("[TOOL] ⚠️ Nenhum tipo de modificação detectado na query")
         return None
     
     def _extract_usina_from_query(self, query: str, modif: Modif) -> Optional[int]:

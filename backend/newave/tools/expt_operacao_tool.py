@@ -76,30 +76,55 @@ class ExptOperacaoTool(NEWAVETool):
         """
         query_lower = query.lower()
         
-        tipos = {
-            "potência efetiva": "POTEF",
-            "potencia efetiva": "POTEF",
-            "potef": "POTEF",
-            "potencia": "POTEF",
-            "geração mínima": "GTMIN",
-            "geracao minima": "GTMIN",
-            "gtmin": "GTMIN",
-            "geracao minima": "GTMIN",
-            "fator capacidade": "FCMAX",
-            "fcmax": "FCMAX",
-            "fator de capacidade": "FCMAX",
-            "indisponibilidade programada": "IPTER",
-            "ipter": "IPTER",
-            "taxa indisponibilidade": "TEIFT",
-            "teift": "TEIFT",
-            "indisponibilidade forçada": "TEIFT",
-            "indisponibilidade forcada": "TEIFT",
-        }
+        # Lista ordenada: mais específicas primeiro, mais genéricas depois
+        # Ordem: TEIFT > IPTER > FCMAX > GTMIN > POTEF
+        # Isso garante que termos mais específicos sejam detectados antes dos genéricos
+        tipos_ordenados = [
+            # TEIFT - mais específicas primeiro
+            ("taxa equivalente de indisponibilidade forçada", "TEIFT"),
+            ("taxa equivalente de indisponibilidade forcada", "TEIFT"),
+            ("taxa equivalente indisponibilidade forçada", "TEIFT"),
+            ("taxa equivalente indisponibilidade forcada", "TEIFT"),
+            ("taxa indisponibilidade forçada", "TEIFT"),
+            ("taxa indisponibilidade forcada", "TEIFT"),
+            ("indisponibilidade forçada", "TEIFT"),
+            ("indisponibilidade forcada", "TEIFT"),
+            ("taxa indisponibilidade", "TEIFT"),
+            ("teift", "TEIFT"),
+            
+            # IPTER
+            ("indisponibilidades programadas", "IPTER"),
+            ("indisponibilidade programada", "IPTER"),
+            ("ipter", "IPTER"),
+            
+            # FCMAX
+            ("fator de capacidade máximo", "FCMAX"),
+            ("fator capacidade maximo", "FCMAX"),
+            ("fator de capacidade", "FCMAX"),
+            ("fator capacidade", "FCMAX"),
+            ("fcmax", "FCMAX"),
+            
+            # GTMIN
+            ("geração térmica mínima", "GTMIN"),
+            ("geracao termica minima", "GTMIN"),
+            ("geração mínima", "GTMIN"),
+            ("geracao minima", "GTMIN"),
+            ("gtmin", "GTMIN"),
+            
+            # POTEF
+            ("potência efetiva", "POTEF"),
+            ("potencia efetiva", "POTEF"),
+            ("potef", "POTEF"),
+            ("potencia", "POTEF"),
+        ]
         
-        for key, value in tipos.items():
+        # Buscar do mais específico para o mais genérico
+        for key, value in tipos_ordenados:
             if key in query_lower:
+                debug_print(f"[TOOL] ✅ Tipo detectado: {value} (palavra-chave: '{key}')")
                 return value
         
+        debug_print("[TOOL] ⚠️ Nenhum tipo de modificação detectado na query")
         return None
     
     def _extract_usina_from_query(self, query: str, expt: Expt) -> Optional[int]:
