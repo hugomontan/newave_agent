@@ -224,9 +224,32 @@ class ExptOperacaoTool(NEWAVETool):
             
             # ETAPA 4: Identificar filtros
             debug_print("[TOOL] ETAPA 4: Identificando filtros...")
-            codigo_usina = self._extract_usina_from_query(query, expt)
+            # Verificar se há código forçado (correção de usina)
+            forced_plant_code = kwargs.get("forced_plant_code")
+            if forced_plant_code is not None:
+                debug_print(f"[TOOL] Usando código forçado (correção): {forced_plant_code}")
+                codigo_usina = forced_plant_code
+            else:
+                codigo_usina = self._extract_usina_from_query(query, expt)
             tipo_modificacao = self._extract_tipo_modificacao(query)
             operacao_especifica = self._extract_operacao_especifica(query)
+            
+            # ETAPA 4.5: Criar selected_plant ANTES de processar dados (para garantir que follow-up apareça)
+            # Isso é crítico quando forced_plant_code está presente
+            selected_plant = None
+            if codigo_usina is not None:
+                from backend.newave.utils.thermal_plant_matcher import get_thermal_plant_matcher
+                matcher = get_thermal_plant_matcher()
+                if codigo_usina in matcher.code_to_names:
+                    nome_arquivo_csv, nome_completo_csv = matcher.code_to_names[codigo_usina]
+                    selected_plant = {
+                        "type": "thermal",
+                        "codigo": codigo_usina,
+                        "nome": nome_arquivo_csv,
+                        "nome_completo": nome_completo_csv if nome_completo_csv else nome_arquivo_csv,
+                        "tool_name": self.get_name()
+                    }
+                    debug_print(f"[TOOL] ✅ selected_plant criado: código={codigo_usina}, nome={nome_arquivo_csv}")
             
             if codigo_usina is not None:
                 debug_print(f"[TOOL] ✅ Filtro por usina: {codigo_usina}")
@@ -367,22 +390,8 @@ class ExptOperacaoTool(NEWAVETool):
                             elif isinstance(value, (pd.Timestamp, pd.DatetimeTZDtype)):
                                 record[key] = value.isoformat() if hasattr(value, 'isoformat') else str(value)
             
-            # ETAPA 7: Obter metadados da usina selecionada (apenas se uma única usina foi identificada)
-            selected_plant = None
-            if codigo_usina is not None and len(stats_por_usina) == 1:
-                from backend.newave.utils.thermal_plant_matcher import get_thermal_plant_matcher
-                matcher = get_thermal_plant_matcher()
-                if codigo_usina in matcher.code_to_names:
-                    nome_arquivo_csv, nome_completo_csv = matcher.code_to_names[codigo_usina]
-                    selected_plant = {
-                        "type": "thermal",
-                        "codigo": codigo_usina,
-                        "nome": nome_arquivo_csv,
-                        "nome_completo": nome_completo_csv if nome_completo_csv else nome_arquivo_csv,
-                        "tool_name": self.get_name()
-                    }
-            
-            # ETAPA 8: Formatar resultado
+            # ETAPA 7: Formatar resultado
+            # (selected_plant já foi criado na ETAPA 4.5)
             debug_print("[TOOL] ETAPA 8: Formatando resultado...")
             
             # Informações sobre filtros aplicados

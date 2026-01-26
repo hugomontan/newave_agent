@@ -77,6 +77,12 @@ def comparison_interpreter_node(state: MultiDeckState) -> dict:
                 )
                 
                 safe_print(f"[COMPARISON INTERPRETER]   Resposta de comparação gerada usando formatters originais")
+                
+                # Incluir plant_correction_followup se disponível no state
+                plant_correction_followup = state.get("plant_correction_followup")
+                if plant_correction_followup:
+                    result["plant_correction_followup"] = plant_correction_followup
+                
                 return result
             
             # Tool não é comparação, processar normalmente
@@ -95,13 +101,26 @@ def comparison_interpreter_node(state: MultiDeckState) -> dict:
             
             result = format_tool_response(tool_result, tool_used)
             safe_print(f"[COMPARISON INTERPRETER]   Resposta gerada: {len(result.get('final_response', ''))} caracteres")
+            
+            # Incluir plant_correction_followup se disponível no state
+            plant_correction_followup = state.get("plant_correction_followup")
+            if plant_correction_followup:
+                result["plant_correction_followup"] = plant_correction_followup
+            
             return result
         
         # Verificar se há disambiguation
         disambiguation = state.get("disambiguation")
         if disambiguation:
             safe_print(f"[COMPARISON INTERPRETER] Processando disambiguation com {len(disambiguation.get('options', []))} opções")
-            return {"final_response": ""}
+            result = {"final_response": ""}
+            
+            # Incluir plant_correction_followup se disponível no state
+            plant_correction_followup = state.get("plant_correction_followup")
+            if plant_correction_followup:
+                result["plant_correction_followup"] = plant_correction_followup
+            
+            return result
         
         # Se não há tool_result e não há disambiguation, retornar mensagem genérica
         safe_print(f"[COMPARISON INTERPRETER] Nenhuma tool disponível para processar a consulta de comparação")
@@ -111,7 +130,14 @@ Não foi possível identificar uma correspondência semântica entre sua consult
 
 Por favor, reformule sua pergunta ou consulte a documentação para ver os tipos de dados que podem ser consultados."""
         no_tool_msg = clean_response_text(no_tool_msg, max_emojis=2)
-        return {"final_response": no_tool_msg, "comparison_data": None}
+        result = {"final_response": no_tool_msg, "comparison_data": None}
+        
+        # Incluir plant_correction_followup se disponível no state
+        plant_correction_followup = state.get("plant_correction_followup")
+        if plant_correction_followup:
+            result["plant_correction_followup"] = plant_correction_followup
+        
+        return result
         
     except Exception as e:
         safe_print(f"[COMPARISON INTERPRETER ERROR] {str(e)}")

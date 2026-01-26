@@ -199,7 +199,13 @@ class ClastValoresTool(NEWAVETool):
             
             # ETAPA 5: Identificar filtros
             debug_print("[TOOL] ETAPA 5: Identificando filtros...")
-            codigo_classe = self._extract_classe_from_query(query, clast)
+            # Verificar se há código forçado (correção de usina/classe)
+            forced_plant_code = kwargs.get("forced_plant_code")
+            if forced_plant_code is not None:
+                debug_print(f"[TOOL] Usando código forçado (correção): {forced_plant_code}")
+                codigo_classe = forced_plant_code
+            else:
+                codigo_classe = self._extract_classe_from_query(query, clast)
             tipo_combustivel = self._extract_tipo_combustivel(query)
             
             if codigo_classe is not None:

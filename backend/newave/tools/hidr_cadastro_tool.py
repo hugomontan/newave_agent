@@ -376,40 +376,62 @@ class HidrCadastroTool(NEWAVETool):
             debug_print(f"[TOOL] ✅ {len(cadastro)} usina(s) encontrada(s) no cadastro")
             
             # ETAPA 4: Identificar usina da query
-            debug_print("[TOOL] ETAPA 4: Identificando usina da query...")
-            resultado = self._extract_usina_from_query(query, hidr)
-            
-            if resultado is None:
-                debug_print("[TOOL] ⚠️ Nenhuma usina específica identificada")
-                return {
-                    "success": False,
-                    "error": "Não foi possível identificar qual usina consultar. Por favor, especifique o nome ou código da usina.",
-                    "total_usinas": len(cadastro),
-                    "tool": self.get_name()
-                }
-            
-            codigo_usina, idx_real = resultado
-            debug_print(f"[TOOL] ✅ Usina identificada: código CSV={codigo_usina}, índice DataFrame={idx_real}")
+            # Verificar se há código forçado (correção de usina)
+            forced_plant_code = kwargs.get("forced_plant_code")
+            if forced_plant_code is not None:
+                debug_print(f"[TOOL] ETAPA 4: Usando código forçado (correção): {forced_plant_code}")
+                codigo_usina = forced_plant_code
+            else:
+                debug_print("[TOOL] ETAPA 4: Identificando usina da query...")
+                resultado = self._extract_usina_from_query(query, hidr)
+                
+                if resultado is None:
+                    debug_print("[TOOL] ⚠️ Nenhuma usina específica identificada")
+                    return {
+                        "success": False,
+                        "error": "Não foi possível identificar qual usina consultar. Por favor, especifique o nome ou código da usina.",
+                        "total_usinas": len(cadastro),
+                        "tool": self.get_name()
+                    }
+                
+                codigo_usina, idx_real = resultado
+                debug_print(f"[TOOL] ✅ Usina identificada: código CSV={codigo_usina}, índice DataFrame={idx_real}")
             
             # IMPORTANTE: codigo_usina vem do CSV (fonte de verdade)
             # idx_real vem do DataFrame e pode ser diferente do código
             
-            # ETAPA 5: Obter dados da usina
-            debug_print(f"[TOOL] ETAPA 5: Obtendo dados da usina código CSV={codigo_usina} (idx DataFrame={idx_real})...")
-            
-            # SEMPRE buscar pelo nome no DataFrame original usando o nome do CSV
-            # Isso garante que encontramos a usina correta mesmo com códigos desalinhados
+            # ETAPA 4.5: Criar selected_plant ANTES de buscar dados (para garantir que follow-up apareça)
+            # Isso é crítico quando forced_plant_code está presente
             from backend.newave.utils.hydraulic_plant_matcher import get_hydraulic_plant_matcher
             matcher = get_hydraulic_plant_matcher()
+            selected_plant = None
             
-            if codigo_usina not in matcher.code_to_names:
-                safe_print(f"[TOOL] ❌ Código CSV {codigo_usina} não encontrado no code_to_names")
-                return {
-                    "success": False,
-                    "error": f"Código {codigo_usina} não encontrado no mapeamento CSV",
-                    "tool": self.get_name()
-                }
+            debug_print(f"[TOOL] ETAPA 4.5: Criando selected_plant... codigo_usina={codigo_usina}")
+            if codigo_usina is not None:
+                debug_print(f"[TOOL] Verificando código {codigo_usina} no matcher...")
+                debug_print(f"[TOOL] Matcher tem {len(matcher.code_to_names)} códigos no code_to_names")
+                if codigo_usina in matcher.code_to_names:
+                    nome_arquivo_csv, nome_completo_csv, _ = matcher.code_to_names[codigo_usina]
+                    selected_plant = {
+                        "type": "hydraulic",
+                        "codigo": codigo_usina,
+                        "nome": nome_arquivo_csv,
+                        "nome_completo": nome_completo_csv if nome_completo_csv else nome_arquivo_csv,
+                        "tool_name": self.get_name()
+                    }
+                    debug_print(f"[TOOL] ✅ selected_plant criado: código={codigo_usina}, nome={nome_arquivo_csv}")
+                else:
+                    debug_print(f"[TOOL] ⚠️ Código {codigo_usina} não encontrado no matcher.code_to_names")
+                    debug_print(f"[TOOL] Códigos disponíveis no matcher (primeiros 10): {list(matcher.code_to_names.keys())[:10]}")
+                    # Não retornar erro aqui, apenas continuar sem selected_plant
+                    # Isso permite que a tool ainda funcione mesmo se o código não estiver no matcher
+            else:
+                debug_print("[TOOL] ⚠️ codigo_usina é None, não será criado selected_plant")
             
+            # ETAPA 5: Obter dados da usina
+            debug_print(f"[TOOL] ETAPA 5: Obtendo dados da usina código CSV={codigo_usina}...")
+            
+            # Buscar pelo nome no DataFrame original usando o nome do CSV
             nome_arquivo_csv, _, _ = matcher.code_to_names[codigo_usina]
             debug_print(f"[TOOL]   Buscando usina '{nome_arquivo_csv}' no DataFrame original pelo nome")
             
@@ -428,6 +450,15 @@ class HidrCadastroTool(NEWAVETool):
             
             if row is None:
                 safe_print(f"[TOOL] ❌ Usina '{nome_arquivo_csv}' não encontrada no DataFrame original")
+                # Se não encontrou dados mas tem selected_plant, retornar com selected_plant para follow-up
+                if selected_plant:
+                    debug_print(f"[TOOL] ⚠️ Usina não encontrada no HIDR.DAT, mas selected_plant foi criado para follow-up")
+                    return {
+                        "success": False,
+                        "error": f"Usina '{nome_arquivo_csv}' (código CSV {codigo_usina}) encontrada no CSV mas não no arquivo HIDR.DAT",
+                        "tool": self.get_name(),
+                        "selected_plant": selected_plant  # Incluir mesmo com erro para permitir follow-up
+                    }
                 return {
                     "success": False,
                     "error": f"Usina '{nome_arquivo_csv}' (código CSV {codigo_usina}) encontrada no CSV mas não no arquivo HIDR.DAT",
@@ -447,18 +478,6 @@ class HidrCadastroTool(NEWAVETool):
                 'campos_disponiveis': len(row.index),
             }
             
-            # ETAPA 7: Obter metadados da usina selecionada para correção
-            selected_plant = None
-            if codigo_usina in matcher.code_to_names:
-                nome_arquivo_csv, nome_completo_csv, _ = matcher.code_to_names[codigo_usina]
-                selected_plant = {
-                    "type": "hydraulic",
-                    "codigo": codigo_usina,
-                    "nome": nome_arquivo_csv,
-                    "nome_completo": nome_completo_csv if nome_completo_csv else nome_arquivo_csv,
-                    "tool_name": self.get_name()
-                }
-            
             # ETAPA 8: Formatar resultado
             debug_print("[TOOL] ETAPA 8: Formatando resultado...")
             
@@ -473,6 +492,9 @@ class HidrCadastroTool(NEWAVETool):
             # Adicionar metadados da usina selecionada se disponível
             if selected_plant:
                 result["selected_plant"] = selected_plant
+                debug_print(f"[TOOL] ✅ selected_plant adicionado ao resultado: código={selected_plant.get('codigo')}, nome={selected_plant.get('nome')}")
+            else:
+                debug_print("[TOOL] ⚠️ selected_plant é None, não será adicionado ao resultado")
             
             return result
             

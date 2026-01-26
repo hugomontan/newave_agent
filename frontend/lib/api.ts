@@ -149,15 +149,15 @@ export interface StreamEvent {
   plant_correction_followup?: {
     type: "plant_correction";
     message: string;
-    selectedPlant: {
+    selected_plant: {
       type: "hydraulic" | "thermal";
       codigo: number;
       nome: string;
       nome_completo: string;
       tool_name: string;
     };
-    allPlants: Array<{codigo: number; nome: string; nome_completo: string}>;
-    originalQuery: string;
+    all_plants: Array<{codigo: number; nome: string; nome_completo: string}>;
+    original_query: string;
   };
   comparison_data?: {
     deck_1: {

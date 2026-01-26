@@ -344,7 +344,18 @@ def run_query_stream(
                                     safe_print(f"[GRAPH] [DEBUG] Enviando comparison_data - matrix_data[0]: {matrix_data[0]}")
                             else:
                                 safe_print(f"[GRAPH] [DEBUG] Enviando comparison_data - matrix_data: None ou vazio")
-                        yield f"data: {json.dumps({'type': 'response_complete', 'response': response, 'comparison_data': cleaned_comparison_data}, allow_nan=False)}\n\n"
+                        
+                        # Incluir plant_correction_followup se disponível
+                        response_complete_data = {
+                            'type': 'response_complete',
+                            'response': response,
+                            'comparison_data': cleaned_comparison_data
+                        }
+                        plant_correction_followup = node_output.get("plant_correction_followup")
+                        if plant_correction_followup:
+                            response_complete_data['plant_correction_followup'] = plant_correction_followup
+                        
+                        yield f"data: {json.dumps(response_complete_data, allow_nan=False)}\n\n"
                 
                 if not (node_name == "comparison_tool_router" and node_output.get("disambiguation")):
                     yield f"data: {json.dumps({'type': 'node_complete', 'node': node_name})}\n\n"

@@ -602,18 +602,6 @@ export function ChatMessage({ message, onOptionClick }: ChatMessageProps) {
                 </div>
                 )}
 
-                {/* Plant Correction Prompt */}
-                {message.plantCorrectionData && message.plantCorrectionData.selectedPlant && (
-                  <PlantCorrectionPrompt
-                    selectedPlant={message.plantCorrectionData.selectedPlant}
-                    allPlants={message.plantCorrectionData.allPlants}
-                    originalQuery={message.plantCorrectionData.originalQuery}
-                    onSelectPlant={(codigo, toolName, query) => {
-                      const correctionQuery = `__PLANT_CORR__:${toolName}:${codigo}:${query}`;
-                      onOptionClick?.(correctionQuery, message.id);
-                    }}
-                  />
-                )}
               </div>
 
               {/* Comparison View - mostrar mesmo durante loading de disambiguation */}
@@ -638,6 +626,21 @@ export function ChatMessage({ message, onOptionClick }: ChatMessageProps) {
                   <DataTable 
                     data={message.rawData} 
                     title=" Dados Extraídos"
+                  />
+                </div>
+              )}
+
+              {/* Plant Correction Prompt - no final da mensagem */}
+              {message.plantCorrectionData && message.plantCorrectionData.selectedPlant && (
+                <div className="mt-4">
+                  <PlantCorrectionPrompt
+                    selectedPlant={message.plantCorrectionData.selectedPlant}
+                    allPlants={message.plantCorrectionData.allPlants}
+                    originalQuery={message.plantCorrectionData.originalQuery}
+                    onSelectPlant={(codigo, toolName, query) => {
+                      const correctionQuery = `__PLANT_CORR__:${toolName}:${codigo}:${query}`;
+                      onOptionClick?.(correctionQuery, message.id);
+                    }}
                   />
                 </div>
               )}

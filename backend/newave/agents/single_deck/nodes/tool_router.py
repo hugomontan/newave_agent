@@ -87,19 +87,22 @@ def tool_router_node(state: SingleDeckState) -> dict:
         return {"tool_route": False}
     
     # Função auxiliar para executar uma tool (usa função compartilhada)
-    def _execute_tool(tool, tool_name: str, query_to_use: str = None):
+    def _execute_tool(tool, tool_name: str, query_to_use: str = None, **kwargs):
         """Executa uma tool e retorna o resultado formatado."""
         if query_to_use is None:
             query_to_use = query
-        result = shared_execute_tool(tool, tool_name, query_to_use, "[TOOL ROUTER]")
+        result = shared_execute_tool(tool, tool_name, query_to_use, "[TOOL ROUTER]", **kwargs)
         
         # Adicionar follow-up de correção de usina se aplicável
-        if result.get("tool_route") and result.get("tool_result", {}).get("success"):
+        # IMPORTANTE: Gerar follow-up mesmo quando success=False, desde que selected_plant esteja presente
+        if result.get("tool_route"):
             tool_result = result.get("tool_result", {})
-            followup = generate_plant_correction_followup(tool_result, query_to_use)
-            if followup:
-                result["plant_correction_followup"] = followup
-                safe_print(f"[TOOL ROUTER] ✅ Follow-up de correção de usina gerado")
+            # Verificar se há selected_plant (pode estar presente mesmo com success=False)
+            if tool_result.get("selected_plant"):
+                followup = generate_plant_correction_followup(tool_result, query_to_use)
+                if followup:
+                    result["plant_correction_followup"] = followup
+                    safe_print(f"[TOOL ROUTER] ✅ Follow-up de correção de usina gerado (success={tool_result.get('success')})")
         
         return result
     
@@ -116,15 +119,26 @@ def tool_router_node(state: SingleDeckState) -> dict:
         # Encontrar a tool
         selected_tool = find_tool_by_name(correction_tool_name, tools)
         if selected_tool:
-            # Executar tool com query modificada que força o código da usina
-            # A tool deve detectar o código na query e usar diretamente
-            # Por enquanto, vamos passar a query original e deixar a tool lidar com isso
-            # TODO: Implementar mecanismo para forçar código diretamente na tool
-            result = _execute_tool(selected_tool, correction_tool_name, original_query_correction)
-            result["from_plant_correction"] = True
-            result["plant_code_forced"] = plant_code
-            safe_print(f"[TOOL ROUTER] ✅ Tool executada com correção de usina")
-            return result
+            # Passar o código diretamente via kwargs para evitar matching
+            # A tool deve usar o código diretamente sem passar pelo matcher
+            safe_print(f"[TOOL ROUTER]   Passando código {plant_code} diretamente via kwargs (sem matching)")
+            safe_print(f"[TOOL ROUTER]   Executando tool {correction_tool_name}...")
+            
+            try:
+                result = _execute_tool(selected_tool, correction_tool_name, original_query_correction, forced_plant_code=plant_code)
+                safe_print(f"[TOOL ROUTER]   Resultado recebido: tool_route={result.get('tool_route')}, success={result.get('tool_result', {}).get('success')}")
+                result["from_plant_correction"] = True
+                result["plant_code_forced"] = plant_code
+                safe_print(f"[TOOL ROUTER] ✅ Tool executada com correção de usina")
+                return result
+            except Exception as e:
+                safe_print(f"[TOOL ROUTER] ❌ Erro ao executar tool com correção: {e}")
+                import traceback
+                traceback.print_exc()
+                return {
+                    "tool_route": False,
+                    "error": f"Erro ao executar tool com correção: {str(e)}"
+                }
         else:
             safe_print(f"[TOOL ROUTER] ❌ Tool {correction_tool_name} não encontrada para correção")
     
@@ -190,6 +204,65 @@ def tool_router_node(state: SingleDeckState) -> dict:
                 safe_print(f"[TOOL ROUTER]   -> Executando tool diretamente sem semantic matching")
                 safe_print(f"[TOOL ROUTER]   Query que será usada na tool: {query_to_use}")
                 
+                # Tentar encontrar usina na query original para passar como forced_plant_code
+                # Isso garante que o selected_plant seja criado corretamente
+                # IMPORTANTE: Quando vem do disambiguation, o matcher já encontrou a usina,
+                # mas a tool pode não conseguir recriar o mesmo resultado. Passar o código
+                # encontrado garante que o selected_plant seja criado.
+                forced_plant_code = None
+                hydraulic_tools = ["HidrCadastroTool", "ConfhdTool", "ModifOperacaoTool", "DsvaguaTool", "VazoesTool", "VariacaoReservatorioInicialTool", "MudancasVazaoMinimaTool"]
+                thermal_tools = ["TermCadastroTool", "ExptOperacaoTool", "ClastValoresTool", "MudancasGeracoesTermicasTool"]
+                
+                if disambiguation_tool_name in hydraulic_tools:
+                    safe_print(f"[TOOL ROUTER]   Tool é hidráulica, tentando encontrar usina na query...")
+                    try:
+                        from backend.newave.utils.hydraulic_plant_matcher import get_hydraulic_plant_matcher
+                        matcher = get_hydraulic_plant_matcher()
+                        # Usar método que funciona apenas com CSV (sem precisar do DataFrame)
+                        # Expandir abreviações primeiro
+                        expanded_query = matcher._expand_abbreviations(query_to_use)
+                        # Tentar extrair código numérico primeiro (precisa de valid_codes_csv)
+                        valid_codes_csv = list(matcher.code_to_names.keys())
+                        codigo_numerico = matcher._extract_numeric_code(expanded_query, valid_codes_csv)
+                        if codigo_numerico and codigo_numerico in matcher.code_to_names:
+                            forced_plant_code = codigo_numerico
+                            safe_print(f"[TOOL ROUTER]   ✅ Código numérico encontrado: {forced_plant_code}")
+                        else:
+                            # Tentar por nome usando método que usa apenas CSV
+                            codigo_encontrado = matcher._extract_by_name(expanded_query, threshold=0.5)
+                            if codigo_encontrado:
+                                forced_plant_code = codigo_encontrado
+                                safe_print(f"[TOOL ROUTER]   ✅ Usina encontrada na query: código {forced_plant_code}")
+                            else:
+                                safe_print(f"[TOOL ROUTER]   ⚠️ Nenhuma usina encontrada na query")
+                    except Exception as e:
+                        safe_print(f"[TOOL ROUTER]   ⚠️ Erro ao tentar encontrar usina: {e}")
+                        import traceback
+                        traceback.print_exc()
+                elif disambiguation_tool_name in thermal_tools:
+                    safe_print(f"[TOOL ROUTER]   Tool é térmica, tentando encontrar usina na query...")
+                    try:
+                        from backend.newave.utils.thermal_plant_matcher import get_thermal_plant_matcher
+                        matcher = get_thermal_plant_matcher()
+                        # Usar método que funciona apenas com CSV
+                        expanded_query = matcher._expand_abbreviations(query_to_use)
+                        valid_codes_csv = list(matcher.code_to_names.keys())
+                        codigo_numerico = matcher._extract_numeric_code(expanded_query, valid_codes_csv)
+                        if codigo_numerico and codigo_numerico in matcher.code_to_names:
+                            forced_plant_code = codigo_numerico
+                            safe_print(f"[TOOL ROUTER]   ✅ Código numérico encontrado: {forced_plant_code}")
+                        else:
+                            codigo_encontrado = matcher._extract_by_name(expanded_query, threshold=0.5)
+                            if codigo_encontrado:
+                                forced_plant_code = codigo_encontrado
+                                safe_print(f"[TOOL ROUTER]   ✅ Usina encontrada na query: código {forced_plant_code}")
+                            else:
+                                safe_print(f"[TOOL ROUTER]   ⚠️ Nenhuma usina encontrada na query")
+                    except Exception as e:
+                        safe_print(f"[TOOL ROUTER]   ⚠️ Erro ao tentar encontrar usina: {e}")
+                        import traceback
+                        traceback.print_exc()
+                
                 # #region agent log
                 write_debug_log({
                     "sessionId": "debug-session",
@@ -197,14 +270,21 @@ def tool_router_node(state: SingleDeckState) -> dict:
                     "hypothesisId": "G",
                     "location": "tool_router.py:disambiguation",
                     "message": "Tool identified from disambiguation, executing directly",
-                    "data": {"tool_name": disambiguation_tool_name, "original_query": query_to_use[:50]},
+                    "data": {"tool_name": disambiguation_tool_name, "original_query": query_to_use[:50], "forced_plant_code": forced_plant_code},
                     "timestamp": int(__import__('time').time() * 1000)
                 })
                 # #endregion
                 
-                result = _execute_tool(selected_tool, disambiguation_tool_name, query_to_use)
+                # Passar forced_plant_code se encontrado
+                if forced_plant_code:
+                    result = _execute_tool(selected_tool, disambiguation_tool_name, query_to_use, forced_plant_code=forced_plant_code)
+                else:
+                    result = _execute_tool(selected_tool, disambiguation_tool_name, query_to_use)
                 result["from_disambiguation"] = True
                 safe_print(f"[TOOL ROUTER] [OK] Resultado da tool retornado: success={result.get('tool_result', {}).get('success', False)}")
+                safe_print(f"[TOOL ROUTER]   plant_correction_followup no resultado: {result.get('plant_correction_followup') is not None}")
+                if result.get('plant_correction_followup'):
+                    safe_print(f"[TOOL ROUTER]   ✅ plant_correction_followup será retornado: {list(result.get('plant_correction_followup', {}).keys())}")
                 return result
             else:
                 safe_print(f"[TOOL ROUTER] ❌ Tool {disambiguation_tool_name} não encontrada na lista de tools disponíveis")

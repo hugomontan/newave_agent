@@ -277,24 +277,32 @@ class ModifOperacaoTool(NEWAVETool):
         modificacoes_por_tipo = {}
         
         if codigo_usina is not None:
+            # Garantir que o código é int
+            codigo_usina = int(codigo_usina) if not isinstance(codigo_usina, int) else codigo_usina
             # Abordagem detalhada: usar modificacoes_usina() para obter todos os registros completos
-            debug_print(f"[TOOL] Obtendo modificações detalhadas da usina {codigo_usina}...")
-            modificacoes_usina_list = modif.modificacoes_usina(codigo_usina)
+            # Garantir que o código é int
+            codigo_usina_int = int(codigo_usina) if not isinstance(codigo_usina, int) else codigo_usina
+            debug_print(f"[TOOL] Obtendo modificações detalhadas da usina {codigo_usina_int} (tipo: {type(codigo_usina_int)})...")
+            modificacoes_usina_list = modif.modificacoes_usina(codigo_usina_int)
             
             if not modificacoes_usina_list:
-                debug_print(f"[TOOL] ⚠️ Nenhuma modificação encontrada para usina {codigo_usina}")
+                debug_print(f"[TOOL] ⚠️ Nenhuma modificação encontrada para usina {codigo_usina_int}")
                 return modificacoes_por_tipo
             
             # Obter informações da usina
             usina_info = None
             usinas_df = modif.usina(df=True)
             if usinas_df is not None:
-                usina_row = usinas_df[usinas_df['codigo'] == codigo_usina]
+                # Garantir que estamos comparando tipos compatíveis
+                usina_row = usinas_df[usinas_df['codigo'].astype(int) == codigo_usina_int]
                 if not usina_row.empty:
                     usina_info = {
-                        'codigo': codigo_usina,
-                        'nome': str(usina_row.iloc[0].get('nome', f'Usina {codigo_usina}'))
+                        'codigo': codigo_usina_int,
+                        'nome': str(usina_row.iloc[0].get('nome', f'Usina {codigo_usina_int}'))
                     }
+                    debug_print(f"[TOOL] ✅ Informações da usina obtidas: código={codigo_usina_int}, nome={usina_info['nome']}")
+                else:
+                    debug_print(f"[TOOL] ⚠️ Usina {codigo_usina_int} não encontrada no DataFrame de usinas")
             
             # Agrupar registros por tipo e converter para dicionários
             registros_por_tipo = {}
@@ -506,8 +514,94 @@ class ModifOperacaoTool(NEWAVETool):
             
             # ETAPA 4: Identificar filtros
             debug_print("[TOOL] ETAPA 4: Identificando filtros...")
-            codigo_usina = self._extract_usina_from_query(query, modif)
+            
+            # Variáveis para rastrear códigos:
+            # - codigo_csv: código do CSV (usado para selected_plant e follow-up)
+            # - codigo_usina: código interno do MODIF (usado para buscar dados)
+            codigo_csv = None
+            codigo_usina = None
+            
+            # Verificar se há código forçado (correção de usina)
+            forced_plant_code = kwargs.get("forced_plant_code")
+            if forced_plant_code is not None:
+                debug_print(f"[TOOL] ✅ Código forçado recebido do CSV: {forced_plant_code}")
+                # O código vem do CSV, mas o MODIF usa numeração interna diferente
+                # Precisamos converter: CSV código -> nome da usina -> código interno do MODIF
+                from backend.newave.utils.hydraulic_plant_matcher import get_hydraulic_plant_matcher
+                matcher = get_hydraulic_plant_matcher()
+                
+                codigo_csv = int(forced_plant_code)
+                if codigo_csv in matcher.code_to_names:
+                    nome_usina_csv, _, _ = matcher.code_to_names[codigo_csv]
+                    debug_print(f"[TOOL]   Nome da usina no CSV: {nome_usina_csv}")
+                    
+                    # Agora buscar esse nome no DataFrame do MODIF para obter o código interno
+                    nome_upper = nome_usina_csv.upper().strip()
+                    usina_match = usinas_df[usinas_df['nome'].str.upper().str.strip() == nome_upper]
+                    
+                    if not usina_match.empty:
+                        codigo_usina = int(usina_match.iloc[0]['codigo'])
+                        debug_print(f"[TOOL]   ✅ Código interno do MODIF encontrado: {codigo_usina} (para {nome_usina_csv})")
+                    else:
+                        # Tentar match parcial
+                        debug_print(f"[TOOL]   ⚠️ Nome exato não encontrado, tentando match parcial...")
+                        for _, row in usinas_df.iterrows():
+                            nome_modif = str(row['nome']).upper().strip()
+                            if nome_upper in nome_modif or nome_modif in nome_upper:
+                                codigo_usina = int(row['codigo'])
+                                debug_print(f"[TOOL]   ✅ Match parcial encontrado: {row['nome']} -> código {codigo_usina}")
+                                break
+                        else:
+                            # Se não encontrou no MODIF, a usina pode não ter modificações
+                            debug_print(f"[TOOL]   ⚠️ Usina {nome_usina_csv} não encontrada no MODIF")
+                            codigo_usina = None
+                else:
+                    debug_print(f"[TOOL]   ⚠️ Código {codigo_csv} não encontrado no matcher CSV")
+            else:
+                debug_print("[TOOL] Nenhum código forçado, extraindo da query...")
+                # Quando extrai da query, o código retornado é do DataFrame do MODIF
+                codigo_usina = self._extract_usina_from_query(query, modif)
+                if codigo_usina is not None:
+                    codigo_usina = int(codigo_usina) if not isinstance(codigo_usina, int) else codigo_usina
+                    # Tentar encontrar o código correspondente no CSV pelo nome
+                    from backend.newave.utils.hydraulic_plant_matcher import get_hydraulic_plant_matcher
+                    matcher = get_hydraulic_plant_matcher()
+                    # Buscar nome da usina no MODIF
+                    usina_row = usinas_df[usinas_df['codigo'].astype(int) == codigo_usina]
+                    if not usina_row.empty:
+                        nome_modif = str(usina_row.iloc[0]['nome']).upper().strip()
+                        # Buscar esse nome no CSV
+                        for csv_code, (nome_csv, _, _) in matcher.code_to_names.items():
+                            if nome_csv.upper().strip() == nome_modif:
+                                codigo_csv = csv_code
+                                debug_print(f"[TOOL]   ✅ Código CSV encontrado: {codigo_csv} para {nome_modif}")
+                                break
+                        if codigo_csv is None:
+                            # Fallback: usar o mesmo código
+                            codigo_csv = codigo_usina
+                debug_print(f"[TOOL]   Código MODIF: {codigo_usina}, Código CSV: {codigo_csv}")
             tipo_modificacao = self._extract_tipo_modificacao(query)
+            
+            # ETAPA 4.5: Criar selected_plant ANTES de processar dados (para garantir que follow-up apareça)
+            # IMPORTANTE: usar codigo_csv para o selected_plant (é o que o frontend espera)
+            selected_plant = None
+            codigo_para_selected = codigo_csv if codigo_csv is not None else codigo_usina
+            if codigo_para_selected is not None:
+                from backend.newave.utils.hydraulic_plant_matcher import get_hydraulic_plant_matcher
+                matcher = get_hydraulic_plant_matcher()
+                debug_print(f"[TOOL] Verificando código {codigo_para_selected} no matcher para selected_plant...")
+                if codigo_para_selected in matcher.code_to_names:
+                    nome_arquivo_csv, nome_completo_csv, _ = matcher.code_to_names[codigo_para_selected]
+                    selected_plant = {
+                        "type": "hydraulic",
+                        "codigo": codigo_para_selected,
+                        "nome": nome_arquivo_csv,
+                        "nome_completo": nome_completo_csv if nome_completo_csv else nome_arquivo_csv,
+                        "tool_name": self.get_name()
+                    }
+                    debug_print(f"[TOOL] ✅ selected_plant criado: código={codigo_para_selected}, nome={nome_arquivo_csv}")
+                else:
+                    debug_print(f"[TOOL] ⚠️ Código {codigo_para_selected} não encontrado no matcher.code_to_names")
             
             if codigo_usina is not None:
                 debug_print(f"[TOOL] ✅ Filtro por usina: {codigo_usina}")
@@ -516,10 +610,33 @@ class ModifOperacaoTool(NEWAVETool):
             
             # ETAPA 5: Obter todas as modificações
             debug_print("[TOOL] ETAPA 5: Obtendo modificações...")
+            debug_print(f"[TOOL]   Código da usina que será usado: {codigo_usina} (tipo: {type(codigo_usina)})")
+            # Verificar se o código existe no DataFrame do MODIF
+            if codigo_usina is not None:
+                codigos_disponiveis = usinas_df['codigo'].tolist() if 'codigo' in usinas_df.columns else []
+                debug_print(f"[TOOL]   Códigos disponíveis no MODIF: {codigos_disponiveis[:10]}... (total: {len(codigos_disponiveis)})")
+                if codigo_usina not in codigos_disponiveis:
+                    debug_print(f"[TOOL]   ⚠️ Código {codigo_usina} não encontrado no DataFrame do MODIF!")
+                    debug_print(f"[TOOL]   Tentando converter tipos...")
+                    # Tentar converter para int se necessário
+                    codigos_disponiveis_int = [int(c) for c in codigos_disponiveis if pd.notna(c)]
+                    if codigo_usina in codigos_disponiveis_int:
+                        debug_print(f"[TOOL]   ✅ Código encontrado após conversão para int")
+                    else:
+                        debug_print(f"[TOOL]   ❌ Código ainda não encontrado após conversão")
             modificacoes_por_tipo = self._get_all_modifications(modif, codigo_usina)
             
             if not modificacoes_por_tipo:
                 debug_print("[TOOL] ⚠️ Nenhuma modificação encontrada")
+                # Se não encontrou dados mas tem selected_plant, retornar com selected_plant para follow-up
+                if selected_plant:
+                    debug_print(f"[TOOL] ⚠️ Nenhuma modificação encontrada, mas selected_plant foi criado para follow-up")
+                    return {
+                        "success": False,
+                        "error": "Nenhuma modificação encontrada com os filtros aplicados",
+                        "tool": self.get_name(),
+                        "selected_plant": selected_plant  # Incluir mesmo com erro para permitir follow-up
+                    }
                 return {
                     "success": False,
                     "error": "Nenhuma modificação encontrada com os filtros aplicados",
@@ -642,45 +759,35 @@ class ModifOperacaoTool(NEWAVETool):
                         })
             else:
                 # Se filtrou por usina, adicionar apenas ela
-                nome_usina = usinas_df[usinas_df['codigo'] == codigo_usina]
+                # Garantir que o código é int para comparação
+                codigo_usina_int = int(codigo_usina) if not isinstance(codigo_usina, int) else codigo_usina
+                nome_usina = usinas_df[usinas_df['codigo'].astype(int) == codigo_usina_int]
                 if not nome_usina.empty:
-                    nome = str(nome_usina.iloc[0].get('nome', f'Usina {codigo_usina}'))
-                    modificacoes_usina = modif.modificacoes_usina(codigo_usina)
+                    nome = str(nome_usina.iloc[0].get('nome', f'Usina {codigo_usina_int}'))
+                    modificacoes_usina = modif.modificacoes_usina(codigo_usina_int)
                     if modificacoes_usina:
                         tipos = list(set([type(r).__name__ for r in modificacoes_usina]))
                         stats_por_usina.append({
-                            'codigo_usina': codigo_usina,
+                            'codigo_usina': codigo_usina_int,
                             'nome_usina': nome,
                             'total_modificacoes': len(modificacoes_usina),
                             'tipos_modificacao': tipos,
                         })
             
-            # ETAPA 9: Obter metadados da usina selecionada (apenas se uma única usina foi identificada)
-            selected_plant = None
-            if codigo_usina is not None and len(stats_por_usina) == 1:
-                from backend.newave.utils.hydraulic_plant_matcher import get_hydraulic_plant_matcher
-                matcher = get_hydraulic_plant_matcher()
-                if codigo_usina in matcher.code_to_names:
-                    nome_arquivo_csv, nome_completo_csv, _ = matcher.code_to_names[codigo_usina]
-                    selected_plant = {
-                        "type": "hydraulic",
-                        "codigo": codigo_usina,
-                        "nome": nome_arquivo_csv,
-                        "nome_completo": nome_completo_csv if nome_completo_csv else nome_arquivo_csv,
-                        "tool_name": self.get_name()
-                    }
-            
-            # ETAPA 10: Formatar resultado
+            # ETAPA 9: Formatar resultado
+            # (selected_plant já foi criado na ETAPA 4.5)
             debug_print("[TOOL] ETAPA 10: Formatando resultado...")
             
             # Informações sobre filtros aplicados
             filtro_info = {}
             if codigo_usina is not None:
-                nome_usina = usinas_df[usinas_df['codigo'] == codigo_usina]
+                # Garantir que o código é int para comparação
+                codigo_usina_int = int(codigo_usina) if not isinstance(codigo_usina, int) else codigo_usina
+                nome_usina = usinas_df[usinas_df['codigo'].astype(int) == codigo_usina_int]
                 if not nome_usina.empty:
                     filtro_info['usina'] = {
-                        'codigo': codigo_usina,
-                        'nome': str(nome_usina.iloc[0].get('nome', f'Usina {codigo_usina}')),
+                        'codigo': codigo_usina_int,
+                        'nome': str(nome_usina.iloc[0].get('nome', f'Usina {codigo_usina_int}')),
                     }
             if tipo_modificacao is not None:
                 filtro_info['tipo_modificacao'] = tipo_modificacao
@@ -699,6 +806,9 @@ class ModifOperacaoTool(NEWAVETool):
             # Adicionar metadados da usina selecionada se disponível
             if selected_plant:
                 result["selected_plant"] = selected_plant
+                debug_print(f"[TOOL] ✅ selected_plant adicionado ao resultado: código={selected_plant.get('codigo')}, nome={selected_plant.get('nome')}")
+            else:
+                debug_print("[TOOL] ⚠️ selected_plant é None, não será adicionado ao resultado")
             
             return result
             

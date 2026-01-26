@@ -156,8 +156,13 @@ def interpreter_node(
                 
                 # Incluir plant_correction_followup se disponível no state
                 plant_correction_followup = state.get("plant_correction_followup")
+                safe_print(f"[INTERPRETER] Verificando plant_correction_followup no state: {plant_correction_followup is not None}")
                 if plant_correction_followup:
                     result["plant_correction_followup"] = plant_correction_followup
+                    safe_print(f"[INTERPRETER] ✅ plant_correction_followup incluído no resultado do interpreter")
+                else:
+                    safe_print(f"[INTERPRETER] ⚠️ plant_correction_followup não encontrado no state")
+                    safe_print(f"[INTERPRETER]   Chaves disponíveis no state: {list(state.keys())}")
                 
                 return result
             except Exception as e:

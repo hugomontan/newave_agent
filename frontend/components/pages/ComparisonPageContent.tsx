@@ -132,6 +132,19 @@ interface Message {
     comparison_by_usina?: Record<string, unknown>;
     stats?: Record<string, unknown>;
   };
+  plantCorrectionData?: {
+    type: "plant_correction";
+    message: string;
+    selectedPlant: {
+      type: "hydraulic" | "thermal";
+      codigo: number;
+      nome: string;
+      nome_completo: string;
+      tool_name: string;
+    };
+    allPlants: Array<{codigo: number; nome: string; nome_completo: string}>;
+    originalQuery: string;
+  };
 }
 
 type ModelType = 'newave' | 'decomp';
@@ -188,6 +201,7 @@ export function ComparisonPageContent({ model }: ComparisonPageContentProps) {
   const retryCountRef = useRef(0);
   const comparisonDataRef = useRef<Message["comparisonData"] | null>(null);
   const disambiguationMessageIdRef = useRef<string | null>(null);
+  const plantCorrectionFollowupRef = useRef<Message["plantCorrectionData"] | null>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -442,6 +456,7 @@ export function ComparisonPageContent({ model }: ComparisonPageContentProps) {
         streamingResponseRef.current = "";
         retryCountRef.current = 0;
         comparisonDataRef.current = null as any;
+        plantCorrectionFollowupRef.current = null;
         break;
 
       case "node_start":
@@ -580,6 +595,16 @@ export function ComparisonPageContent({ model }: ComparisonPageContentProps) {
             }));
           }
         }
+        if (event.plant_correction_followup) {
+          const followup = event.plant_correction_followup;
+          plantCorrectionFollowupRef.current = {
+            type: followup.type,
+            message: followup.message,
+            selectedPlant: followup.selected_plant,
+            allPlants: followup.all_plants,
+            originalQuery: followup.original_query
+          };
+        }
         break;
 
       case "disambiguation":
@@ -635,6 +660,7 @@ export function ComparisonPageContent({ model }: ComparisonPageContentProps) {
     setRetryCount(0);
     setComparisonData(null);
     comparisonDataRef.current = null;
+    plantCorrectionFollowupRef.current = null;
 
     try {
       // Enviar query com modo comparação
@@ -647,7 +673,9 @@ export function ComparisonPageContent({ model }: ComparisonPageContentProps) {
       const rawData: Record<string, unknown>[] | null = null;
       const hasContent = streamingResponseRef.current && streamingResponseRef.current.trim();
       const hasData = false; // rawData sempre null após remoção do código de parsing
-      if (hasContent || hasData || comparisonDataRef.current) {
+      const hasPlantCorrection = plantCorrectionFollowupRef.current !== null;
+      
+      if (hasContent || hasData || comparisonDataRef.current || hasPlantCorrection) {
         const currentComparisonData = comparisonDataRef.current as Message["comparisonData"] | null;
         
         const assistantMessage: Message = {
@@ -657,6 +685,7 @@ export function ComparisonPageContent({ model }: ComparisonPageContentProps) {
           rawData: rawData,
           retryCount: retryCountRef.current,
           comparisonData: currentComparisonData || undefined,
+          plantCorrectionData: plantCorrectionFollowupRef.current || undefined,
           timestamp: new Date(),
         };
 
@@ -736,8 +765,73 @@ export function ComparisonPageContent({ model }: ComparisonPageContentProps) {
     }
   };
 
+  const handlePlantCorrectionClick = async (query: string, messageId?: string) => {
+    if (!sessionId) return;
+    
+    setInput("");
+    setIsLoading(true);
+    setAgentSteps([]);
+    setStreamingResponse("");
+    streamingResponseRef.current = "";
+    setRetryCount(0);
+    setComparisonData(null);
+    comparisonDataRef.current = null;
+    plantCorrectionFollowupRef.current = null;
+
+    try {
+      for await (const event of config.streamFn(sessionId, query, "comparison")) {
+        processStreamEvent(event);
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      const hasContent = streamingResponseRef.current && streamingResponseRef.current.trim();
+      const hasPlantCorrection = plantCorrectionFollowupRef.current !== null;
+      const hasComparisonData = comparisonDataRef.current !== null;
+      
+      // Criar nova mensagem com o resultado da correção
+      if (hasContent || hasComparisonData || hasPlantCorrection) {
+        const assistantMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          role: "assistant",
+          content: streamingResponseRef.current || "",
+          retryCount: retryCountRef.current,
+          comparisonData: comparisonDataRef.current || undefined,
+          plantCorrectionData: plantCorrectionFollowupRef.current || undefined,
+          timestamp: new Date(),
+        };
+
+        setMessages((prev) => [...prev, assistantMessage]);
+      }
+      
+      setAgentSteps([]);
+      setStreamingResponse("");
+
+    } catch (err) {
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: "assistant",
+        content: `❌ **Erro ao processar correção de usina:**\n\n${
+          err instanceof Error ? err.message : "Erro desconhecido"
+        }`,
+        timestamp: new Date(),
+      };
+
+      setMessages((prev) => [...prev, errorMessage]);
+      setAgentSteps([]);
+      setStreamingResponse("");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleDisambiguationOptionClick = async (query: string, messageId?: string) => {
     if (!sessionId) return;
+    
+    // Verificar se é uma query de correção de usina
+    if (query.startsWith("__PLANT_CORR__:")) {
+      return handlePlantCorrectionClick(query, messageId);
+    }
     
     // Encontrar a mensagem de disambiguation e marcar como loading
     const targetMessageId = messageId || (() => {
@@ -771,6 +865,7 @@ export function ComparisonPageContent({ model }: ComparisonPageContentProps) {
     setRetryCount(0);
     setComparisonData(null);
     comparisonDataRef.current = null;
+    plantCorrectionFollowupRef.current = null;
 
     try {
       for await (const event of config.streamFn(sessionId, query, "comparison")) {
@@ -796,6 +891,7 @@ export function ComparisonPageContent({ model }: ComparisonPageContentProps) {
               rawData: rawData,
               retryCount: retryCountRef.current,
               comparisonData: comparisonDataRef.current || undefined,
+              plantCorrectionData: plantCorrectionFollowupRef.current || undefined,
               disambiguationData: undefined, // Remover disambiguationData após processar
             };
           }
@@ -803,7 +899,8 @@ export function ComparisonPageContent({ model }: ComparisonPageContentProps) {
         }));
       } else {
         // Fallback: criar nova mensagem se não encontrou a mensagem de disambiguation
-        if (hasContent || hasData || comparisonDataRef.current) {
+        const hasPlantCorrection = plantCorrectionFollowupRef.current !== null;
+        if (hasContent || hasData || comparisonDataRef.current || hasPlantCorrection) {
           const assistantMessage: Message = {
             id: (Date.now() + 1).toString(),
             role: "assistant",
@@ -811,6 +908,7 @@ export function ComparisonPageContent({ model }: ComparisonPageContentProps) {
             rawData: rawData,
             retryCount: retryCountRef.current,
             comparisonData: comparisonDataRef.current || undefined,
+            plantCorrectionData: plantCorrectionFollowupRef.current || undefined,
             timestamp: new Date(),
           };
 

@@ -159,9 +159,9 @@ class VariacaoReservatorioInicialTool(NEWAVETool):
             else:
                 debug_print("[TOOL] ⚠️ Nenhum dado de usinas disponível (confhd.usinas é None)")
             
-            # ETAPA 5: Obter metadados da usina selecionada (apenas se uma única usina foi identificada)
+            # ETAPA 5: Obter metadados da usina selecionada (sempre que uma usina foi identificada)
             selected_plant = None
-            if codigo_usina is not None and dados_volume_inicial and len(dados_volume_inicial) == 1:
+            if codigo_usina is not None:
                 from backend.newave.utils.hydraulic_plant_matcher import get_hydraulic_plant_matcher
                 matcher = get_hydraulic_plant_matcher()
                 if codigo_usina in matcher.code_to_names:

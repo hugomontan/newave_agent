@@ -138,6 +138,8 @@ def get_initial_state(query: str, deck_path: str) -> dict:
         "tool_used": None,
         # Campos para Disambiguation
         "disambiguation": None,
+        # Campos para Correção de Usina
+        "plant_correction_followup": None,
         # Campos para Visualização
         "comparison_data": None,
         "visualization_data": None,
@@ -318,8 +320,14 @@ def run_query_stream(query: str, deck_path: str, session_id: Optional[str] = Non
                         
                         # Incluir plant_correction_followup se disponível
                         plant_correction_followup = node_output.get("plant_correction_followup")
+                        safe_print(f"[GRAPH] Verificando plant_correction_followup no node_output: {plant_correction_followup is not None}")
                         if plant_correction_followup:
                             response_complete_data['plant_correction_followup'] = plant_correction_followup
+                            safe_print(f"[GRAPH] ✅ plant_correction_followup incluído no response_complete_data")
+                            safe_print(f"[GRAPH]   Chaves do followup: {list(plant_correction_followup.keys())}")
+                        else:
+                            safe_print(f"[GRAPH] ⚠️ plant_correction_followup não encontrado no node_output")
+                            safe_print(f"[GRAPH]   Chaves disponíveis no node_output: {list(node_output.keys())}")
                         
                         yield f"data: {json.dumps(response_complete_data, allow_nan=False)}\n\n"
                         

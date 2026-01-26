@@ -242,11 +242,90 @@ class ConfhdTool(NEWAVETool):
             ree = self._extract_ree_from_query(query)
             status = self._extract_status_from_query(query)
             
-            # Buscar usina por código ou nome
-            resultado_usina = self._extract_usina_from_query(query, confhd)
-            if resultado_usina is not None:
-                codigo_usina, _ = resultado_usina
-                debug_print(f"[TOOL] ✅ Filtro por usina: {codigo_usina}")
+            # Variáveis para rastrear códigos:
+            # - codigo_csv: código do CSV (usado para selected_plant e follow-up)
+            # - codigo_usina: código interno do CONFHD (usado para filtrar dados)
+            codigo_csv = None
+            
+            # Verificar se há código forçado (correção de usina)
+            forced_plant_code = kwargs.get("forced_plant_code")
+            if forced_plant_code is not None:
+                debug_print(f"[TOOL] ✅ Código forçado recebido do CSV: {forced_plant_code}")
+                # O código vem do CSV, precisamos converter para o código interno do CONFHD
+                from backend.newave.utils.hydraulic_plant_matcher import get_hydraulic_plant_matcher
+                matcher = get_hydraulic_plant_matcher()
+                
+                codigo_csv = int(forced_plant_code)
+                if codigo_csv in matcher.code_to_names:
+                    nome_usina_csv, _, _ = matcher.code_to_names[codigo_csv]
+                    debug_print(f"[TOOL]   Nome da usina no CSV: {nome_usina_csv}")
+                    
+                    # Buscar esse nome no DataFrame do CONFHD para obter o código interno
+                    nome_upper = nome_usina_csv.upper().strip()
+                    usina_match = usinas_df[usinas_df['nome_usina'].str.upper().str.strip() == nome_upper]
+                    
+                    if not usina_match.empty:
+                        codigo_usina = int(usina_match.iloc[0]['codigo_usina'])
+                        debug_print(f"[TOOL]   ✅ Código interno do CONFHD encontrado: {codigo_usina} (para {nome_usina_csv})")
+                    else:
+                        # Tentar match parcial
+                        debug_print(f"[TOOL]   ⚠️ Nome exato não encontrado, tentando match parcial...")
+                        for _, row in usinas_df.iterrows():
+                            nome_confhd = str(row['nome_usina']).upper().strip()
+                            if nome_upper in nome_confhd or nome_confhd in nome_upper:
+                                codigo_usina = int(row['codigo_usina'])
+                                debug_print(f"[TOOL]   ✅ Match parcial encontrado: {row['nome_usina']} -> código {codigo_usina}")
+                                break
+                        else:
+                            debug_print(f"[TOOL]   ⚠️ Usina {nome_usina_csv} não encontrada no CONFHD")
+                            codigo_usina = None
+                else:
+                    debug_print(f"[TOOL]   ⚠️ Código {codigo_csv} não encontrado no matcher CSV")
+            else:
+                # Buscar usina por código ou nome
+                debug_print("[TOOL] Extraindo usina da query...")
+                resultado_usina = self._extract_usina_from_query(query, confhd)
+                debug_print(f"[TOOL] _extract_usina_from_query retornou: {resultado_usina}")
+                if resultado_usina is not None:
+                    codigo_usina, _ = resultado_usina
+                    debug_print(f"[TOOL] ✅ Código interno CONFHD: {codigo_usina}")
+                    # Tentar encontrar o código correspondente no CSV pelo nome
+                    from backend.newave.utils.hydraulic_plant_matcher import get_hydraulic_plant_matcher
+                    matcher = get_hydraulic_plant_matcher()
+                    usina_row = usinas_df[usinas_df['codigo_usina'] == codigo_usina]
+                    if not usina_row.empty:
+                        nome_confhd = str(usina_row.iloc[0]['nome_usina']).upper().strip()
+                        for csv_code, (nome_csv, _, _) in matcher.code_to_names.items():
+                            if nome_csv.upper().strip() == nome_confhd:
+                                codigo_csv = csv_code
+                                debug_print(f"[TOOL]   ✅ Código CSV encontrado: {codigo_csv} para {nome_confhd}")
+                                break
+                        if codigo_csv is None:
+                            codigo_csv = codigo_usina  # Fallback
+            
+            # ETAPA 4.5: Criar selected_plant ANTES de aplicar filtros (para garantir que follow-up apareça)
+            # IMPORTANTE: usar codigo_csv para o selected_plant (é o que o frontend espera)
+            selected_plant = None
+            codigo_para_selected = codigo_csv if codigo_csv is not None else codigo_usina
+            debug_print(f"[TOOL] ETAPA 4.5: Criando selected_plant... codigo_csv={codigo_csv}, codigo_usina={codigo_usina}")
+            if codigo_para_selected is not None:
+                from backend.newave.utils.hydraulic_plant_matcher import get_hydraulic_plant_matcher
+                matcher = get_hydraulic_plant_matcher()
+                debug_print(f"[TOOL] Verificando código {codigo_para_selected} no matcher...")
+                if codigo_para_selected in matcher.code_to_names:
+                    nome_arquivo_csv, nome_completo_csv, _ = matcher.code_to_names[codigo_para_selected]
+                    selected_plant = {
+                        "type": "hydraulic",
+                        "codigo": codigo_para_selected,
+                        "nome": nome_arquivo_csv,
+                        "nome_completo": nome_completo_csv if nome_completo_csv else nome_arquivo_csv,
+                        "tool_name": self.get_name()
+                    }
+                    debug_print(f"[TOOL] ✅ selected_plant criado: código={codigo_para_selected}, nome={nome_arquivo_csv}")
+                else:
+                    debug_print(f"[TOOL] ⚠️ Código {codigo_para_selected} não encontrado no matcher.code_to_names")
+            else:
+                debug_print("[TOOL] ⚠️ codigo_para_selected é None, não será criado selected_plant")
             
             if ree is not None:
                 debug_print(f"[TOOL] ✅ Filtro por REE: {ree}")
@@ -294,21 +373,6 @@ class ConfhdTool(NEWAVETool):
                 volume_medio_por_ree = usinas_df.groupby('ree')['volume_inicial_percentual'].mean().to_dict()
                 stats['volume_inicial_medio_por_ree'] = {k: round(v, 2) for k, v in volume_medio_por_ree.items()}
             
-            # ETAPA 8: Obter metadados da usina selecionada (apenas se uma única usina foi identificada)
-            selected_plant = None
-            if codigo_usina is not None and len(resultado_df) == 1:
-                from backend.newave.utils.hydraulic_plant_matcher import get_hydraulic_plant_matcher
-                matcher = get_hydraulic_plant_matcher()
-                if codigo_usina in matcher.code_to_names:
-                    nome_arquivo_csv, nome_completo_csv, _ = matcher.code_to_names[codigo_usina]
-                    selected_plant = {
-                        "type": "hydraulic",
-                        "codigo": codigo_usina,
-                        "nome": nome_arquivo_csv,
-                        "nome_completo": nome_completo_csv if nome_completo_csv else nome_arquivo_csv,
-                        "tool_name": self.get_name()
-                    }
-            
             # ETAPA 9: Formatar resultado final
             debug_print("[TOOL] ETAPA 9: Formatando resultado final...")
             
@@ -332,6 +396,9 @@ class ConfhdTool(NEWAVETool):
             # Adicionar metadados da usina selecionada se disponível
             if selected_plant:
                 result["selected_plant"] = selected_plant
+                debug_print(f"[TOOL] ✅ selected_plant adicionado ao resultado: código={selected_plant.get('codigo')}, nome={selected_plant.get('nome')}")
+            else:
+                debug_print("[TOOL] ⚠️ selected_plant é None, não será adicionado ao resultado")
             
             return result
             

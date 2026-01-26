@@ -493,7 +493,14 @@ export function AnalysisPageContent({ model }: AnalysisPageContentProps) {
         }
         
         if (event.plant_correction_followup) {
-          plantCorrectionFollowupRef.current = event.plant_correction_followup as Message["plantCorrectionData"];
+          const followup = event.plant_correction_followup;
+          plantCorrectionFollowupRef.current = {
+            type: followup.type,
+            message: followup.message,
+            selectedPlant: followup.selected_plant,
+            allPlants: followup.all_plants,
+            originalQuery: followup.original_query
+          };
         }
         break;
 
@@ -545,6 +552,7 @@ export function AnalysisPageContent({ model }: AnalysisPageContentProps) {
     setComparisonData(null);
     comparisonDataRef.current = null;
     visualizationDataRef.current = null;
+    plantCorrectionFollowupRef.current = null;
 
     try {
       for await (const event of config.streamFn(sessionId, userMessage.content)) {
@@ -554,7 +562,10 @@ export function AnalysisPageContent({ model }: AnalysisPageContentProps) {
       await new Promise(resolve => setTimeout(resolve, 100));
 
       const hasContent = streamingResponseRef.current && streamingResponseRef.current.trim();
-      if (hasContent) {
+      const hasPlantCorrection = plantCorrectionFollowupRef.current !== null;
+      
+      // Criar mensagem se houver conteúdo OU se houver plant correction followup
+      if (hasContent || hasPlantCorrection) {
         const assistantMessage: Message = {
           id: (Date.now() + 1).toString(),
           role: "assistant",
@@ -647,8 +658,78 @@ export function AnalysisPageContent({ model }: AnalysisPageContentProps) {
     }
   };
 
+  const handlePlantCorrectionClick = async (query: string, messageId?: string) => {
+    if (!sessionId) return;
+    
+    setInput("");
+    setIsLoading(true);
+    setAgentSteps([]);
+    setStreamingResponse("");
+    streamingResponseRef.current = "";
+    setRetryCount(0);
+    setComparisonData(null);
+    comparisonDataRef.current = null;
+    visualizationDataRef.current = null;
+    plantCorrectionFollowupRef.current = null;
+
+    try {
+      for await (const event of config.streamFn(sessionId, query)) {
+        processStreamEvent(event);
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      const hasContent = streamingResponseRef.current && streamingResponseRef.current.trim();
+      const hasPlantCorrection = plantCorrectionFollowupRef.current !== null;
+      const hasComparisonData = comparisonDataRef.current !== null;
+      const hasVisualizationData = visualizationDataRef.current !== null;
+      
+      // Criar nova mensagem com o resultado da correção
+      if (hasContent || hasComparisonData || hasVisualizationData || hasPlantCorrection) {
+        const assistantMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          role: "assistant",
+          content: streamingResponseRef.current || "",
+          retryCount: retryCountRef.current,
+          comparisonData: comparisonDataRef.current || undefined,
+          visualizationData: visualizationDataRef.current || undefined,
+          plantCorrectionData: plantCorrectionFollowupRef.current || undefined,
+          requires_user_choice: requiresUserChoiceRef.current ? true : undefined,
+          alternative_type: alternativeTypeRef.current,
+          timestamp: new Date(),
+        };
+
+        setMessages((prev) => [...prev, assistantMessage]);
+      }
+      
+      setAgentSteps([]);
+      setStreamingResponse("");
+
+    } catch (err) {
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: "assistant",
+        content: `❌ **Erro ao processar correção de usina:**\n\n${
+          err instanceof Error ? err.message : "Erro desconhecido"
+        }`,
+        timestamp: new Date(),
+      };
+
+      setMessages((prev) => [...prev, errorMessage]);
+      setAgentSteps([]);
+      setStreamingResponse("");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleDisambiguationOptionClick = async (query: string, messageId?: string) => {
     if (!sessionId) return;
+    
+    // Verificar se é uma query de correção de usina
+    if (query.startsWith("__PLANT_CORR__:")) {
+      return handlePlantCorrectionClick(query, messageId);
+    }
     
     // Encontrar a mensagem de disambiguation e marcar como loading
     const targetMessageId = messageId || (() => {
@@ -705,6 +786,7 @@ export function AnalysisPageContent({ model }: AnalysisPageContentProps) {
               retryCount: retryCountRef.current,
               comparisonData: comparisonDataRef.current || undefined,
               visualizationData: visualizationDataRef.current || undefined,
+              plantCorrectionData: plantCorrectionFollowupRef.current || undefined,
               requires_user_choice: requiresUserChoiceRef.current ? true : undefined,
               alternative_type: alternativeTypeRef.current,
               disambiguationData: undefined, // Remover disambiguationData após processar
@@ -714,7 +796,8 @@ export function AnalysisPageContent({ model }: AnalysisPageContentProps) {
         }));
       } else {
         // Fallback: criar nova mensagem se não encontrou a mensagem de disambiguation
-        if (hasContent || hasComparisonData) {
+        const hasPlantCorrection = plantCorrectionFollowupRef.current !== null;
+        if (hasContent || hasComparisonData || hasPlantCorrection) {
           const assistantMessage: Message = {
             id: (Date.now() + 1).toString(),
             role: "assistant",
@@ -722,6 +805,7 @@ export function AnalysisPageContent({ model }: AnalysisPageContentProps) {
             retryCount: retryCountRef.current,
             comparisonData: comparisonDataRef.current || undefined,
             visualizationData: visualizationDataRef.current || undefined,
+            plantCorrectionData: plantCorrectionFollowupRef.current || undefined,
             requires_user_choice: requiresUserChoiceRef.current ? true : undefined,
             alternative_type: alternativeTypeRef.current,
             timestamp: new Date(),

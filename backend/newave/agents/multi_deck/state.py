@@ -29,6 +29,9 @@ class MultiDeckState(TypedDict):
     # Campos para Disambiguation
     disambiguation: Optional[dict]
     
+    # Campos para Correção de Usina
+    plant_correction_followup: Optional[dict]  # Dados para follow-up de correção de usina
+    
     # Campos para Comparação Multi-Deck
     comparison_data: Optional[dict]  # Dados de comparação multi-deck
     

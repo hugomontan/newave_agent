@@ -502,16 +502,54 @@ class VazoesTool(NEWAVETool):
             
             debug_print(f"[TOOL] ✅ DataFrame obtido: {len(df_vazoes)} meses, {len(df_vazoes.columns)} postos")
             
+            # ETAPA 1: Verificar se há código forçado (correção de usina)
+            forced_plant_code = kwargs.get("forced_plant_code")
+            codigo_usina_forcado = None
+            selected_plant = None
+            
+            if forced_plant_code is not None:
+                debug_print(f"[TOOL] Usando código forçado (correção): {forced_plant_code}")
+                codigo_usina_forcado = forced_plant_code
+                # Criar selected_plant ANTES de buscar posto
+                from backend.newave.utils.hydraulic_plant_matcher import get_hydraulic_plant_matcher
+                matcher = get_hydraulic_plant_matcher()
+                if codigo_usina_forcado in matcher.code_to_names:
+                    nome_arquivo_csv, nome_completo_csv, posto_csv = matcher.code_to_names[codigo_usina_forcado]
+                    selected_plant = {
+                        "type": "hydraulic",
+                        "codigo": codigo_usina_forcado,
+                        "nome": nome_arquivo_csv,
+                        "nome_completo": nome_completo_csv if nome_completo_csv else nome_arquivo_csv,
+                        "tool_name": self.get_name()
+                    }
+                    debug_print(f"[TOOL] ✅ selected_plant criado: código={codigo_usina_forcado}, nome={nome_arquivo_csv}, posto={posto_csv}")
+            
             postos_consultados = []
             nome_usina_encontrado = None
             
-            posto_numero = self._extract_posto_from_query(query)
-            if posto_numero is not None:
-                if posto_numero in df_vazoes.columns:
-                    postos_consultados.append(posto_numero)
-                    debug_print(f"[TOOL] ✅ Posto {posto_numero} identificado")
-                else:
-                    debug_print(f"[TOOL] ⚠️ Posto {posto_numero} não existe no arquivo (postos disponíveis: 1-{len(df_vazoes.columns)})")
+            # Se há código forçado, usar o posto do matcher diretamente
+            if codigo_usina_forcado is not None:
+                from backend.newave.utils.hydraulic_plant_matcher import get_hydraulic_plant_matcher
+                matcher = get_hydraulic_plant_matcher()
+                if codigo_usina_forcado in matcher.code_to_names:
+                    _, _, posto_csv = matcher.code_to_names[codigo_usina_forcado]
+                    if posto_csv is not None and posto_csv in df_vazoes.columns:
+                        postos_consultados.append(posto_csv)
+                        nome_arquivo_csv, nome_completo_csv, _ = matcher.code_to_names[codigo_usina_forcado]
+                        nome_usina_encontrado = nome_arquivo_csv
+                        debug_print(f"[TOOL] ✅ Posto {posto_csv} encontrado para usina forçada '{nome_usina_encontrado}' (código {codigo_usina_forcado})")
+                    else:
+                        debug_print(f"[TOOL] ⚠️ Posto {posto_csv} da usina forçada não existe no arquivo")
+            
+            # Se não há posto ainda, tentar extrair da query
+            if not postos_consultados:
+                posto_numero = self._extract_posto_from_query(query)
+                if posto_numero is not None:
+                    if posto_numero in df_vazoes.columns:
+                        postos_consultados.append(posto_numero)
+                        debug_print(f"[TOOL] ✅ Posto {posto_numero} identificado")
+                    else:
+                        debug_print(f"[TOOL] ⚠️ Posto {posto_numero} não existe no arquivo (postos disponíveis: 1-{len(df_vazoes.columns)})")
             
             if not postos_consultados:
                 confhd_path = os.path.join(self.deck_path, "CONFHD.DAT")
@@ -638,12 +676,12 @@ class VazoesTool(NEWAVETool):
                     filtro_info['nome_usina'] = nome_usina_encontrado
             
             # Obter metadados da usina selecionada (apenas se uma única usina foi identificada)
-            selected_plant = None
-            if len(postos_consultados) == 1 and nome_usina_encontrado:
+            # Se selected_plant já foi criado (forced_plant_code), não recriar
+            if selected_plant is None and len(postos_consultados) == 1 and nome_usina_encontrado:
                 # Buscar código da usina através do matcher
                 from backend.newave.utils.hydraulic_plant_matcher import get_hydraulic_plant_matcher
                 matcher = get_hydraulic_plant_matcher()
-                # Buscar código pelo nome
+                # Buscar código pelo nome ou posto
                 for codigo, (nome_arquivo, nome_completo, posto_csv) in matcher.code_to_names.items():
                     if posto_csv == postos_consultados[0] or nome_arquivo.upper() == nome_usina_encontrado.upper() or (nome_completo and nome_completo.upper() == nome_usina_encontrado.upper()):
                         selected_plant = {
@@ -653,6 +691,7 @@ class VazoesTool(NEWAVETool):
                             "nome_completo": nome_completo if nome_completo else nome_arquivo,
                             "tool_name": self.get_name()
                         }
+                        debug_print(f"[TOOL] ✅ selected_plant criado: código={codigo}, nome={nome_arquivo}")
                         break
             
             result = {

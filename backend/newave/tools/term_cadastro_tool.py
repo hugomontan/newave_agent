@@ -361,14 +361,46 @@ class TermCadastroTool(NEWAVETool):
             debug_print(f"[TOOL] ✅ DataFrame obtido: {len(term_data)} registros")
             
             # ETAPA 3: Extrair usina da query (se mencionada)
-            debug_print("[TOOL] ETAPA 3: Extraindo usina da query...")
-            codigo_usina = self._extract_usina_from_query(query, term_data)
+            # Verificar se há código forçado (correção de usina)
+            forced_plant_code = kwargs.get("forced_plant_code")
+            if forced_plant_code is not None:
+                debug_print(f"[TOOL] ETAPA 3: Usando código forçado (correção): {forced_plant_code}")
+                codigo_usina = forced_plant_code
+            else:
+                debug_print("[TOOL] ETAPA 3: Extraindo usina da query...")
+                codigo_usina = self._extract_usina_from_query(query, term_data)
+            
+            # ETAPA 3.5: Criar selected_plant ANTES de buscar dados (para garantir que follow-up apareça)
+            # Isso é crítico quando forced_plant_code está presente
+            selected_plant = None
+            if codigo_usina is not None:
+                from backend.newave.utils.thermal_plant_matcher import get_thermal_plant_matcher
+                matcher = get_thermal_plant_matcher()
+                if codigo_usina in matcher.code_to_names:
+                    nome_arquivo_csv, nome_completo_csv = matcher.code_to_names[codigo_usina]
+                    selected_plant = {
+                        "type": "thermal",
+                        "codigo": codigo_usina,
+                        "nome": nome_arquivo_csv,
+                        "nome_completo": nome_completo_csv if nome_completo_csv else nome_arquivo_csv,
+                        "tool_name": self.get_name()
+                    }
+                    debug_print(f"[TOOL] ✅ selected_plant criado: código={codigo_usina}, nome={nome_arquivo_csv}")
             
             # ETAPA 4: Filtrar dados
             if codigo_usina is not None:
                 debug_print(f"[TOOL] Filtrando por usina {codigo_usina}...")
                 dados_filtrados = term_data[term_data['codigo_usina'] == codigo_usina].copy()
                 if dados_filtrados.empty:
+                    # Se não encontrou dados mas tem selected_plant, retornar com selected_plant para follow-up
+                    if selected_plant:
+                        debug_print(f"[TOOL] ⚠️ Usina {codigo_usina} não encontrada no TERM.DAT, mas selected_plant foi criado para follow-up")
+                        return {
+                            "success": False,
+                            "error": f"Usina {codigo_usina} não encontrada no TERM.DAT",
+                            "tool": self.get_name(),
+                            "selected_plant": selected_plant  # Incluir mesmo com erro para permitir follow-up
+                        }
                     return {
                         "success": False,
                         "error": f"Usina {codigo_usina} não encontrada no TERM.DAT",
@@ -390,21 +422,6 @@ class TermCadastroTool(NEWAVETool):
                     stats['potencia_media'] = float(dados_filtrados['potencia_efetiva'].mean())
                     stats['potencia_min'] = float(dados_filtrados['potencia_efetiva'].min())
                     stats['potencia_max'] = float(dados_filtrados['potencia_efetiva'].max())
-            
-            # Obter metadados da usina selecionada (apenas se uma única usina foi identificada)
-            selected_plant = None
-            if codigo_usina is not None and len(dados_lista) == 1:
-                from backend.newave.utils.thermal_plant_matcher import get_thermal_plant_matcher
-                matcher = get_thermal_plant_matcher()
-                if codigo_usina in matcher.code_to_names:
-                    nome_arquivo_csv, nome_completo_csv = matcher.code_to_names[codigo_usina]
-                    selected_plant = {
-                        "type": "thermal",
-                        "codigo": codigo_usina,
-                        "nome": nome_arquivo_csv,
-                        "nome_completo": nome_completo_csv if nome_completo_csv else nome_arquivo_csv,
-                        "tool_name": self.get_name()
-                    }
             
             result = {
                 "success": True,

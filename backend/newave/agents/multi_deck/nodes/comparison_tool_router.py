@@ -27,6 +27,7 @@ from backend.newave.config import (
     safe_print
 )
 from backend.core.utils.debug import write_debug_log
+from backend.core.nodes.tool_router_base import generate_plant_correction_followup
 
 
 # Mapeamento de descrições curtas fixas para cada tool
@@ -123,7 +124,7 @@ def comparison_tool_router_node(state: MultiDeckState) -> dict:
                 data_count = len(result.get('data', [])) if result.get('data') else 0
                 safe_print(f"[TOOL ROUTER] Registros retornados: {data_count}")
                 
-                return {
+                tool_result_dict = {
                     "tool_result": result,
                     "tool_used": tool_name,
                     "tool_route": True,
@@ -134,6 +135,14 @@ def comparison_tool_router_node(state: MultiDeckState) -> dict:
                         "return_code": 0
                     }
                 }
+                
+                # Adicionar follow-up de correção de usina se aplicável
+                followup = generate_plant_correction_followup(result, query_to_use)
+                if followup:
+                    tool_result_dict["plant_correction_followup"] = followup
+                    safe_print(f"[TOOL ROUTER] ✅ Follow-up de correção de usina gerado")
+                
+                return tool_result_dict
             else:
                 safe_print(f"[TOOL ROUTER] [AVISO] Tool {tool_name} executada mas retornou erro: {result.get('error')}")
                 return {
@@ -188,7 +197,7 @@ def comparison_tool_router_node(state: MultiDeckState) -> dict:
                 tool_instance = tool_class(first_deck_path, selected_decks=selected_decks)
                 result = tool_instance.execute(query_to_use)
                 
-                return {
+                tool_result_dict = {
                     "tool_result": result,
                     "tool_used": tool_name,
                     "tool_route": True,
@@ -199,6 +208,15 @@ def comparison_tool_router_node(state: MultiDeckState) -> dict:
                         "return_code": 0 if result.get("success", False) else -1
                     }
                 }
+                
+                # Adicionar follow-up de correção de usina se aplicável
+                if result.get("success"):
+                    followup = generate_plant_correction_followup(result, query_to_use)
+                    if followup:
+                        tool_result_dict["plant_correction_followup"] = followup
+                        safe_print(f"[TOOL ROUTER] ✅ Follow-up de correção de usina gerado")
+                
+                return tool_result_dict
             
             # Para tools single-deck, usar MultiDeckComparisonTool como wrapper
             # que executa a tool em todos os decks selecionados
@@ -220,7 +238,7 @@ def comparison_tool_router_node(state: MultiDeckState) -> dict:
             safe_print(f"[TOOL ROUTER] [OK] Comparação concluída em {len(selected_decks)} decks via MultiDeckComparisonTool")
             safe_print(f"[TOOL ROUTER]   Resultado tem {len(result.get('decks', []))} decks no formato 'decks'")
             
-            return {
+            tool_result_dict = {
                 "tool_result": result,
                 "tool_used": tool_name,  # Preservar nome da tool original
                 "tool_route": True,
@@ -231,6 +249,15 @@ def comparison_tool_router_node(state: MultiDeckState) -> dict:
                     "return_code": 0 if result.get("success", False) else -1
                 }
             }
+            
+            # Adicionar follow-up de correção de usina se aplicável
+            if result.get("success"):
+                followup = generate_plant_correction_followup(result, query_to_use)
+                if followup:
+                    tool_result_dict["plant_correction_followup"] = followup
+                    safe_print(f"[TOOL ROUTER] ✅ Follow-up de correção de usina gerado")
+            
+            return tool_result_dict
             
         except Exception as e:
             safe_print(f"[TOOL ROUTER] [ERRO] Erro na comparação: {e}")

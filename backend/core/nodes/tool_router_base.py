@@ -10,7 +10,8 @@ def execute_tool(
     tool,
     tool_name: str,
     query: str,
-    logger_prefix: str = "[TOOL ROUTER]"
+    logger_prefix: str = "[TOOL ROUTER]",
+    **kwargs
 ) -> Dict[str, Any]:
     """
     Executa uma tool e retorna o resultado formatado.
@@ -21,6 +22,7 @@ def execute_tool(
         tool_name: Nome da tool (para logging)
         query: Query a ser passada para a tool
         logger_prefix: Prefixo para mensagens de log (ex: "[TOOL ROUTER]" ou "[TOOL ROUTER DECOMP]")
+        **kwargs: Argumentos adicionais a serem passados para a tool (ex: forced_plant_code)
         
     Returns:
         Dict com:
@@ -31,9 +33,11 @@ def execute_tool(
     """
     safe_print(f"{logger_prefix} Executando tool {tool_name}...")
     safe_print(f"{logger_prefix}   Query usada: {query[:100]}")
+    if kwargs:
+        safe_print(f"{logger_prefix}   Kwargs: {kwargs}")
     
     try:
-        result = tool.execute(query)
+        result = tool.execute(query, **kwargs)
         
         if result.get("success"):
             safe_print(f"{logger_prefix} [OK] Tool {tool_name} executada com sucesso")
