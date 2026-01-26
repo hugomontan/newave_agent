@@ -9,6 +9,7 @@ import pandas as pd
 import re
 from typing import Dict, Any, Optional
 from backend.newave.config import debug_print, safe_print
+from backend.newave.utils.thermal_plant_matcher import get_thermal_plant_matcher
 
 class ExptOperacaoTool(NEWAVETool):
     """
@@ -129,8 +130,7 @@ class ExptOperacaoTool(NEWAVETool):
     
     def _extract_usina_from_query(self, query: str, expt: Expt) -> Optional[int]:
         """
-        Extrai código da usina da query.
-        Busca por número ou nome da usina.
+        Extrai código da usina da query usando o ThermalPlantMatcher unificado.
         
         Args:
             query: Query do usuário
@@ -139,119 +139,17 @@ class ExptOperacaoTool(NEWAVETool):
         Returns:
             Código da usina ou None se não encontrado
         """
-        query_lower = query.lower()
+        if expt.expansoes is None:
+            return None
         
-        # ETAPA 1: Tentar extrair número explícito
-        patterns = [
-            r'usina\s*(\d+)',
-            r'usina\s*térmica\s*(\d+)',
-            r'usina\s*termica\s*(\d+)',
-            r'usina\s*#?\s*(\d+)',
-            r'código\s*(\d+)',
-            r'codigo\s*(\d+)',
-        ]
-        
-        for pattern in patterns:
-            match = re.search(pattern, query_lower)
-            if match:
-                try:
-                    codigo = int(match.group(1))
-                    if expt.expansoes is not None:
-                        codigos_validos = expt.expansoes['codigo_usina'].unique()
-                        if codigo in codigos_validos:
-                            debug_print(f"[TOOL] ✅ Código {codigo} encontrado por padrão numérico")
-                            return codigo
-                except ValueError:
-                    continue
-        
-        # ETAPA 2: Buscar por nome da usina
-        if expt.expansoes is not None:
-            usinas_unicas = expt.expansoes[['codigo_usina', 'nome_usina']].drop_duplicates()
-            usinas_unicas = usinas_unicas.sort_values('codigo_usina')
-            
-            debug_print(f"[TOOL] Usinas disponíveis no arquivo:")
-            for _, row in usinas_unicas.iterrows():
-                codigo = int(row.get('codigo_usina'))
-                nome = str(row.get('nome_usina', '')).strip()
-                print(f"[TOOL]   - Código {codigo}: \"{nome}\"")
-            
-            # Ordenar por tamanho do nome (maior primeiro) para priorizar matches mais específicos
-            # Isso garante que "Maranhão III" seja encontrado antes de "Maranhão V"
-            usinas_sorted = sorted(
-                usinas_unicas.iterrows(),
-                key=lambda x: len(str(x[1].get('nome_usina', '')).strip()),
-                reverse=True
-            )
-            
-            # ETAPA 2.1: Buscar match exato do nome completo (prioridade máxima)
-            for _, row in usinas_sorted:
-                codigo_usina = int(row.get('codigo_usina'))
-                nome_usina = str(row.get('nome_usina', '')).strip()
-                nome_usina_lower = nome_usina.lower().strip()
-                
-                if not nome_usina_lower:
-                    continue
-                
-                # Match exato do nome completo
-                if nome_usina_lower == query_lower.strip():
-                    debug_print(f"[TOOL] ✅ Código {codigo_usina} encontrado por match exato '{nome_usina}'")
-                    return codigo_usina
-                
-                # Match exato do nome completo dentro da query (com word boundaries)
-                # Isso evita que "Maranhão III" seja confundido com "Maranhão V"
-                if nome_usina_lower in query_lower:
-                    # Verificar se não é apenas uma palavra parcial muito curta
-                    if len(nome_usina_lower) >= 4:  # Nomes com pelo menos 4 caracteres
-                        # Verificar se está como palavra completa (não parte de outra palavra)
-                        # Usar word boundaries para evitar matches parciais
-                        pattern = r'\b' + re.escape(nome_usina_lower) + r'\b'
-                        if re.search(pattern, query_lower):
-                            debug_print(f"[TOOL] ✅ Código {codigo_usina} encontrado por nome completo '{nome_usina}' na query")
-                            return codigo_usina
-            
-            # ETAPA 2.2: Buscar por palavras-chave do nome (apenas se match exato não encontrou)
-            # Mas com verificação mais rigorosa para evitar matches incorretos
-            palavras_ignorar = {'de', 'da', 'do', 'das', 'dos', 'e', 'a', 'o', 'as', 'os', 'em', 'na', 'no', 'nas', 'nos'}
-            palavras_query = [p for p in query_lower.split() if len(p) > 2 and p not in palavras_ignorar]
-            
-            # Lista de candidatos com pontuação
-            candidatos = []
-            
-            for _, row in usinas_sorted:
-                codigo_usina = int(row.get('codigo_usina'))
-                nome_usina = str(row.get('nome_usina', '')).strip()
-                nome_usina_lower = nome_usina.lower().strip()
-                
-                if not nome_usina_lower:
-                    continue
-                
-                # Extrair palavras significativas do nome da usina
-                palavras_nome = [p for p in nome_usina_lower.split() if len(p) > 2 and p not in palavras_ignorar]
-                
-                # Calcular score: quantas palavras da query estão no nome
-                palavras_comuns = set(palavras_query) & set(palavras_nome)
-                score = len(palavras_comuns)
-                
-                # Bonus se todas as palavras significativas da query estão no nome
-                if palavras_query and all(p in palavras_nome for p in palavras_query):
-                    score += 10  # Bonus grande para match completo
-                
-                # Bonus se o nome é mais longo (mais específico)
-                score += len(nome_usina_lower) / 100
-                
-                if score > 0:
-                    candidatos.append((codigo_usina, nome_usina, score))
-            
-            # Ordenar candidatos por score (maior primeiro)
-            candidatos.sort(key=lambda x: x[2], reverse=True)
-            
-            if candidatos:
-                melhor_codigo, melhor_nome, melhor_score = candidatos[0]
-                debug_print(f"[TOOL] ✅ Código {melhor_codigo} encontrado por palavras-chave '{melhor_nome}' (score: {melhor_score:.2f})")
-                return melhor_codigo
-        
-        debug_print("[TOOL] ⚠️ Nenhuma usina específica detectada na query")
-        return None
+        # Usar o matcher unificado
+        matcher = get_thermal_plant_matcher()
+        return matcher.extract_plant_from_query(
+            query=query,
+            available_plants=expt.expansoes,
+            entity_type="usina",
+            threshold=0.5
+        )
     
     def _extract_operacao_especifica(self, query: str) -> Optional[str]:
         """

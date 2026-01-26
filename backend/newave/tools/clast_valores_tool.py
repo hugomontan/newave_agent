@@ -10,6 +10,7 @@ import pandas as pd
 import re
 from typing import Dict, Any, Optional
 from backend.newave.config import debug_print, safe_print
+from backend.newave.utils.thermal_plant_matcher import get_thermal_plant_matcher
 
 class ClastValoresTool(NEWAVETool):
     """
@@ -98,8 +99,7 @@ class ClastValoresTool(NEWAVETool):
     
     def _extract_classe_from_query(self, query: str, clast: Clast) -> Optional[int]:
         """
-        Extrai código da classe térmica da query.
-        Busca por número ou nome da classe.
+        Extrai código da classe térmica da query usando o ThermalPlantMatcher unificado.
         
         Args:
             query: Query do usuário
@@ -108,98 +108,17 @@ class ClastValoresTool(NEWAVETool):
         Returns:
             Código da classe ou None se não encontrado
         """
-        query_lower = query.lower()
+        if clast.usinas is None:
+            return None
         
-        # ETAPA 1: Tentar extrair número explícito
-        patterns = [
-            r'classe\s*(\d+)',
-            r'classe\s*térmica\s*(\d+)',
-            r'classe\s*termica\s*(\d+)',
-            r'classe\s*#?\s*(\d+)',
-        ]
-        
-        for pattern in patterns:
-            match = re.search(pattern, query_lower)
-            if match:
-                try:
-                    codigo = int(match.group(1))
-                    if clast.usinas is not None:
-                        codigos_validos = clast.usinas['codigo_usina'].unique()
-                        if codigo in codigos_validos:
-                            debug_print(f"[TOOL] ✅ Código {codigo} encontrado por padrão numérico")
-                            return codigo
-                except ValueError:
-                    continue
-        
-        # ETAPA 2: Buscar por nome da classe
-        if clast.usinas is not None:
-            from difflib import SequenceMatcher
-            
-            classes_unicas = clast.usinas[['codigo_usina', 'nome_usina']].drop_duplicates()
-            classes_unicas = classes_unicas.sort_values('codigo_usina')
-            
-            debug_print(f"[TOOL] Classes disponíveis no arquivo:")
-            for _, row in classes_unicas.iterrows():
-                codigo = int(row.get('codigo_usina'))
-                nome = str(row.get('nome_usina', '')).strip()
-                print(f"[TOOL]   - Código {codigo}: \"{nome}\"")
-            
-            # Palavras comuns a ignorar (artigos, preposições, etc.)
-            palavras_ignorar = {'de', 'da', 'do', 'das', 'dos', 'e', 'a', 'o', 'as', 'os', 'em', 'na', 'no', 'nas', 'nos'}
-            
-            # Extrair palavras significativas da query (remover palavras comuns)
-            palavras_query = [p for p in query_lower.split() if len(p) > 2 and p not in palavras_ignorar]
-            
-            debug_print(f"[TOOL] Palavras significativas extraídas da query: {palavras_query}")
-            
-            # Lista de candidatos com pontuação
-            candidatos = []
-            
-            for _, row in classes_unicas.iterrows():
-                codigo_classe = int(row.get('codigo_usina'))
-                nome_classe = str(row.get('nome_usina', '')).strip()
-                nome_classe_lower = nome_classe.lower().strip()
-                
-                if not nome_classe_lower:
-                    continue
-                
-                # Extrair palavras significativas do nome da classe
-                palavras_nome = [p for p in nome_classe_lower.split() if len(p) > 2 and p not in palavras_ignorar]
-                
-                # PRIORIDADE 1: Match exato do nome completo
-                if nome_classe_lower in query_lower:
-                    debug_print(f"[TOOL] ✅ Código {codigo_classe} encontrado por nome completo '{nome_classe}' na query")
-                    return codigo_classe
-                
-                # PRIORIDADE 2: Match exato de todas as palavras significativas
-                if palavras_nome and all(palavra in query_lower for palavra in palavras_nome):
-                    debug_print(f"[TOOL] ✅ Código {codigo_classe} encontrado: todas as palavras significativas de '{nome_classe}' estão na query")
-                    return codigo_classe
-                
-                # PRIORIDADE 3: Similaridade de string (para matches parciais)
-                similarity = SequenceMatcher(None, query_lower, nome_classe_lower).ratio()
-                if similarity > 0.6:  # 60% de similaridade
-                    candidatos.append((codigo_classe, nome_classe, similarity, 'similarity'))
-                
-                # PRIORIDADE 4: Contagem de palavras significativas em comum
-                palavras_comuns = set(palavras_query) & set(palavras_nome)
-                if palavras_comuns:
-                    # Requer pelo menos 2 palavras em comum OU uma palavra longa (>= 5 chars)
-                    palavras_longas = [p for p in palavras_comuns if len(p) >= 5]
-                    if len(palavras_comuns) >= 2 or (len(palavras_longas) >= 1 and len(palavras_comuns) >= 1):
-                        score = len(palavras_comuns) / max(len(palavras_nome), 1)  # Proporção de palavras encontradas
-                        candidatos.append((codigo_classe, nome_classe, score, 'palavras_comuns'))
-            
-            # Se encontrou candidatos, retornar o melhor
-            if candidatos:
-                # Ordenar por tipo de match (similarity primeiro) e depois por score
-                candidatos.sort(key=lambda x: (x[3] == 'similarity', x[2]), reverse=True)
-                melhor = candidatos[0]
-                debug_print(f"[TOOL] ✅ Código {melhor[0]} encontrado por {melhor[3]} (score: {melhor[2]:.2f}) - '{melhor[1]}'")
-                return melhor[0]
-        
-        debug_print("[TOOL] ⚠️ Nenhuma classe específica detectada na query")
-        return None
+        # Usar o matcher unificado com entity_type="classe"
+        matcher = get_thermal_plant_matcher()
+        return matcher.extract_plant_from_query(
+            query=query,
+            available_plants=clast.usinas,
+            entity_type="classe",
+            threshold=0.5
+        )
     
     def _extract_tipo_combustivel(self, query: str) -> Optional[str]:
         """

@@ -7,14 +7,8 @@ import os
 import pandas as pd
 import re
 from typing import Dict, Any, Optional
-from difflib import SequenceMatcher
-import sys
-from pathlib import Path
 from backend.newave.config import debug_print, safe_print
-
-# Adicionar shared ao path para importar o matcher
-sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent / "shared"))
-from backend.core.utils.usina_name_matcher import find_usina_match, normalize_usina_name
+from backend.newave.utils.thermal_plant_matcher import get_thermal_plant_matcher
 
 
 class TermCadastroTool(NEWAVETool):
@@ -88,8 +82,7 @@ class TermCadastroTool(NEWAVETool):
     
     def _extract_usina_from_query(self, query: str, term_data: pd.DataFrame) -> Optional[int]:
         """
-        Extrai código da usina da query usando matching inteligente.
-        Busca por número ou nome da usina.
+        Extrai código da usina da query usando o ThermalPlantMatcher unificado.
         
         Args:
             query: Query do usuário
@@ -98,100 +91,14 @@ class TermCadastroTool(NEWAVETool):
         Returns:
             Código da usina ou None se não encontrado
         """
-        query_lower = query.lower()
-        
-        # ETAPA 1: Tentar extrair número explícito
-        patterns = [
-            r'usina\s*(\d+)',
-            r'usina\s*térmica\s*(\d+)',
-            r'usina\s*termica\s*(\d+)',
-            r'usina\s*#?\s*(\d+)',
-            r'código\s*(\d+)',
-            r'codigo\s*(\d+)',
-            r'térmica\s*(\d+)',
-            r'termica\s*(\d+)',
-        ]
-        
-        for pattern in patterns:
-            match = re.search(pattern, query_lower)
-            if match:
-                try:
-                    codigo = int(match.group(1))
-                    if 'codigo_usina' in term_data.columns:
-                        if codigo in term_data['codigo_usina'].values:
-                            debug_print(f"[TOOL] ✅ Código {codigo} encontrado por padrão numérico")
-                            return codigo
-                except ValueError:
-                    continue
-        
-        # ETAPA 2: Buscar por nome da usina usando matcher centralizado
-        if 'nome_usina' in term_data.columns:
-            # Obter lista de nomes disponíveis
-            available_names = []
-            codigo_to_nome = {}
-            for _, row in term_data.iterrows():
-                codigo = row.get('codigo_usina')
-                nome = str(row.get('nome_usina', '')).strip()
-                if nome and nome.lower() != 'nan':
-                    available_names.append(nome)
-                    codigo_to_nome[codigo] = nome
-            
-            if available_names:
-                # Usar matcher centralizado que normaliza nomes
-                match_result = find_usina_match(query, available_names, threshold=0.5)
-                
-                if match_result:
-                    matched_name, score = match_result
-                    # Encontrar código correspondente ao nome encontrado
-                    for codigo, nome in codigo_to_nome.items():
-                        if normalize_usina_name(nome) == normalize_usina_name(matched_name):
-                            debug_print(f"[TOOL] ✅ Código {codigo} encontrado via matcher centralizado: '{nome}' → '{normalize_usina_name(nome)}' (score: {score:.2f})")
-                            return codigo
-            
-            # Fallback: busca original se matcher não encontrou nada
-            palavras_ignorar = {
-                'de', 'da', 'do', 'das', 'dos', 'e', 'a', 'o', 'as', 'os',
-                'em', 'na', 'no', 'nas', 'nos', 'a', 'à', 'ao', 'aos',
-                'informacoes', 'informações', 'dados', 'usina', 'térmica', 'termica',
-                'cadastro', 'características', 'caracteristicas'
-            }
-            
-            palavras_query = [p for p in query_lower.split() 
-                            if len(p) > 2 and p not in palavras_ignorar]
-            
-            if palavras_query:
-                candidatos = []
-                for _, row in term_data.iterrows():
-                    codigo = row.get('codigo_usina')
-                    nome = str(row.get('nome_usina', '')).strip().lower()
-                    
-                    if not nome:
-                        continue
-                    
-                    palavras_nome = [p for p in nome.split() 
-                                   if len(p) > 2 and p not in palavras_ignorar]
-                    
-                    palavras_comuns = set(palavras_query) & set(palavras_nome)
-                    score = len(palavras_comuns)
-                    
-                    # Bonus se todas as palavras significativas da query estão no nome
-                    if palavras_query and all(p in palavras_nome for p in palavras_query):
-                        score += 10
-                    
-                    # Bonus por similaridade de strings
-                    similarity = SequenceMatcher(None, query_lower, nome).ratio()
-                    score += similarity * 5
-                    
-                    if score > 0:
-                        candidatos.append((codigo, nome, score))
-                
-                if candidatos:
-                    candidatos.sort(key=lambda x: x[2], reverse=True)
-                    melhor_codigo, melhor_nome, melhor_score = candidatos[0]
-                    debug_print(f"[TOOL] ✅ Código {melhor_codigo} encontrado (fallback): '{melhor_nome}' (score: {melhor_score:.2f})")
-                    return melhor_codigo
-        
-        return None
+        # Usar o matcher unificado
+        matcher = get_thermal_plant_matcher()
+        return matcher.extract_plant_from_query(
+            query=query,
+            available_plants=term_data,
+            entity_type="usina",
+            threshold=0.5
+        )
     
     def _read_term_file(self, term_path: str) -> Optional[pd.DataFrame]:
         """
