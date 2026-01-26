@@ -22,6 +22,9 @@ class SingleDeckState(TypedDict):
     # Campos para Disambiguation
     disambiguation: Optional[dict]
     
+    # Campos para Correção de Usina
+    plant_correction_followup: Optional[dict]  # Dados para follow-up de correção de usina
+    
     # Campos para Comparação (usado para comparison_data do single deck)
     comparison_data: Optional[dict]  # Dados de comparação/visualização
     

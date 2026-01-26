@@ -223,8 +223,7 @@ class ModifOperacaoTool(NEWAVETool):
     
     def _extract_usina_from_query(self, query: str, modif: Modif) -> Optional[int]:
         """
-        Extrai código da usina da query.
-        Busca por número ou nome da usina.
+        Extrai código da usina da query usando HydraulicPlantMatcher unificado.
         
         Args:
             query: Query do usuário
@@ -233,114 +232,33 @@ class ModifOperacaoTool(NEWAVETool):
         Returns:
             Código da usina ou None se não encontrado
         """
-        query_lower = query.lower()
-        
-        # ETAPA 1: Tentar extrair número explícito
-        patterns = [
-            r'usina\s*(\d+)',
-            r'usina\s*hidrelétrica\s*(\d+)',
-            r'usina\s*hidreletrica\s*(\d+)',
-            r'usina\s*#?\s*(\d+)',
-            r'código\s*(\d+)',
-            r'codigo\s*(\d+)',
-        ]
-        
-        for pattern in patterns:
-            match = re.search(pattern, query_lower)
-            if match:
-                try:
-                    codigo = int(match.group(1))
-                    # Verificar se existe no arquivo
-                    usinas_df = modif.usina(df=True)
-                    if usinas_df is not None and not usinas_df.empty:
-                        codigos_validos = usinas_df['codigo'].unique()
-                        if codigo in codigos_validos:
-                            debug_print(f"[TOOL] ✅ Código {codigo} encontrado por padrão numérico")
-                            return codigo
-                except ValueError:
-                    continue
-        
-        # ETAPA 2: Buscar por nome da usina
         usinas_df = modif.usina(df=True)
-        if usinas_df is not None and not usinas_df.empty:
-            debug_print(f"[TOOL] Usinas disponíveis no arquivo:")
-            for _, row in usinas_df.iterrows():
-                codigo = int(row.get('codigo'))
-                nome = str(row.get('nome', '')).strip()
-                print(f"[TOOL]   - Código {codigo}: \"{nome}\"")
-            
-            # Ordenar por tamanho do nome (maior primeiro) para priorizar matches mais específicos
-            usinas_sorted = sorted(
-                usinas_df.iterrows(),
-                key=lambda x: len(str(x[1].get('nome', '')).strip()),
-                reverse=True
-            )
-            
-            # ETAPA 2.1: Buscar match exato do nome completo (prioridade máxima)
-            for _, row in usinas_sorted:
-                codigo_usina = int(row.get('codigo'))
-                nome_usina = str(row.get('nome', '')).strip()
-                nome_usina_lower = nome_usina.lower().strip()
-                
-                if not nome_usina_lower:
-                    continue
-                
-                # Match exato do nome completo
-                if nome_usina_lower == query_lower.strip():
-                    debug_print(f"[TOOL] ✅ Código {codigo_usina} encontrado por match exato '{nome_usina}'")
-                    return codigo_usina
-                
-                # Match exato do nome completo dentro da query (com espaços/pontuação)
-                if nome_usina_lower in query_lower:
-                    # Verificar se não é apenas uma palavra parcial muito curta
-                    if len(nome_usina_lower) >= 4:  # Nomes com pelo menos 4 caracteres
-                        # Verificar se está como palavra completa (não parte de outra palavra)
-                        pattern = r'\b' + re.escape(nome_usina_lower) + r'\b'
-                        if re.search(pattern, query_lower):
-                            debug_print(f"[TOOL] ✅ Código {codigo_usina} encontrado por nome completo '{nome_usina}' na query")
-                            return codigo_usina
-            
-            # ETAPA 2.2: Buscar por palavras-chave do nome (apenas se match exato não encontrou)
-            # Priorizar palavras mais longas e específicas
-            palavras_candidatas = []
-            for _, row in usinas_sorted:
-                codigo_usina = int(row.get('codigo'))
-                nome_usina = str(row.get('nome', '')).strip()
-                nome_usina_lower = nome_usina.lower().strip()
-                
-                if not nome_usina_lower:
-                    continue
-                
-                palavras_nome = nome_usina_lower.split()
-                # Ordenar palavras por tamanho (maior primeiro)
-                palavras_nome_sorted = sorted(palavras_nome, key=len, reverse=True)
-                
-                for palavra in palavras_nome_sorted:
-                    # Apenas palavras com mais de 3 caracteres para evitar matches incorretos
-                    if len(palavra) > 3:
-                        # Verificar se a palavra está na query como palavra completa
-                        pattern = r'\b' + re.escape(palavra) + r'\b'
-                        if re.search(pattern, query_lower):
-                            palavras_candidatas.append({
-                                'codigo': codigo_usina,
-                                'nome': nome_usina,
-                                'palavra': palavra,
-                                'tamanho': len(palavra),
-                                'tamanho_nome': len(nome_usina_lower)
-                            })
-            
-            # Se encontrou candidatos, escolher o melhor (palavra mais longa + nome mais específico)
-            if palavras_candidatas:
-                # Ordenar por tamanho da palavra (maior primeiro) e depois por tamanho do nome
-                melhor_match = max(
-                    palavras_candidatas,
-                    key=lambda x: (x['tamanho'], x['tamanho_nome'])
-                )
-                debug_print(f"[TOOL] ✅ Código {melhor_match['codigo']} encontrado por palavra-chave '{melhor_match['palavra']}' do nome '{melhor_match['nome']}'")
-                return melhor_match['codigo']
+        if usinas_df is None or usinas_df.empty:
+            return None
         
-        debug_print("[TOOL] ⚠️ Nenhuma usina específica detectada na query")
-        return None
+        # Preparar DataFrame no formato esperado pelo matcher
+        # O matcher espera colunas 'codigo_usina' e 'nome_usina'
+        if 'codigo' in usinas_df.columns and 'nome' in usinas_df.columns:
+            # Renomear colunas se necessário
+            df_prepared = usinas_df[['codigo', 'nome']].copy()
+            df_prepared.columns = ['codigo_usina', 'nome_usina']
+        elif 'codigo_usina' in usinas_df.columns and 'nome_usina' in usinas_df.columns:
+            df_prepared = usinas_df[['codigo_usina', 'nome_usina']].copy()
+        else:
+            debug_print("[TOOL] ⚠️ Colunas esperadas não encontradas no DataFrame")
+            return None
+        
+        from backend.newave.utils.hydraulic_plant_matcher import get_hydraulic_plant_matcher
+        
+        matcher = get_hydraulic_plant_matcher()
+        result = matcher.extract_plant_from_query(
+            query=query,
+            available_plants=df_prepared,
+            return_format="codigo",
+            threshold=0.5
+        )
+        
+        return result
     
     def _get_all_modifications(self, modif: Modif, codigo_usina: Optional[int] = None) -> Dict[str, pd.DataFrame]:
         """
@@ -737,8 +655,23 @@ class ModifOperacaoTool(NEWAVETool):
                             'tipos_modificacao': tipos,
                         })
             
-            # ETAPA 9: Formatar resultado
-            debug_print("[TOOL] ETAPA 9: Formatando resultado...")
+            # ETAPA 9: Obter metadados da usina selecionada (apenas se uma única usina foi identificada)
+            selected_plant = None
+            if codigo_usina is not None and len(stats_por_usina) == 1:
+                from backend.newave.utils.hydraulic_plant_matcher import get_hydraulic_plant_matcher
+                matcher = get_hydraulic_plant_matcher()
+                if codigo_usina in matcher.code_to_names:
+                    nome_arquivo_csv, nome_completo_csv, _ = matcher.code_to_names[codigo_usina]
+                    selected_plant = {
+                        "type": "hydraulic",
+                        "codigo": codigo_usina,
+                        "nome": nome_arquivo_csv,
+                        "nome_completo": nome_completo_csv if nome_completo_csv else nome_arquivo_csv,
+                        "tool_name": self.get_name()
+                    }
+            
+            # ETAPA 10: Formatar resultado
+            debug_print("[TOOL] ETAPA 10: Formatando resultado...")
             
             # Informações sobre filtros aplicados
             filtro_info = {}
@@ -752,7 +685,7 @@ class ModifOperacaoTool(NEWAVETool):
             if tipo_modificacao is not None:
                 filtro_info['tipo_modificacao'] = tipo_modificacao
             
-            return {
+            result = {
                 "success": True,
                 "dados_por_tipo": dados_por_tipo,
                 "filtros": filtro_info if filtro_info else None,
@@ -762,6 +695,12 @@ class ModifOperacaoTool(NEWAVETool):
                 "description": "Dados de operação hídrica do MODIF.DAT (modificações de volumes, vazões, níveis, turbinamento, etc.)",
                 "tool": self.get_name()
             }
+            
+            # Adicionar metadados da usina selecionada se disponível
+            if selected_plant:
+                result["selected_plant"] = selected_plant
+            
+            return result
             
         except FileNotFoundError as e:
             safe_print(f"[TOOL] ❌ Erro FileNotFoundError: {e}")

@@ -309,12 +309,17 @@ def run_query_stream(query: str, deck_path: str, session_id: Optional[str] = Non
                         for i in range(0, len(response), chunk_size):
                             yield f"data: {json.dumps({'type': 'response_chunk', 'chunk': response[i:i + chunk_size]})}\n\n"
                         
-                        # Incluir visualization_data no evento response_complete
+                        # Incluir visualization_data e plant_correction_followup no evento response_complete
                         response_complete_data = {'type': 'response_complete', 'response': response}
                         if visualization_data:
                             # Limpar NaN/Inf antes de serializar
                             cleaned_visualization_data = clean_nan_for_json(visualization_data)
                             response_complete_data['visualization_data'] = cleaned_visualization_data
+                        
+                        # Incluir plant_correction_followup se disponível
+                        plant_correction_followup = node_output.get("plant_correction_followup")
+                        if plant_correction_followup:
+                            response_complete_data['plant_correction_followup'] = plant_correction_followup
                         
                         yield f"data: {json.dumps(response_complete_data, allow_nan=False)}\n\n"
                         

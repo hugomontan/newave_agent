@@ -27,6 +27,8 @@ from backend.core.nodes.tool_router_base import (
     generate_disambiguation_response,
     parse_disambiguation_query,
     find_tool_by_name,
+    generate_plant_correction_followup,
+    parse_plant_correction_query,
 )
 
 
@@ -89,7 +91,42 @@ def tool_router_node(state: SingleDeckState) -> dict:
         """Executa uma tool e retorna o resultado formatado."""
         if query_to_use is None:
             query_to_use = query
-        return shared_execute_tool(tool, tool_name, query_to_use, "[TOOL ROUTER]")
+        result = shared_execute_tool(tool, tool_name, query_to_use, "[TOOL ROUTER]")
+        
+        # Adicionar follow-up de correção de usina se aplicável
+        if result.get("tool_route") and result.get("tool_result", {}).get("success"):
+            tool_result = result.get("tool_result", {})
+            followup = generate_plant_correction_followup(tool_result, query_to_use)
+            if followup:
+                result["plant_correction_followup"] = followup
+                safe_print(f"[TOOL ROUTER] ✅ Follow-up de correção de usina gerado")
+        
+        return result
+    
+    # Detectar se a query veio de uma correção de usina
+    # Formato: "__PLANT_CORR__:ToolName:codigo:original_query"
+    is_plant_correction, correction_tool_name, plant_code, original_query_correction = parse_plant_correction_query(query)
+    
+    if is_plant_correction:
+        safe_print(f"[TOOL ROUTER] ✅ Query de correção de usina detectada")
+        safe_print(f"[TOOL ROUTER]   Tool: {correction_tool_name}")
+        safe_print(f"[TOOL ROUTER]   Código da usina: {plant_code}")
+        safe_print(f"[TOOL ROUTER]   Query original: {original_query_correction}")
+        
+        # Encontrar a tool
+        selected_tool = find_tool_by_name(correction_tool_name, tools)
+        if selected_tool:
+            # Executar tool com query modificada que força o código da usina
+            # A tool deve detectar o código na query e usar diretamente
+            # Por enquanto, vamos passar a query original e deixar a tool lidar com isso
+            # TODO: Implementar mecanismo para forçar código diretamente na tool
+            result = _execute_tool(selected_tool, correction_tool_name, original_query_correction)
+            result["from_plant_correction"] = True
+            result["plant_code_forced"] = plant_code
+            safe_print(f"[TOOL ROUTER] ✅ Tool executada com correção de usina")
+            return result
+        else:
+            safe_print(f"[TOOL ROUTER] ❌ Tool {correction_tool_name} não encontrada para correção")
     
     # Detectar se a query veio de uma escolha de disambiguation
     # Formato novo: "__DISAMBIG__:ToolName:original_query"

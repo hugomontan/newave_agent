@@ -145,8 +145,7 @@ class VazoesTool(NEWAVETool):
     
     def _buscar_posto_por_query(self, query: str, confhd: Confhd) -> Optional[tuple]:
         """
-        Busca o posto de vazões associado a uma usina comparando diretamente com a query.
-        Segue o padrão da ClastValoresTool: compara a query diretamente com os nomes das usinas.
+        Busca o posto de vazões associado a uma usina usando HydraulicPlantMatcher unificado.
         
         Args:
             query: Query do usuário
@@ -158,76 +157,17 @@ class VazoesTool(NEWAVETool):
         if confhd.usinas is None or confhd.usinas.empty:
             return None
         
-        query_lower = query.lower()
+        from backend.newave.utils.hydraulic_plant_matcher import get_hydraulic_plant_matcher
         
-        # Palavras comuns a ignorar (artigos, preposições, etc.)
-        palavras_ignorar = {'de', 'da', 'do', 'das', 'dos', 'e', 'a', 'o', 'as', 'os', 'em', 'na', 'no', 'nas', 'nos',
-                           'vazao', 'vazão', 'vazoes', 'vazões', 'historica', 'histórica', 'posto', 'postos',
-                           'afluencia', 'afluência', 'afluencias', 'afluências'}
+        matcher = get_hydraulic_plant_matcher()
+        result = matcher.extract_plant_from_query(
+            query=query,
+            available_plants=confhd.usinas,
+            return_format="posto",
+            threshold=0.5
+        )
         
-        # Extrair palavras significativas da query (remover palavras comuns)
-        palavras_query = [p for p in query_lower.split() if len(p) > 2 and p not in palavras_ignorar]
-        
-        debug_print(f"[TOOL] Palavras significativas extraídas da query: {palavras_query}")
-        
-        # Obter usinas únicas (pode haver múltiplas usinas com mesmo posto, mas queremos o posto)
-        usinas_unicas = confhd.usinas[['posto', 'nome_usina']].drop_duplicates()
-        usinas_unicas = usinas_unicas.sort_values('posto')
-        
-        debug_print(f"[TOOL] Usinas disponíveis no CONFHD:")
-        for _, row in usinas_unicas.iterrows():
-            posto = int(row.get('posto', 0))
-            nome = str(row.get('nome_usina', '')).strip()
-            if posto > 0 and nome:
-                debug_print(f"[TOOL]   - Posto {posto}: \"{nome}\"")
-        
-        # Lista de candidatos com pontuação
-        candidatos = []
-        
-        for _, row in usinas_unicas.iterrows():
-            posto = int(row.get('posto', 0))
-            nome_usina = str(row.get('nome_usina', '')).strip()
-            nome_usina_lower = nome_usina.lower().strip()
-            
-            if not nome_usina_lower or posto == 0:
-                continue
-            
-            # Extrair palavras significativas do nome da usina
-            palavras_nome = [p for p in nome_usina_lower.split() if len(p) > 2 and p not in palavras_ignorar]
-            
-            # PRIORIDADE 1: Match exato do nome completo na query
-            if nome_usina_lower in query_lower:
-                debug_print(f"[TOOL] ✅ Posto {posto} encontrado por nome completo '{nome_usina}' na query")
-                return (posto, nome_usina)
-            
-            # PRIORIDADE 2: Match exato de todas as palavras significativas
-            if palavras_nome and all(palavra in query_lower for palavra in palavras_nome):
-                debug_print(f"[TOOL] ✅ Posto {posto} encontrado: todas as palavras significativas de '{nome_usina}' estão na query")
-                return (posto, nome_usina)
-            
-            # PRIORIDADE 3: Similaridade de string (para matches parciais)
-            similarity = SequenceMatcher(None, query_lower, nome_usina_lower).ratio()
-            if similarity > 0.6:  # 60% de similaridade
-                candidatos.append((posto, nome_usina, similarity, 'similarity'))
-            
-            # PRIORIDADE 4: Contagem de palavras significativas em comum
-            palavras_comuns = set(palavras_query) & set(palavras_nome)
-            if palavras_comuns:
-                # Requer pelo menos 2 palavras em comum OU uma palavra longa (>= 5 chars)
-                palavras_longas = [p for p in palavras_comuns if len(p) >= 5]
-                if len(palavras_comuns) >= 2 or (len(palavras_longas) >= 1 and len(palavras_comuns) >= 1):
-                    score = len(palavras_comuns) / max(len(palavras_nome), 1)  # Proporção de palavras encontradas
-                    candidatos.append((posto, nome_usina, score, 'palavras_comuns'))
-        
-        # Se encontrou candidatos, retornar o melhor
-        if candidatos:
-            # Ordenar por tipo de match (similarity primeiro) e depois por score
-            candidatos.sort(key=lambda x: (x[3] == 'similarity', x[2]), reverse=True)
-            melhor = candidatos[0]
-            debug_print(f"[TOOL] ✅ Posto {melhor[0]} encontrado por {melhor[3]} (score: {melhor[2]:.2f}) - '{melhor[1]}'")
-            return (melhor[0], melhor[1])
-        
-        return None
+        return result
     
     def _extract_posto_from_query(self, query: str) -> Optional[int]:
         """
@@ -697,7 +637,25 @@ class VazoesTool(NEWAVETool):
                 if nome_usina_encontrado:
                     filtro_info['nome_usina'] = nome_usina_encontrado
             
-            return {
+            # Obter metadados da usina selecionada (apenas se uma única usina foi identificada)
+            selected_plant = None
+            if len(postos_consultados) == 1 and nome_usina_encontrado:
+                # Buscar código da usina através do matcher
+                from backend.newave.utils.hydraulic_plant_matcher import get_hydraulic_plant_matcher
+                matcher = get_hydraulic_plant_matcher()
+                # Buscar código pelo nome
+                for codigo, (nome_arquivo, nome_completo, posto_csv) in matcher.code_to_names.items():
+                    if posto_csv == postos_consultados[0] or nome_arquivo.upper() == nome_usina_encontrado.upper() or (nome_completo and nome_completo.upper() == nome_usina_encontrado.upper()):
+                        selected_plant = {
+                            "type": "hydraulic",
+                            "codigo": codigo,
+                            "nome": nome_arquivo,
+                            "nome_completo": nome_completo if nome_completo else nome_arquivo,
+                            "tool_name": self.get_name()
+                        }
+                        break
+            
+            result = {
                 "success": True,
                 "data": result_data,
                 "summary": {
@@ -711,6 +669,12 @@ class VazoesTool(NEWAVETool):
                 "description": "Vazões históricas de postos fluviométricos (m³/s)",
                 "tool": self.get_name()
             }
+            
+            # Adicionar metadados da usina selecionada se disponível
+            if selected_plant:
+                result["selected_plant"] = selected_plant
+            
+            return result
             
         except FileNotFoundError as e:
             safe_print(f"[TOOL] ❌ Erro FileNotFoundError: {e}")

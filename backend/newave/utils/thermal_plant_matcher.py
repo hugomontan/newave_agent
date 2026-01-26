@@ -30,9 +30,9 @@ class ThermalPlantMatcher:
     antes de fazer o matching, melhorando a taxa de acerto.
     
     Attributes:
-        abbrev_to_full: Mapeamento nome_arquivo -> usina (expandido)
-        full_to_abbrev: Mapeamento usina (expandido) -> nome_arquivo
-        code_to_names: Mapeamento codigo -> (nome_arquivo, usina)
+        abbrev_to_full: Mapeamento nome_arquivo.lower() -> nome_completo.lower()
+        full_to_abbrev: Mapeamento nome_completo.lower() -> nome_arquivo.lower()
+        code_to_names: Mapeamento codigo -> (nome_arquivo, nome_completo)
     """
     
     # Palavras comuns a ignorar no matching
@@ -55,7 +55,7 @@ class ThermalPlantMatcher:
         self.csv_path = csv_path or DEFAULT_CSV_PATH
         self.abbrev_to_full: Dict[str, str] = {}
         self.full_to_abbrev: Dict[str, str] = {}
-        self.code_to_names: Dict[int, Tuple[str, str]] = {}
+        self.code_to_names: Dict[int, Tuple[str, str]] = {}  # codigo -> (nome_arquivo, nome_completo)
         
         self._load_name_mapping_from_csv()
     
@@ -64,14 +64,14 @@ class ThermalPlantMatcher:
         Carrega os mapeamentos bidirecionais do CSV de de-para.
         
         O CSV deve ter as colunas:
-        - codigo: Código numérico da usina
+        - codigo: Código numérico da usina (prevalece no deck)
         - nome_arquivo: Nome como aparece no arquivo NEWAVE
-        - usina: Nome expandido/curado manualmente
+        - nome_completo ou usina: Nome expandido/curado manualmente
         
         Cria três dicionários:
-        - abbrev_to_full: nome_arquivo.lower() -> usina.lower()
-        - full_to_abbrev: usina.lower() -> nome_arquivo.lower()
-        - code_to_names: codigo -> (nome_arquivo, usina)
+        - abbrev_to_full: nome_arquivo.lower() -> nome_completo.lower()
+        - full_to_abbrev: nome_completo.lower() -> nome_arquivo.lower()
+        - code_to_names: codigo -> (nome_arquivo, nome_completo)
         """
         if not os.path.exists(self.csv_path):
             debug_print(f"[THERMAL_MATCHER] ⚠️ CSV de de-para não encontrado: {self.csv_path}")
@@ -86,23 +86,30 @@ class ThermalPlantMatcher:
                     try:
                         codigo = int(row.get('codigo', 0))
                         nome_arquivo = str(row.get('nome_arquivo', '')).strip()
-                        # A coluna 'usina' pode ter espaço extra no nome
-                        usina = str(row.get('usina ', row.get('usina', ''))).strip()
+                        # Tratar coluna "Nome completo " (com espaço extra) ou "usina "
+                        nome_completo = str(row.get('Nome completo ', row.get('Nome completo', row.get('nome_completo', '')))).strip()
+                        # Fallback para coluna 'usina' se nome_completo não existir
+                        if not nome_completo:
+                            nome_completo = str(row.get('usina ', row.get('usina', ''))).strip()
                         
-                        if not nome_arquivo or not usina:
+                        if not nome_arquivo:
                             continue
+                        
+                        # Se não tiver nome_completo, usar nome_arquivo
+                        if not nome_completo:
+                            nome_completo = nome_arquivo
                         
                         # Normalizar para lowercase
                         nome_arquivo_lower = nome_arquivo.lower()
-                        usina_lower = usina.lower()
+                        nome_completo_lower = nome_completo.lower()
                         
                         # Só criar mapeamento se forem diferentes
-                        if nome_arquivo_lower != usina_lower:
-                            self.abbrev_to_full[nome_arquivo_lower] = usina_lower
-                            self.full_to_abbrev[usina_lower] = nome_arquivo_lower
+                        if nome_arquivo_lower != nome_completo_lower:
+                            self.abbrev_to_full[nome_arquivo_lower] = nome_completo_lower
+                            self.full_to_abbrev[nome_completo_lower] = nome_arquivo_lower
                         
                         # Sempre criar mapeamento por código
-                        self.code_to_names[codigo] = (nome_arquivo, usina)
+                        self.code_to_names[codigo] = (nome_arquivo, nome_completo)
                         
                     except (ValueError, KeyError) as e:
                         debug_print(f"[THERMAL_MATCHER] ⚠️ Erro ao processar linha do CSV: {e}")
@@ -252,100 +259,140 @@ class ThermalPlantMatcher:
         
         return None
     
+    def _create_expanded_list_from_csv(self) -> Tuple[List[str], Dict[str, int]]:
+        """
+        Cria lista expandida de nomes DIRETAMENTE do CSV.
+        
+        O CSV é a fonte de verdade. Cria lista incluindo tanto nome_arquivo
+        quanto nome_completo de cada entrada do CSV.
+        
+        Returns:
+            Tupla (available_names, name_to_codigo) onde:
+            - available_names: Lista de nomes (nome_arquivo + nome_completo)
+            - name_to_codigo: Mapeamento nome.lower() -> codigo (do CSV)
+        """
+        available_names = []
+        name_to_codigo = {}  # Mapeamento nome -> codigo (do CSV)
+        
+        debug_print(f"[THERMAL_MATCHER] Criando lista expandida de nomes do CSV...")
+        for codigo, (nome_arquivo, nome_completo) in self.code_to_names.items():
+            # Adicionar nome_arquivo (nome do deck)
+            if nome_arquivo and nome_arquivo.strip():
+                available_names.append(nome_arquivo)
+                name_to_codigo[nome_arquivo.lower()] = codigo
+                debug_print(f"[THERMAL_MATCHER]   Código {codigo}: nome_arquivo='{nome_arquivo}'")
+            
+            # Adicionar nome_completo (se diferente do nome_arquivo)
+            if nome_completo and nome_completo.strip():
+                nome_completo_lower = nome_completo.lower()
+                nome_arquivo_lower = nome_arquivo.lower() if nome_arquivo else ''
+                if nome_completo_lower != nome_arquivo_lower:
+                    available_names.append(nome_completo)
+                    name_to_codigo[nome_completo_lower] = codigo
+                    debug_print(f"[THERMAL_MATCHER]   Código {codigo}: nome_completo='{nome_completo}'")
+        
+        debug_print(f"[THERMAL_MATCHER] Lista expandida criada: {len(available_names)} nomes únicos do CSV")
+        return available_names, name_to_codigo
+    
     def _extract_by_name(
         self, 
         query: str, 
-        plants_list: List[Dict[str, Any]],
         threshold: float = 0.5
     ) -> Optional[int]:
         """
-        Extrai código da usina por matching de nome.
+        Extrai código da usina por matching de nome usando CSV como fonte primária.
+        
+        CRÍTICO: Faz matching DIRETAMENTE no CSV (fonte de verdade).
+        Cria lista expandida incluindo tanto nome_arquivo quanto nome_completo do CSV.
         
         Utiliza o matcher centralizado (find_usina_match) e fallback
         com palavras-chave e similaridade.
         
         Args:
             query: Query do usuário (já com abreviações expandidas)
-            plants_list: Lista de plantas no formato [{'codigo': int, 'nome': str}, ...]
             threshold: Score mínimo para fuzzy matching
             
         Returns:
-            Código da usina/classe ou None se não encontrado
+            Código da usina/classe (do CSV) ou None se não encontrado
         """
-        if not plants_list:
-            return None
-        
         query_lower = query.lower()
         
         # Importar matcher centralizado
-        from backend.core.utils.usina_name_matcher import find_usina_match, normalize_usina_name
+        from backend.core.utils.usina_name_matcher import find_usina_match
         
-        # Criar lista de nomes e mapeamento codigo -> nome
-        available_names = []
-        codigo_to_nome = {}
-        
-        for plant in plants_list:
-            codigo = plant['codigo']
-            nome = plant['nome']
-            if nome and nome.lower() != 'nan':
-                available_names.append(nome)
-                codigo_to_nome[codigo] = nome
+        # Criar lista expandida DIRETAMENTE do CSV (fonte de verdade)
+        available_names, name_to_codigo = self._create_expanded_list_from_csv()
         
         if not available_names:
+            debug_print(f"[THERMAL_MATCHER] ⚠️ Nenhum nome disponível no CSV para matching")
             return None
         
-        # ETAPA 1: Match exato do nome completo (ordenado por tamanho, maior primeiro)
-        sorted_plants = sorted(plants_list, key=lambda x: len(x['nome']), reverse=True)
+        # ETAPA 1: Match exato (tanto nome_arquivo quanto nome_completo do CSV)
+        # Ordenar por tamanho (maior primeiro) para priorizar matches mais específicos
+        csv_entries = []
+        for codigo, (nome_arquivo, nome_completo) in self.code_to_names.items():
+            csv_entries.append({
+                'codigo': codigo,
+                'nome_arquivo': nome_arquivo,
+                'nome_completo': nome_completo
+            })
+        sorted_entries = sorted(csv_entries, key=lambda x: len(x['nome_arquivo']), reverse=True)
         
-        for plant in sorted_plants:
-            nome = plant['nome']
-            nome_lower = nome.lower().strip()
+        for entry in sorted_entries:
+            codigo = entry['codigo']
+            nome_arquivo = entry['nome_arquivo']
+            nome_completo = entry['nome_completo']
             
-            if not nome_lower:
-                continue
+            # Match exato contra nome_arquivo do CSV
+            if nome_arquivo and nome_arquivo.lower().strip() == query_lower.strip():
+                debug_print(f"[THERMAL_MATCHER] ✅ Código {codigo} encontrado por match exato (nome_arquivo CSV): '{nome_arquivo}'")
+                return codigo
             
-            # Match exato do nome completo
-            if nome_lower == query_lower.strip():
-                debug_print(f"[THERMAL_MATCHER] ✅ Código {plant['codigo']} encontrado por match exato '{nome}'")
-                return plant['codigo']
+            # Match exato contra nome_completo do CSV
+            if nome_completo and nome_completo.lower().strip() == query_lower.strip():
+                debug_print(f"[THERMAL_MATCHER] ✅ Código {codigo} encontrado por match exato (nome_completo CSV): '{nome_completo}'")
+                return codigo
             
-            # Match exato do nome completo dentro da query (com word boundaries)
-            if len(nome_lower) >= 4:
-                pattern = r'\b' + re.escape(nome_lower) + r'\b'
+            # Match exato do nome dentro da query (com word boundaries)
+            if nome_arquivo and len(nome_arquivo.lower()) >= 4:
+                pattern = r'\b' + re.escape(nome_arquivo.lower()) + r'\b'
                 if re.search(pattern, query_lower):
-                    debug_print(f"[THERMAL_MATCHER] ✅ Código {plant['codigo']} encontrado por nome completo '{nome}' na query")
-                    return plant['codigo']
-        
-        # ETAPA 2: Usar matcher centralizado (fuzzy matching)
-        match_result = find_usina_match(query, available_names, threshold=threshold)
-        
-        if match_result:
-            matched_name, score = match_result
-            # Encontrar código correspondente ao nome encontrado
-            for codigo, nome in codigo_to_nome.items():
-                if normalize_usina_name(nome) == normalize_usina_name(matched_name):
-                    debug_print(f"[THERMAL_MATCHER] ✅ Código {codigo} encontrado via matcher centralizado: '{nome}' (score: {score:.2f})")
+                    debug_print(f"[THERMAL_MATCHER] ✅ Código {codigo} encontrado por nome_arquivo '{nome_arquivo}' na query")
+                    return codigo
+            
+            if nome_completo and len(nome_completo.lower()) >= 4:
+                pattern = r'\b' + re.escape(nome_completo.lower()) + r'\b'
+                if re.search(pattern, query_lower):
+                    debug_print(f"[THERMAL_MATCHER] ✅ Código {codigo} encontrado por nome_completo '{nome_completo}' na query")
                     return codigo
         
-        # ETAPA 3: Fallback com palavras-chave e similaridade
-        return self._fallback_keyword_matching(query_lower, plants_list)
+        # ETAPA 2: Fuzzy matching contra lista expandida do CSV
+        match_result = find_usina_match(query, available_names, threshold=threshold)
+        if match_result:
+            matched_name, score = match_result
+            matched_lower = matched_name.lower()
+            if matched_lower in name_to_codigo:
+                codigo = name_to_codigo[matched_lower]
+                debug_print(f"[THERMAL_MATCHER] ✅ Código {codigo} encontrado via matcher centralizado: '{matched_name}' (score: {score:.2f})")
+                return codigo
+        
+        # ETAPA 3: Fallback com palavras-chave (usando CSV)
+        debug_print(f"[THERMAL_MATCHER] ETAPA 3: Tentando fallback keyword matching no CSV...")
+        return self._fallback_keyword_matching_csv(query_lower)
     
-    def _fallback_keyword_matching(
-        self, 
-        query_lower: str, 
-        plants_list: List[Dict[str, Any]]
-    ) -> Optional[int]:
+    def _fallback_keyword_matching_csv(self, query_lower: str) -> Optional[int]:
         """
-        Fallback inteligente usando palavras-chave e similaridade.
+        Fallback inteligente usando palavras-chave e similaridade no CSV.
+        
+        Busca tanto em nome_arquivo quanto em nome_completo do CSV.
         
         Usado quando o matcher centralizado não encontra resultado.
         
         Args:
             query_lower: Query em lowercase
-            plants_list: Lista de plantas
             
         Returns:
-            Código da usina/classe ou None
+            Código da usina/classe (do CSV) ou None
         """
         # Extrair palavras significativas da query
         palavras_query = [
@@ -358,42 +405,44 @@ class ThermalPlantMatcher:
         
         candidatos = []
         
-        for plant in plants_list:
-            codigo = plant['codigo']
-            nome = plant['nome'].lower().strip()
-            
-            if not nome:
-                continue
-            
-            # Extrair palavras significativas do nome
-            palavras_nome = [
-                p for p in nome.split() 
-                if len(p) > 2 and p not in self.STOPWORDS
-            ]
-            
-            # Calcular score: quantas palavras da query estão no nome
-            palavras_comuns = set(palavras_query) & set(palavras_nome)
-            score = len(palavras_comuns)
-            
-            # Bonus se todas as palavras significativas da query estão no nome
-            if palavras_query and all(p in palavras_nome for p in palavras_query):
-                score += 10  # Bonus grande para match completo
-            
-            # Bonus por similaridade de strings
-            similarity = SequenceMatcher(None, query_lower, nome).ratio()
-            score += similarity * 5
-            
-            # Bonus se o nome é mais longo (mais específico)
-            score += len(nome) / 100
-            
-            if score > 0:
-                candidatos.append((codigo, plant['nome'], score))
+        # Buscar no CSV diretamente
+        for codigo, (nome_arquivo, nome_completo) in self.code_to_names.items():
+            # Testar tanto nome_arquivo quanto nome_completo
+            for nome in [nome_arquivo, nome_completo]:
+                if not nome:
+                    continue
+                
+                nome_lower = nome.lower().strip()
+                
+                # Extrair palavras significativas do nome
+                palavras_nome = [
+                    p for p in nome_lower.split() 
+                    if len(p) > 2 and p not in self.STOPWORDS
+                ]
+                
+                # Calcular score: quantas palavras da query estão no nome
+                palavras_comuns = set(palavras_query) & set(palavras_nome)
+                score = len(palavras_comuns)
+                
+                # Bonus se todas as palavras significativas da query estão no nome
+                if palavras_query and all(p in palavras_nome for p in palavras_query):
+                    score += 10  # Bonus grande para match completo
+                
+                # Bonus por similaridade de strings
+                similarity = SequenceMatcher(None, query_lower, nome_lower).ratio()
+                score += similarity * 5
+                
+                # Bonus se o nome é mais longo (mais específico)
+                score += len(nome_lower) / 100
+                
+                if score > 0:
+                    candidatos.append((codigo, nome, score))
         
         if candidatos:
             # Ordenar candidatos por score (maior primeiro)
             candidatos.sort(key=lambda x: x[2], reverse=True)
             melhor_codigo, melhor_nome, melhor_score = candidatos[0]
-            debug_print(f"[THERMAL_MATCHER] ✅ Código {melhor_codigo} encontrado (fallback): '{melhor_nome}' (score: {melhor_score:.2f})")
+            debug_print(f"[THERMAL_MATCHER] ✅ Código {melhor_codigo} encontrado (fallback CSV): '{melhor_nome}' (score: {melhor_score:.2f})")
             return melhor_codigo
         
         return None
@@ -432,35 +481,38 @@ class ThermalPlantMatcher:
             debug_print("[THERMAL_MATCHER] ⚠️ Nenhuma planta disponível para matching")
             return None
         
-        # Obter lista de códigos válidos
-        valid_codes = [p['codigo'] for p in plants_list]
+        # Obter lista de códigos válidos do CSV (fonte de verdade)
+        valid_codes_csv = list(self.code_to_names.keys())
         
         debug_print(f"[THERMAL_MATCHER] Iniciando matching para query: '{query[:50]}...'")
         debug_print(f"[THERMAL_MATCHER] Tipo de entidade: {entity_type}")
-        debug_print(f"[THERMAL_MATCHER] Plantas disponíveis: {len(plants_list)}")
+        debug_print(f"[THERMAL_MATCHER] Plantas no DataFrame: {len(plants_list)}")
+        debug_print(f"[THERMAL_MATCHER] Códigos no CSV: {len(valid_codes_csv)}")
         
         # ETAPA 2: Expandir abreviações
         expanded_query = self._expand_abbreviations(query)
         
-        # ETAPA 3: Tentar extrair código numérico
-        codigo = self._extract_numeric_code(expanded_query, valid_codes, entity_type)
+        # ETAPA 3: Tentar extrair código numérico (validar contra CSV)
+        codigo = self._extract_numeric_code(expanded_query, valid_codes_csv, entity_type)
         if codigo is not None:
+            debug_print(f"[THERMAL_MATCHER] ✅ Código {codigo} encontrado por padrão numérico (CSV)")
             return codigo
         
         # Também tentar na query original (caso a expansão tenha alterado algo)
         if expanded_query != query.lower():
-            codigo = self._extract_numeric_code(query, valid_codes, entity_type)
+            codigo = self._extract_numeric_code(query, valid_codes_csv, entity_type)
             if codigo is not None:
+                debug_print(f"[THERMAL_MATCHER] ✅ Código {codigo} encontrado por padrão numérico (CSV)")
                 return codigo
         
-        # ETAPA 4: Tentar match por nome
-        codigo = self._extract_by_name(expanded_query, plants_list, threshold)
+        # ETAPA 4: Tentar match por nome (usando CSV diretamente)
+        codigo = self._extract_by_name(expanded_query, threshold)
         if codigo is not None:
             return codigo
         
         # Também tentar na query original
         if expanded_query != query.lower():
-            codigo = self._extract_by_name(query.lower(), plants_list, threshold)
+            codigo = self._extract_by_name(query.lower(), threshold)
             if codigo is not None:
                 return codigo
         

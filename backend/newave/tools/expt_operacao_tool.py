@@ -367,8 +367,23 @@ class ExptOperacaoTool(NEWAVETool):
                             elif isinstance(value, (pd.Timestamp, pd.DatetimeTZDtype)):
                                 record[key] = value.isoformat() if hasattr(value, 'isoformat') else str(value)
             
-            # ETAPA 7: Formatar resultado
-            debug_print("[TOOL] ETAPA 7: Formatando resultado...")
+            # ETAPA 7: Obter metadados da usina selecionada (apenas se uma única usina foi identificada)
+            selected_plant = None
+            if codigo_usina is not None and len(stats_por_usina) == 1:
+                from backend.newave.utils.thermal_plant_matcher import get_thermal_plant_matcher
+                matcher = get_thermal_plant_matcher()
+                if codigo_usina in matcher.code_to_names:
+                    nome_arquivo_csv, nome_completo_csv = matcher.code_to_names[codigo_usina]
+                    selected_plant = {
+                        "type": "thermal",
+                        "codigo": codigo_usina,
+                        "nome": nome_arquivo_csv,
+                        "nome_completo": nome_completo_csv if nome_completo_csv else nome_arquivo_csv,
+                        "tool_name": self.get_name()
+                    }
+            
+            # ETAPA 8: Formatar resultado
+            debug_print("[TOOL] ETAPA 8: Formatando resultado...")
             
             # Informações sobre filtros aplicados
             filtro_info = {}
@@ -385,7 +400,7 @@ class ExptOperacaoTool(NEWAVETool):
             if operacao_especifica is not None:
                 filtro_info['operacao_especifica'] = operacao_especifica
             
-            return {
+            result = {
                 "success": True,
                 "dados_expansoes": dados_expansoes,
                 "desativacoes": desativacoes,
@@ -399,6 +414,12 @@ class ExptOperacaoTool(NEWAVETool):
                 "description": "Dados de operação térmica do EXPT.DAT (expansões, modificações, desativações, repotenciações)",
                 "tool": self.get_name()
             }
+            
+            # Adicionar metadados da usina selecionada se disponível
+            if selected_plant:
+                result["selected_plant"] = selected_plant
+            
+            return result
             
         except FileNotFoundError as e:
             safe_print(f"[TOOL] ❌ Erro FileNotFoundError: {e}")

@@ -353,8 +353,27 @@ class ClastValoresTool(NEWAVETool):
                 else:
                     debug_print("[TOOL] ⚠️ Nenhum dado conjuntural disponível (clast.modificacoes é None)")
             
-            # ETAPA 8: Formatar resultado
-            debug_print("[TOOL] ETAPA 8: Formatando resultado...")
+            # ETAPA 8: Obter metadados da usina/classe selecionada (apenas se uma única classe foi identificada)
+            selected_plant = None
+            if codigo_classe is not None and clast.usinas is not None:
+                classe_info = clast.usinas[clast.usinas['codigo_usina'] == codigo_classe]
+                if not classe_info.empty:
+                    nome_classe = classe_info.iloc[0].get('nome_usina', f'Classe {codigo_classe}')
+                    from backend.newave.utils.thermal_plant_matcher import get_thermal_plant_matcher
+                    matcher = get_thermal_plant_matcher()
+                    # Buscar no CSV pelo código
+                    if codigo_classe in matcher.code_to_names:
+                        nome_arquivo_csv, nome_completo_csv = matcher.code_to_names[codigo_classe]
+                        selected_plant = {
+                            "type": "thermal",
+                            "codigo": codigo_classe,
+                            "nome": nome_arquivo_csv,
+                            "nome_completo": nome_completo_csv if nome_completo_csv else nome_arquivo_csv,
+                            "tool_name": self.get_name()
+                        }
+            
+            # ETAPA 9: Formatar resultado
+            debug_print("[TOOL] ETAPA 9: Formatando resultado...")
             
             # Adicionar flag indicando que é CVU (para garantir que todos os anos foram retornados)
             if is_cvu:
@@ -374,7 +393,7 @@ class ClastValoresTool(NEWAVETool):
             if tipo_combustivel is not None:
                 filtro_info['tipo_combustivel'] = tipo_combustivel
             
-            return {
+            result = {
                 "success": True,
                 "dados_estruturais": dados_estruturais,
                 "dados_conjunturais": dados_conjunturais,
@@ -386,6 +405,12 @@ class ClastValoresTool(NEWAVETool):
                 "tool": self.get_name(),
                 "deck_path": self.deck_path  # IMPORTANTE: Necessário para extrair ano do deck corretamente
             }
+            
+            # Adicionar metadados da usina selecionada se disponível
+            if selected_plant:
+                result["selected_plant"] = selected_plant
+            
+            return result
             
         except FileNotFoundError as e:
             safe_print(f"[TOOL] ❌ Erro FileNotFoundError: {e}")

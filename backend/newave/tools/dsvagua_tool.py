@@ -137,8 +137,7 @@ class DsvaguaTool(NEWAVETool):
     
     def _extract_usina_from_query(self, query: str, dsvagua: Dsvagua) -> Optional[int]:
         """
-        Extrai código da usina da query.
-        Busca por código numérico ou nome da usina.
+        Extrai código da usina da query usando HydraulicPlantMatcher unificado.
         
         Args:
             query: Query do usuário
@@ -147,140 +146,36 @@ class DsvaguaTool(NEWAVETool):
         Returns:
             Código da usina ou None
         """
-        query_lower = query.lower()
-        
         # Verificar se há desvios
         desvios_df = dsvagua.desvios
         if desvios_df is None or desvios_df.empty:
             return None
         
-        # ETAPA 1: Tentar extrair número explícito
-        patterns = [
-            r'usina\s*(\d+)',
-            r'código\s*(\d+)',
-            r'codigo\s*(\d+)',
-        ]
-        
-        for pattern in patterns:
-            match = re.search(pattern, query_lower)
-            if match:
-                try:
-                    codigo = int(match.group(1))
-                    # Verificar se código existe nos desvios
-                    if codigo in desvios_df['codigo_usina'].values:
-                        debug_print(f"[TOOL] ✅ Código {codigo} encontrado por padrão numérico")
-                        return codigo
-                except ValueError:
-                    continue
-        
-        # ETAPA 2: Buscar por nome da usina usando mapeamento do CONFHD
-        debug_print(f"[TOOL] Buscando usina por nome na query: '{query}'")
-        
         # Carregar mapeamento
         mapeamento_codigo_nome = self._carregar_mapeamento_usinas()
-        mapeamento_nome_codigo = self._mapeamento_nome_codigo
-        
-        if not mapeamento_nome_codigo:
+        if not mapeamento_codigo_nome:
             debug_print("[TOOL] ⚠️ Mapeamento de nomes não disponível")
             return None
         
-        # Palavras comuns a ignorar
-        palavras_ignorar = {'de', 'da', 'do', 'das', 'dos', 'e', 'a', 'o', 'as', 'os', 'em', 'na', 'no', 'nas', 'nos', 'a', 'à', 'ao', 'aos', 'desvios', 'desvio', 'água', 'agua', 'consuntivo', 'consuntivos'}
-        
-        # Extrair palavras significativas da query
-        palavras_query = [p for p in query_lower.split() if len(p) > 2 and p not in palavras_ignorar]
-        debug_print(f"[TOOL] Palavras significativas extraídas da query: {palavras_query}")
-        
-        # Lista todas as usinas disponíveis (que têm desvios)
+        # Filtrar apenas usinas que têm desvios
         codigos_com_desvios = set(desvios_df['codigo_usina'].unique())
-        usinas_list = []
+        mapeamento_filtrado = {codigo: nome for codigo, nome in mapeamento_codigo_nome.items() if codigo in codigos_com_desvios}
         
-        for codigo, nome in mapeamento_codigo_nome.items():
-            if codigo in codigos_com_desvios:
-                usinas_list.append({'codigo': codigo, 'nome': nome})
-                print(f"[TOOL]   - Código {codigo}: \"{nome}\"")
-        
-        if not usinas_list:
-            debug_print("[TOOL] ⚠️ Nenhuma usina com nome encontrada")
+        if not mapeamento_filtrado:
+            debug_print("[TOOL] ⚠️ Nenhuma usina com desvios encontrada")
             return None
         
-        # Ordenar por tamanho do nome (maior primeiro) para priorizar matches mais específicos
-        usinas_sorted = sorted(usinas_list, key=lambda x: len(x['nome']), reverse=True)
+        from backend.newave.utils.hydraulic_plant_matcher import get_hydraulic_plant_matcher
         
-        # ETAPA 2.1: Buscar match exato do nome completo (prioridade máxima)
-        for usina in usinas_sorted:
-            codigo_usina = usina['codigo']
-            nome_usina = usina['nome']
-            nome_usina_lower = nome_usina.lower().strip()
-            
-            if not nome_usina_lower:
-                continue
-            
-            # Match exato do nome completo
-            if nome_usina_lower == query_lower.strip():
-                debug_print(f"[TOOL] ✅ Código {codigo_usina} encontrado por match exato '{nome_usina}'")
-                return codigo_usina
-            
-            # Match exato do nome completo dentro da query (como palavra completa)
-            if len(nome_usina_lower) >= 4:  # Nomes com pelo menos 4 caracteres
-                pattern = r'\b' + re.escape(nome_usina_lower) + r'\b'
-                if re.search(pattern, query_lower):
-                    debug_print(f"[TOOL] ✅ Código {codigo_usina} encontrado por nome completo '{nome_usina}' na query")
-                    return codigo_usina
+        matcher = get_hydraulic_plant_matcher()
+        result = matcher.extract_plant_from_query(
+            query=query,
+            available_plants=mapeamento_filtrado,
+            return_format="codigo",
+            threshold=0.5
+        )
         
-        # ETAPA 2.2: Buscar por similaridade e palavras-chave
-        candidatos = []
-        
-        for usina in usinas_sorted:
-            codigo_usina = usina['codigo']
-            nome_usina = usina['nome']
-            nome_usina_lower = nome_usina.lower().strip()
-            
-            if not nome_usina_lower:
-                continue
-            
-            # Extrair palavras significativas do nome da usina
-            palavras_nome = [p for p in nome_usina_lower.split() if len(p) > 2 and p not in palavras_ignorar]
-            
-            # PRIORIDADE 3: Match exato de todas as palavras significativas
-            if palavras_nome and all(palavra in query_lower for palavra in palavras_nome):
-                debug_print(f"[TOOL] ✅ Código {codigo_usina} encontrado: todas as palavras significativas de '{nome_usina}' estão na query")
-                return codigo_usina
-            
-            # PRIORIDADE 4: Similaridade de string
-            similarity = SequenceMatcher(None, query_lower, nome_usina_lower).ratio()
-            if similarity > 0.6:  # 60% de similaridade
-                candidatos.append({
-                    'codigo': codigo_usina,
-                    'nome': nome_usina,
-                    'score': similarity,
-                    'tipo': 'similarity'
-                })
-            
-            # PRIORIDADE 5: Contagem de palavras significativas em comum
-            palavras_comuns = set(palavras_query) & set(palavras_nome)
-            if palavras_comuns:
-                # Requer pelo menos 2 palavras em comum OU uma palavra longa (>= 5 chars)
-                palavras_longas = [p for p in palavras_comuns if len(p) >= 5]
-                if len(palavras_comuns) >= 2 or (len(palavras_longas) >= 1 and len(palavras_comuns) >= 1):
-                    score = len(palavras_comuns) / max(len(palavras_nome), 1)
-                    candidatos.append({
-                        'codigo': codigo_usina,
-                        'nome': nome_usina,
-                        'score': score,
-                        'tipo': 'palavras_comuns'
-                    })
-        
-        # Se encontrou candidatos, retornar o melhor
-        if candidatos:
-            # Ordenar por tipo (similarity primeiro) e depois por score
-            candidatos.sort(key=lambda x: (x['tipo'] == 'similarity', x['score']), reverse=True)
-            melhor = candidatos[0]
-            debug_print(f"[TOOL] ✅ Código {melhor['codigo']} encontrado por {melhor['tipo']} (score: {melhor['score']:.2f}): '{melhor['nome']}'")
-            return melhor['codigo']
-        
-        debug_print("[TOOL] ⚠️ Nenhuma usina específica detectada na query")
-        return None
+        return result
     
     def _extract_periodo_from_query(self, query: str) -> Optional[Dict[str, Any]]:
         """
@@ -461,8 +356,23 @@ class DsvaguaTool(NEWAVETool):
                 desvios_df_copy['ano'] = desvios_df_copy['data'].dt.year
                 stats['desvios_por_ano'] = desvios_df_copy.groupby('ano').size().to_dict()
             
-            # ETAPA 8: Formatar resultado final
-            debug_print("[TOOL] ETAPA 8: Formatando resultado final...")
+            # ETAPA 8: Obter metadados da usina selecionada (apenas se uma única usina foi identificada)
+            selected_plant = None
+            if codigo_usina is not None:
+                from backend.newave.utils.hydraulic_plant_matcher import get_hydraulic_plant_matcher
+                matcher = get_hydraulic_plant_matcher()
+                if codigo_usina in matcher.code_to_names:
+                    nome_arquivo_csv, nome_completo_csv, _ = matcher.code_to_names[codigo_usina]
+                    selected_plant = {
+                        "type": "hydraulic",
+                        "codigo": codigo_usina,
+                        "nome": nome_arquivo_csv,
+                        "nome_completo": nome_completo_csv if nome_completo_csv else nome_arquivo_csv,
+                        "tool_name": self.get_name()
+                    }
+            
+            # ETAPA 9: Formatar resultado final
+            debug_print("[TOOL] ETAPA 9: Formatando resultado final...")
             
             filtros_aplicados = {}
             if codigo_usina is not None:
@@ -478,7 +388,7 @@ class DsvaguaTool(NEWAVETool):
             if periodo is not None:
                 filtros_aplicados['periodo'] = periodo
             
-            return {
+            result = {
                 "success": True,
                 "dados": dados_lista,
                 "stats": stats,
@@ -486,6 +396,12 @@ class DsvaguaTool(NEWAVETool):
                 "description": f"Desvios de água: {len(resultado_df)} registro(s) do DSVAGUA.DAT",
                 "tool": self.get_name()
             }
+            
+            # Adicionar metadados da usina selecionada se disponível
+            if selected_plant:
+                result["selected_plant"] = selected_plant
+            
+            return result
             
         except FileNotFoundError as e:
             safe_print(f"[TOOL] ❌ Erro FileNotFoundError: {e}")

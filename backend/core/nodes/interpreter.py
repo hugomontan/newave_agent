@@ -149,10 +149,17 @@ def interpreter_node(
                         }
                     })
                 
-                return {
+                result = {
                     "final_response": clean_response_text(formatted.get("final_response", ""), max_emojis=2),
                     "visualization_data": formatted.get("visualization_data")
                 }
+                
+                # Incluir plant_correction_followup se disponível no state
+                plant_correction_followup = state.get("plant_correction_followup")
+                if plant_correction_followup:
+                    result["plant_correction_followup"] = plant_correction_followup
+                
+                return result
             except Exception as e:
                 safe_print(f"[INTERPRETER] [ERRO] Erro ao formatar resposta: {e}")
                 import traceback

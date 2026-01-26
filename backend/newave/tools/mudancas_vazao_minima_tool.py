@@ -252,6 +252,21 @@ class MudancasVazaoMinimaTool(NEWAVETool):
             descricao_parts.append("ordenadas por magnitude.")
             description = " ".join(descricao_parts)
             
+            # Obter metadados da usina selecionada (apenas se uma única usina foi filtrada)
+            selected_plant = None
+            if codigo_usina_filtro is not None:
+                from backend.newave.utils.hydraulic_plant_matcher import get_hydraulic_plant_matcher
+                matcher = get_hydraulic_plant_matcher()
+                if codigo_usina_filtro in matcher.code_to_names:
+                    nome_arquivo_csv, nome_completo_csv, _ = matcher.code_to_names[codigo_usina_filtro]
+                    selected_plant = {
+                        "type": "hydraulic",
+                        "codigo": codigo_usina_filtro,
+                        "nome": nome_arquivo_csv,
+                        "nome_completo": nome_completo_csv if nome_completo_csv else nome_arquivo_csv,
+                        "tool_name": self.get_name()
+                    }
+            
             for mudanca in mudancas_ordenadas:
                 tipo_mudanca = mudanca.get("tipo_mudanca", "desconhecido")
                 nome_usina = mudanca.get("nome_usina", "N/A")
@@ -278,7 +293,7 @@ class MudancasVazaoMinimaTool(NEWAVETool):
                     "periodo_fim": mudanca.get("periodo_fim", "N/A")
                 })
             
-            return {
+            result = {
                 "success": True,
                 "is_comparison": True,
                 "tool": self.get_name(),
@@ -286,6 +301,12 @@ class MudancasVazaoMinimaTool(NEWAVETool):
                 "stats": stats,
                 "description": description
             }
+            
+            # Adicionar metadados da usina selecionada se disponível
+            if selected_plant:
+                result["selected_plant"] = selected_plant
+            
+            return result
             
         except Exception as e:
             safe_print(f"[TOOL] ❌ Erro ao processar: {type(e).__name__}: {e}")
@@ -674,8 +695,7 @@ class MudancasVazaoMinimaTool(NEWAVETool):
         mapeamento_codigo_nome: Dict[int, str]
     ) -> Optional[int]:
         """
-        Extrai código da usina da query.
-        Busca por número ou nome da usina.
+        Extrai código da usina da query usando HydraulicPlantMatcher unificado.
         
         Args:
             query: Query do usuário
@@ -686,119 +706,21 @@ class MudancasVazaoMinimaTool(NEWAVETool):
         Returns:
             Código da usina ou None se não encontrado
         """
-        query_lower = query.lower()
-        
-        # ETAPA 1: Tentar extrair número explícito
-        patterns = [
-            r'usina\s*(\d+)',
-            r'usina\s*hidrelétrica\s*(\d+)',
-            r'usina\s*hidreletrica\s*(\d+)',
-            r'usina\s*#?\s*(\d+)',
-            r'código\s*(\d+)',
-            r'codigo\s*(\d+)',
-        ]
-        
-        # Obter códigos válidos de ambos os decks
-        codigos_validos = set()
-        if modif_dec is not None:
-            usinas_dec = modif_dec.usina(df=True)
-            if usinas_dec is not None and not usinas_dec.empty and 'codigo' in usinas_dec.columns:
-                codigos_validos.update(usinas_dec['codigo'].unique())
-        if modif_jan is not None:
-            usinas_jan = modif_jan.usina(df=True)
-            if usinas_jan is not None and not usinas_jan.empty and 'codigo' in usinas_jan.columns:
-                codigos_validos.update(usinas_jan['codigo'].unique())
-        
-        for pattern in patterns:
-            match = re.search(pattern, query_lower)
-            if match:
-                try:
-                    codigo = int(match.group(1))
-                    if codigo in codigos_validos:
-                        debug_print(f"[TOOL] ✅ Código {codigo} encontrado por padrão numérico")
-                        return codigo
-                except ValueError:
-                    continue
-        
-        # ETAPA 2: Buscar por nome da usina usando o mapeamento
-        debug_print(f"[TOOL] Buscando usina por nome na query: '{query}'")
-        
         if not mapeamento_codigo_nome:
             debug_print("[TOOL] ⚠️ Mapeamento de nomes não disponível")
             return None
         
-        # Criar mapeamento reverso nome -> código (ordenado por tamanho do nome, maior primeiro)
-        mapeamento_nome_codigo = {}
-        for codigo, nome in mapeamento_codigo_nome.items():
-            if nome and nome.strip() and nome != "N/A" and not nome.startswith("Usina "):
-                nome_lower = nome.lower().strip()
-                # Se já existe, manter o que tem nome mais longo (mais específico)
-                if nome_lower not in mapeamento_nome_codigo or len(nome) > len(mapeamento_codigo_nome[mapeamento_nome_codigo[nome_lower]]):
-                    mapeamento_nome_codigo[nome_lower] = codigo
+        from backend.newave.utils.hydraulic_plant_matcher import get_hydraulic_plant_matcher
         
-        # Ordenar por tamanho do nome (maior primeiro) para priorizar matches mais específicos
-        nomes_ordenados = sorted(
-            mapeamento_nome_codigo.items(),
-            key=lambda x: len(x[0]),
-            reverse=True
+        matcher = get_hydraulic_plant_matcher()
+        result = matcher.extract_plant_from_query(
+            query=query,
+            available_plants=mapeamento_codigo_nome,
+            return_format="codigo",
+            threshold=0.5
         )
         
-        # ETAPA 2.1: Buscar match exato do nome completo (prioridade máxima)
-        for nome_lower, codigo in nomes_ordenados:
-            nome_original = mapeamento_codigo_nome[codigo]
-            
-            # Match exato do nome completo
-            if nome_lower == query_lower.strip():
-                debug_print(f"[TOOL] ✅ Código {codigo} encontrado por match exato '{nome_original}'")
-                return codigo
-            
-            # Match exato do nome completo dentro da query (com word boundaries)
-            if nome_lower in query_lower:
-                # Verificar se não é apenas uma palavra parcial muito curta
-                if len(nome_lower) >= 4:  # Nomes com pelo menos 4 caracteres
-                    # Verificar se está como palavra completa (não parte de outra palavra)
-                    pattern = r'\b' + re.escape(nome_lower) + r'\b'
-                    if re.search(pattern, query_lower):
-                        debug_print(f"[TOOL] ✅ Código {codigo} encontrado por nome completo '{nome_original}' na query")
-                        return codigo
-        
-        # ETAPA 2.2: Buscar por palavras-chave do nome (apenas se match exato não encontrou)
-        palavras_ignorar = {
-            'de', 'da', 'do', 'das', 'dos', 'e', 'a', 'o', 'as', 'os', 'em', 'na', 'no', 'nas', 'nos',
-            'vazão', 'vazao', 'mínima', 'minima', 'variação', 'variacao', 'mudanças', 'mudancas',
-            'qual', 'foi', 'a', 'o', 'para', 'por', 'com', 'sem'
-        }
-        palavras_query = [p for p in query_lower.split() if len(p) > 2 and p not in palavras_ignorar]
-        
-        if not palavras_query:
-            return None
-        
-        # Lista de candidatos com pontuação
-        candidatos = []
-        
-        for nome_lower, codigo in nomes_ordenados:
-            nome_original = mapeamento_codigo_nome[codigo]
-            palavras_nome = [p for p in nome_lower.split() if len(p) > 2 and p not in palavras_ignorar]
-            
-            if not palavras_nome:
-                continue
-            
-            # Calcular pontuação: quantas palavras do nome estão na query
-            palavras_match = sum(1 for palavra in palavras_nome if palavra in palavras_query)
-            if palavras_match > 0:
-                # Priorizar matches com mais palavras e nomes mais longos
-                score = palavras_match * 100 + len(nome_lower)
-                candidatos.append((codigo, nome_original, score))
-        
-        if candidatos:
-            # Ordenar por pontuação (maior primeiro)
-            candidatos.sort(key=lambda x: x[2], reverse=True)
-            melhor_candidato = candidatos[0]
-            debug_print(f"[TOOL] ✅ Código {melhor_candidato[0]} encontrado por palavras-chave '{melhor_candidato[1]}' (score: {melhor_candidato[2]})")
-            return melhor_candidato[0]
-        
-        debug_print("[TOOL] ⚠️ Nenhuma usina encontrada na query")
-        return None
+        return result
     
     def _extract_vazmin_records(self, modif: Modif) -> List[Dict[str, Any]]:
         """

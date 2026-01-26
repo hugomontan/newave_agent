@@ -391,13 +391,34 @@ class TermCadastroTool(NEWAVETool):
                     stats['potencia_min'] = float(dados_filtrados['potencia_efetiva'].min())
                     stats['potencia_max'] = float(dados_filtrados['potencia_efetiva'].max())
             
-            return {
+            # Obter metadados da usina selecionada (apenas se uma única usina foi identificada)
+            selected_plant = None
+            if codigo_usina is not None and len(dados_lista) == 1:
+                from backend.newave.utils.thermal_plant_matcher import get_thermal_plant_matcher
+                matcher = get_thermal_plant_matcher()
+                if codigo_usina in matcher.code_to_names:
+                    nome_arquivo_csv, nome_completo_csv = matcher.code_to_names[codigo_usina]
+                    selected_plant = {
+                        "type": "thermal",
+                        "codigo": codigo_usina,
+                        "nome": nome_arquivo_csv,
+                        "nome_completo": nome_completo_csv if nome_completo_csv else nome_arquivo_csv,
+                        "tool_name": self.get_name()
+                    }
+            
+            result = {
                 "success": True,
                 "data": dados_lista,
                 "summary": stats if stats else None,
                 "description": f"Cadastro de usinas térmicas: {len(dados_lista)} registro(s) do TERM.DAT",
                 "tool": self.get_name()
             }
+            
+            # Adicionar metadados da usina selecionada se disponível
+            if selected_plant:
+                result["selected_plant"] = selected_plant
+            
+            return result
             
         except FileNotFoundError as e:
             safe_print(f"[TOOL] ❌ Erro FileNotFoundError: {e}")

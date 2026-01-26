@@ -47,8 +47,7 @@ class VariacaoReservatorioInicialTool(NEWAVETool):
     
     def _extract_usina_from_query(self, query: str, confhd: Confhd) -> Optional[int]:
         """
-        Extrai código da usina da query.
-        Busca por número ou nome da usina.
+        Extrai código da usina da query usando HydraulicPlantMatcher unificado.
         
         Args:
             query: Query do usuário
@@ -57,72 +56,20 @@ class VariacaoReservatorioInicialTool(NEWAVETool):
         Returns:
             Código da usina ou None se não encontrado
         """
-        query_lower = query.lower()
+        if confhd.usinas is None or confhd.usinas.empty:
+            return None
         
-        # ETAPA 1: Tentar extrair número explícito
-        patterns = [
-            r'usina\s*(\d+)',
-            r'usina\s*#?\s*(\d+)',
-            r'código\s*(\d+)',
-            r'codigo\s*(\d+)',
-        ]
+        from backend.newave.utils.hydraulic_plant_matcher import get_hydraulic_plant_matcher
         
-        for pattern in patterns:
-            match = re.search(pattern, query_lower)
-            if match:
-                try:
-                    codigo = int(match.group(1))
-                    if confhd.usinas is not None:
-                        codigos_validos = confhd.usinas['codigo_usina'].unique()
-                        if codigo in codigos_validos:
-                            debug_print(f"[TOOL] ✅ Código {codigo} encontrado por padrão numérico")
-                            return codigo
-                except ValueError:
-                    continue
+        matcher = get_hydraulic_plant_matcher()
+        result = matcher.extract_plant_from_query(
+            query=query,
+            available_plants=confhd.usinas,
+            return_format="codigo",
+            threshold=0.5
+        )
         
-        # ETAPA 2: Buscar por nome da usina
-        if confhd.usinas is not None:
-            from difflib import SequenceMatcher
-            
-            usinas_unicas = confhd.usinas[['codigo_usina', 'nome_usina']].drop_duplicates()
-            usinas_unicas = usinas_unicas.sort_values('codigo_usina')
-            
-            # Palavras comuns a ignorar
-            palavras_ignorar = {'de', 'da', 'do', 'das', 'dos', 'e', 'a', 'o', 'as', 'os', 'em', 'na', 'no', 'nas', 'nos'}
-            
-            # Extrair palavras significativas da query
-            palavras_query = [p for p in query_lower.split() if len(p) > 2 and p not in palavras_ignorar]
-            
-            # Lista de candidatos com pontuação
-            candidatos = []
-            
-            for _, row in usinas_unicas.iterrows():
-                codigo_usina = int(row.get('codigo_usina'))
-                nome_usina = str(row.get('nome_usina', '')).strip()
-                nome_usina_lower = nome_usina.lower().strip()
-                
-                if not nome_usina_lower:
-                    continue
-                
-                # PRIORIDADE 1: Match exato do nome completo
-                if nome_usina_lower in query_lower:
-                    debug_print(f"[TOOL] ✅ Código {codigo_usina} encontrado por nome completo '{nome_usina}' na query")
-                    return codigo_usina
-                
-                # PRIORIDADE 2: Similaridade de string
-                similarity = SequenceMatcher(None, query_lower, nome_usina_lower).ratio()
-                if similarity > 0.6:
-                    candidatos.append((codigo_usina, nome_usina, similarity))
-            
-            # Se encontrou candidatos, retornar o melhor
-            if candidatos:
-                candidatos.sort(key=lambda x: x[2], reverse=True)
-                melhor = candidatos[0]
-                debug_print(f"[TOOL] ✅ Código {melhor[0]} encontrado por similaridade (score: {melhor[2]:.2f}) - '{melhor[1]}'")
-                return melhor[0]
-        
-        debug_print("[TOOL] ⚠️ Nenhuma usina específica detectada na query")
-        return None
+        return result
     
     def execute(self, query: str, **kwargs) -> Dict[str, Any]:
         """
@@ -212,8 +159,23 @@ class VariacaoReservatorioInicialTool(NEWAVETool):
             else:
                 debug_print("[TOOL] ⚠️ Nenhum dado de usinas disponível (confhd.usinas é None)")
             
-            # ETAPA 5: Formatar resultado
-            debug_print("[TOOL] ETAPA 5: Formatando resultado...")
+            # ETAPA 5: Obter metadados da usina selecionada (apenas se uma única usina foi identificada)
+            selected_plant = None
+            if codigo_usina is not None and dados_volume_inicial and len(dados_volume_inicial) == 1:
+                from backend.newave.utils.hydraulic_plant_matcher import get_hydraulic_plant_matcher
+                matcher = get_hydraulic_plant_matcher()
+                if codigo_usina in matcher.code_to_names:
+                    nome_arquivo_csv, nome_completo_csv, _ = matcher.code_to_names[codigo_usina]
+                    selected_plant = {
+                        "type": "hydraulic",
+                        "codigo": codigo_usina,
+                        "nome": nome_arquivo_csv,
+                        "nome_completo": nome_completo_csv if nome_completo_csv else nome_arquivo_csv,
+                        "tool_name": self.get_name()
+                    }
+            
+            # ETAPA 6: Formatar resultado
+            debug_print("[TOOL] ETAPA 6: Formatando resultado...")
             
             # Informações sobre filtros aplicados
             filtro_info = {}
@@ -226,7 +188,7 @@ class VariacaoReservatorioInicialTool(NEWAVETool):
                             'nome': usina_info.iloc[0].get('nome_usina', f'Usina {codigo_usina}'),
                         }
             
-            return {
+            result = {
                 "success": True,
                 "dados_volume_inicial": dados_volume_inicial,
                 "filtros": filtro_info if filtro_info else None,
@@ -234,6 +196,12 @@ class VariacaoReservatorioInicialTool(NEWAVETool):
                 "description": "Volume inicial percentual (v.inic) por usina do CONFHD.DAT",
                 "tool": self.get_name()
             }
+            
+            # Adicionar metadados da usina selecionada se disponível
+            if selected_plant:
+                result["selected_plant"] = selected_plant
+            
+            return result
             
         except FileNotFoundError as e:
             safe_print(f"[TOOL] ❌ Erro FileNotFoundError: {e}")

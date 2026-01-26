@@ -244,6 +244,7 @@ export function AnalysisPageContent({ model }: AnalysisPageContentProps) {
   const requiresUserChoiceRef = useRef(false);
   const alternativeTypeRef = useRef<string | undefined>(undefined);
   const disambiguationMessageIdRef = useRef<string | null>(null);
+  const plantCorrectionFollowupRef = useRef<Message["plantCorrectionData"] | null>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -328,6 +329,7 @@ export function AnalysisPageContent({ model }: AnalysisPageContentProps) {
         retryCountRef.current = 0;
         comparisonDataRef.current = null;
         visualizationDataRef.current = null;
+        plantCorrectionFollowupRef.current = null;
         break;
 
       case "node_start":
@@ -489,6 +491,10 @@ export function AnalysisPageContent({ model }: AnalysisPageContentProps) {
             }));
           }
         }
+        
+        if (event.plant_correction_followup) {
+          plantCorrectionFollowupRef.current = event.plant_correction_followup as Message["plantCorrectionData"];
+        }
         break;
 
       case "disambiguation":
@@ -558,6 +564,7 @@ export function AnalysisPageContent({ model }: AnalysisPageContentProps) {
           visualizationData: visualizationDataRef.current || undefined,
           requires_user_choice: requiresUserChoiceRef.current ? true : undefined,
           alternative_type: alternativeTypeRef.current,
+          plantCorrectionData: plantCorrectionFollowupRef.current || undefined,
           timestamp: new Date(),
         };
 

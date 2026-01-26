@@ -98,10 +98,14 @@ class RestricoesVazaoHQTool(DECOMPTool):
         Resolve o nome da usina, encontra as restrições HQ associadas via bloco CQ, e retorna os limites
         de vazão (limites inferiores e superiores) por estágio e patamar do bloco LQ.
         
+        A tool diferencia entre vazão turbinada (QTUR) e vazão defluente (QDEF), retornando todas as
+        restrições encontradas para a usina consultada, mesmo quando há múltiplos tipos de vazão.
+        
         Palavras-chave relacionadas:
         - restrição de vazão, restrição vazão, restrições de vazão
         - restrição hidráulica, restrição hídrica
         - vazão mínima, vazão máxima, limites de vazão
+        - vazão turbinada, vazão defluente, QTUR, QDEF
         - bloco HQ, bloco LQ, bloco CQ, registro HQ, registro LQ
         - HQ/LQ/CQ, limites HQ, limites LQ
         - vazão de usina, vazão da UHE, vazão hidrelétrica
@@ -755,12 +759,15 @@ class RestricoesVazaoHQTool(DECOMPTool):
         # Detectar colunas
         col_cod_usina = None
         col_cod_restricao = None
+        col_tipo = None
         for c in cq_df.columns:
             cl = c.lower()
             if col_cod_usina is None and ("codigo_usina" in cl or cl == "uhe"):
                 col_cod_usina = c
             if col_cod_restricao is None and ("codigo_restricao" in cl or "cod_restricao" in cl):
                 col_cod_restricao = c
+            if col_tipo is None and cl == "tipo":
+                col_tipo = c
 
         if col_cod_usina is None or col_cod_restricao is None:
             safe_print(f"[HQ] Colunas CQ não identificadas. Colunas: {list(cq_df.columns)}")
@@ -771,6 +778,24 @@ class RestricoesVazaoHQTool(DECOMPTool):
         if cq_usina.empty:
             safe_print(f"[HQ] Nenhuma linha CQ encontrada para codigo_usina={codigo_usina}.")
             return []
+
+        # Mapear código HQ -> tipo (QTUR/QDEF) para esta usina
+        mapeamento_tipo = {}
+        if col_tipo:
+            for _, row in cq_usina.iterrows():
+                cod_hq = row.get(col_cod_restricao)
+                tipo_vazao = row.get(col_tipo)
+                if cod_hq is not None and tipo_vazao is not None:
+                    try:
+                        cod_hq_int = int(cod_hq)
+                        tipo_vazao_str = str(tipo_vazao).strip().upper()
+                        if tipo_vazao_str:
+                            mapeamento_tipo[cod_hq_int] = tipo_vazao_str
+                    except (ValueError, TypeError):
+                        continue
+            safe_print(f"[HQ] Tipos de vazão encontrados: {mapeamento_tipo}")
+        else:
+            safe_print(f"[HQ] Coluna 'tipo' não encontrada no CQ. Colunas disponíveis: {list(cq_df.columns)}")
 
         # Criar mapeamento código->nome das usinas para poder montar,
         # para cada código HQ, a lista de TODAS as usinas envolvidas.
@@ -828,6 +853,10 @@ class RestricoesVazaoHQTool(DECOMPTool):
         resultados: List[Dict[str, Any]] = []
 
         for cod in codigos:
+            # Obter tipo de vazão (QTUR/QDEF) para este código HQ
+            tipo_vazao = mapeamento_tipo.get(cod, None)
+            safe_print(f"[HQ] Processando HQ {cod} - Tipo: {tipo_vazao or 'N/A'}")
+            
             # Para este código de restrição HQ, descobrir TODAS as usinas
             # que participam via bloco CQ (multi-usina).
             cq_cod = cq_df[cq_df[col_cod_restricao] == cod]
@@ -888,6 +917,14 @@ class RestricoesVazaoHQTool(DECOMPTool):
                 # código da UHE CONSULTADA (que originou a query)
                 d["codigo_usina"] = codigo_usina
                 d["multi_usina"] = multi_usina_flag
+                
+                # Adicionar tipo de vazão (QTUR/QDEF)
+                d["tipo_vazao"] = tipo_vazao  # "QTUR" ou "QDEF" ou None
+                d["tipo_vazao_descricao"] = (
+                    "Vazão Turbinada" if tipo_vazao == "QTUR" 
+                    else "Vazão Defluente" if tipo_vazao == "QDEF"
+                    else None
+                )
 
                 if col_estagio:
                     d["estagio"] = row.get(col_estagio)

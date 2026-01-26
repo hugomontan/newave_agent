@@ -82,8 +82,9 @@ class HidrCadastroTool(NEWAVETool):
     
     def _extract_usina_from_query(self, query: str, hidr: Hidr) -> Optional[tuple]:
         """
-        Extrai código da usina da query usando cross-validation com o arquivo.
-        Busca por número ou nome da usina com matching inteligente.
+        Extrai código da usina da query usando HydraulicPlantMatcher unificado.
+        
+        Mesma lógica usada nas outras tools (vazoes_tool, etc).
         
         Args:
             query: Query do usuário
@@ -95,151 +96,44 @@ class HidrCadastroTool(NEWAVETool):
             - idx_real: Índice real do DataFrame (pode não ser sequencial)
             Retorna None se não encontrado
         """
-        query_lower = query.lower()
-        
-        # Verificar se há cadastro
         cadastro = hidr.cadastro
         if cadastro is None or cadastro.empty:
             debug_print("[TOOL] ⚠️ Cadastro vazio ou inexistente")
             return None
         
-        # ETAPA 1: Tentar extrair número explícito (código da usina)
-        patterns = [
-            r'usina\s*(\d+)',
-            r'usina\s*hidrelétrica\s*(\d+)',
-            r'usina\s*hidreletrica\s*(\d+)',
-            r'usina\s*#?\s*(\d+)',
-            r'código\s*(\d+)',
-            r'codigo\s*(\d+)',
-            r'hidrelétrica\s*(\d+)',
-            r'hidreletrica\s*(\d+)',
-        ]
+        # Usar a mesma lógica das outras tools: passar o DataFrame diretamente
+        # O matcher já sabe como lidar com DataFrames que têm codigo_usina e nome_usina
+        # Se não tiver essas colunas, o matcher vai tentar usar o índice
         
-        for pattern in patterns:
-            match = re.search(pattern, query_lower)
-            if match:
-                try:
-                    codigo = int(match.group(1))
-                    # Buscar a usina pelo código no cadastro
-                    # Precisamos encontrar o índice real do DataFrame
-                    for idx, row in cadastro.iterrows():
-                        codigo_calculado = idx + 1
-                        if codigo_calculado == codigo:
-                            nome = str(row.get('nome_usina', '')).strip()
-                            if nome:  # Só considerar se tiver nome
-                                debug_print(f"[TOOL] ✅ Código {codigo} encontrado por padrão numérico: '{nome}' (idx_real={idx})")
-                                return (codigo, idx)
-                except (ValueError, IndexError):
-                    continue
-        
-        # ETAPA 2: Buscar por nome da usina
-        debug_print(f"[TOOL] Buscando usina por nome na query: '{query}'")
-        debug_print(f"[TOOL] Total de usinas no cadastro: {len(cadastro)}")
-        
-        # Palavras comuns a ignorar
-        palavras_ignorar = {'de', 'da', 'do', 'das', 'dos', 'e', 'a', 'o', 'as', 'os', 'em', 'na', 'no', 'nas', 'nos', 'a', 'à', 'ao', 'aos', 'informacoes', 'informações', 'dados', 'usina', 'hidrelétrica', 'hidreletrica'}
-        
-        # Extrair palavras significativas da query
-        palavras_query = [p for p in query_lower.split() if len(p) > 2 and p not in palavras_ignorar]
-        debug_print(f"[TOOL] Palavras significativas extraídas da query: {palavras_query}")
-        
-        # Lista todas as usinas disponíveis
-        debug_print(f"[TOOL] Usinas disponíveis no arquivo:")
-        usinas_list = []
-        for idx, row in cadastro.iterrows():
-            codigo = idx + 1  # Código = índice + 1
-            nome = str(row.get('nome_usina', '')).strip()
-            if nome:
-                usinas_list.append({'codigo': codigo, 'nome': nome, 'idx': idx})
-                print(f"[TOOL]   - Código {codigo}: \"{nome}\"")
-        
-        if not usinas_list:
-            debug_print("[TOOL] ⚠️ Nenhuma usina com nome encontrada")
+        # Garantir que temos a coluna nome_usina (necessária para o matcher)
+        if 'nome_usina' not in cadastro.columns:
+            debug_print("[TOOL] ⚠️ Coluna 'nome_usina' não encontrada no cadastro")
             return None
         
-        # Ordenar por tamanho do nome (maior primeiro) para priorizar matches mais específicos
-        usinas_sorted = sorted(usinas_list, key=lambda x: len(x['nome']), reverse=True)
+        # Se não tiver codigo_usina, usar o índice como código (comum no HIDR.DAT)
+        # IMPORTANTE: Adicionar 1 ao índice para corresponder ao código do CSV
+        if 'codigo_usina' not in cadastro.columns:
+            cadastro = cadastro.copy()
+            # Tentar usar o índice como código (adicionando 1)
+            try:
+                cadastro['codigo_usina'] = cadastro.index + 1
+                if cadastro['codigo_usina'].dtype != 'int64':
+                    cadastro['codigo_usina'] = cadastro['codigo_usina'].astype(int)
+            except (ValueError, TypeError):
+                # Fallback: índice sequencial começando de 1
+                cadastro['codigo_usina'] = range(1, len(cadastro) + 1)
         
-        # ETAPA 2.1: Buscar match exato do nome completo (prioridade máxima)
-        for usina in usinas_sorted:
-            codigo_usina = usina['codigo']
-            nome_usina = usina['nome']
-            nome_usina_lower = nome_usina.lower().strip()
-            
-            if not nome_usina_lower:
-                continue
-            
-            # Match exato do nome completo
-            if nome_usina_lower == query_lower.strip():
-                idx_real = usina['idx']
-                debug_print(f"[TOOL] ✅ Código {codigo_usina} encontrado por match exato '{nome_usina}' (idx_real={idx_real})")
-                return (codigo_usina, idx_real)
-            
-            # Match exato do nome completo dentro da query (como palavra completa)
-            if len(nome_usina_lower) >= 4:  # Nomes com pelo menos 4 caracteres
-                # Verificar se está como palavra completa (não parte de outra palavra)
-                pattern = r'\b' + re.escape(nome_usina_lower) + r'\b'
-                if re.search(pattern, query_lower):
-                    idx_real = usina['idx']
-                    debug_print(f"[TOOL] ✅ Código {codigo_usina} encontrado por nome completo '{nome_usina}' na query (idx_real={idx_real})")
-                    return (codigo_usina, idx_real)
+        from backend.newave.utils.hydraulic_plant_matcher import get_hydraulic_plant_matcher
         
-        # ETAPA 2.2: Buscar por similaridade e palavras-chave
-        candidatos = []
+        matcher = get_hydraulic_plant_matcher()
+        result = matcher.extract_plant_from_query(
+            query=query,
+            available_plants=cadastro,
+            return_format="tupla",
+            threshold=0.5
+        )
         
-        for usina in usinas_sorted:
-            codigo_usina = usina['codigo']
-            nome_usina = usina['nome']
-            nome_usina_lower = nome_usina.lower().strip()
-            
-            if not nome_usina_lower:
-                continue
-            
-            # Extrair palavras significativas do nome da usina
-            palavras_nome = [p for p in nome_usina_lower.split() if len(p) > 2 and p not in palavras_ignorar]
-            
-            # PRIORIDADE 3: Match exato de todas as palavras significativas
-            if palavras_nome and all(palavra in query_lower for palavra in palavras_nome):
-                idx_real = usina['idx']
-                debug_print(f"[TOOL] ✅ Código {codigo_usina} encontrado: todas as palavras significativas de '{nome_usina}' estão na query (idx_real={idx_real})")
-                return (codigo_usina, idx_real)
-            
-            # PRIORIDADE 4: Similaridade de string
-            similarity = SequenceMatcher(None, query_lower, nome_usina_lower).ratio()
-            if similarity > 0.6:  # 60% de similaridade
-                candidatos.append({
-                    'codigo': codigo_usina,
-                    'nome': nome_usina,
-                    'idx_real': usina['idx'],
-                    'score': similarity,
-                    'tipo': 'similarity'
-                })
-            
-            # PRIORIDADE 5: Contagem de palavras significativas em comum
-            palavras_comuns = set(palavras_query) & set(palavras_nome)
-            if palavras_comuns:
-                # Requer pelo menos 2 palavras em comum OU uma palavra longa (>= 5 chars)
-                palavras_longas = [p for p in palavras_comuns if len(p) >= 5]
-                if len(palavras_comuns) >= 2 or (len(palavras_longas) >= 1 and len(palavras_comuns) >= 1):
-                    score = len(palavras_comuns) / max(len(palavras_nome), 1)
-                    candidatos.append({
-                        'codigo': codigo_usina,
-                        'nome': nome_usina,
-                        'idx_real': usina['idx'],
-                        'score': score,
-                        'tipo': 'palavras_comuns'
-                    })
-        
-        # Se encontrou candidatos, retornar o melhor
-        if candidatos:
-            # Ordenar por tipo (similarity primeiro) e depois por score
-            candidatos.sort(key=lambda x: (x['tipo'] == 'similarity', x['score']), reverse=True)
-            melhor = candidatos[0]
-            debug_print(f"[TOOL] ✅ Código {melhor['codigo']} encontrado por {melhor['tipo']} (score: {melhor['score']:.2f}): '{melhor['nome']}' (idx_real={melhor['idx_real']})")
-            return (melhor['codigo'], melhor['idx_real'])
-        
-        debug_print("[TOOL] ⚠️ Nenhuma usina específica detectada na query")
-        return None
+        return result
     
     def _format_usina_data(self, row: pd.Series, codigo: int) -> Dict[str, Any]:
         """
@@ -495,25 +389,53 @@ class HidrCadastroTool(NEWAVETool):
                 }
             
             codigo_usina, idx_real = resultado
-            debug_print(f"[TOOL] ✅ Usina identificada: código {codigo_usina}, índice real {idx_real}")
+            debug_print(f"[TOOL] ✅ Usina identificada: código CSV={codigo_usina}, índice DataFrame={idx_real}")
+            
+            # IMPORTANTE: codigo_usina vem do CSV (fonte de verdade)
+            # idx_real vem do DataFrame e pode ser diferente do código
             
             # ETAPA 5: Obter dados da usina
-            debug_print(f"[TOOL] ETAPA 5: Obtendo dados da usina {codigo_usina} (idx_real={idx_real})...")
+            debug_print(f"[TOOL] ETAPA 5: Obtendo dados da usina código CSV={codigo_usina} (idx DataFrame={idx_real})...")
             
-            # Usar o índice real do DataFrame para acessar a linha correta
-            # Como idx_real vem de iterrows(), ele sempre existe no index do DataFrame
-            try:
-                row = cadastro.loc[idx_real]
-                # Validar que pegamos a usina correta pelo nome
-                nome_encontrado = str(row.get('nome_usina', '')).strip()
-                debug_print(f"[TOOL] ✅ Linha acessada: '{nome_encontrado}' (idx_real={idx_real})")
-            except (KeyError, IndexError) as e:
-                safe_print(f"[TOOL] ❌ Erro ao acessar linha com índice {idx_real}: {e}")
+            # SEMPRE buscar pelo nome no DataFrame original usando o nome do CSV
+            # Isso garante que encontramos a usina correta mesmo com códigos desalinhados
+            from backend.newave.utils.hydraulic_plant_matcher import get_hydraulic_plant_matcher
+            matcher = get_hydraulic_plant_matcher()
+            
+            if codigo_usina not in matcher.code_to_names:
+                safe_print(f"[TOOL] ❌ Código CSV {codigo_usina} não encontrado no code_to_names")
                 return {
                     "success": False,
-                    "error": f"Erro ao acessar dados da usina {codigo_usina} (índice {idx_real}): {str(e)}",
+                    "error": f"Código {codigo_usina} não encontrado no mapeamento CSV",
                     "tool": self.get_name()
                 }
+            
+            nome_arquivo_csv, _, _ = matcher.code_to_names[codigo_usina]
+            debug_print(f"[TOOL]   Buscando usina '{nome_arquivo_csv}' no DataFrame original pelo nome")
+            
+            # Buscar pelo nome no DataFrame original
+            nome_upper = nome_arquivo_csv.upper().strip()
+            row = None
+            idx_real_encontrado = None
+            
+            for idx, df_row in cadastro.iterrows():
+                nome_df = str(df_row.get('nome_usina', '')).upper().strip()
+                if nome_df == nome_upper:
+                    row = df_row
+                    idx_real_encontrado = idx
+                    debug_print(f"[TOOL] ✅ Usina encontrada no DataFrame original: idx={idx_real_encontrado}, nome='{nome_df}'")
+                    break
+            
+            if row is None:
+                safe_print(f"[TOOL] ❌ Usina '{nome_arquivo_csv}' não encontrada no DataFrame original")
+                return {
+                    "success": False,
+                    "error": f"Usina '{nome_arquivo_csv}' (código CSV {codigo_usina}) encontrada no CSV mas não no arquivo HIDR.DAT",
+                    "tool": self.get_name()
+                }
+            
+            # Usar o idx_real encontrado (não o que veio do matcher)
+            idx_real = idx_real_encontrado
             
             dados_usina = self._format_usina_data(row, codigo_usina)
             
@@ -525,16 +447,34 @@ class HidrCadastroTool(NEWAVETool):
                 'campos_disponiveis': len(row.index),
             }
             
-            # ETAPA 7: Formatar resultado
-            debug_print("[TOOL] ETAPA 7: Formatando resultado...")
+            # ETAPA 7: Obter metadados da usina selecionada para correção
+            selected_plant = None
+            if codigo_usina in matcher.code_to_names:
+                nome_arquivo_csv, nome_completo_csv, _ = matcher.code_to_names[codigo_usina]
+                selected_plant = {
+                    "type": "hydraulic",
+                    "codigo": codigo_usina,
+                    "nome": nome_arquivo_csv,
+                    "nome_completo": nome_completo_csv if nome_completo_csv else nome_arquivo_csv,
+                    "tool_name": self.get_name()
+                }
             
-            return {
+            # ETAPA 8: Formatar resultado
+            debug_print("[TOOL] ETAPA 8: Formatando resultado...")
+            
+            result = {
                 "success": True,
                 "dados_usina": dados_usina,
                 "stats": stats,
                 "description": f"Informações cadastrais completas da usina {codigo_usina} ({dados_usina.get('nome_usina', 'N/A')}) do arquivo HIDR.DAT",
                 "tool": self.get_name()
             }
+            
+            # Adicionar metadados da usina selecionada se disponível
+            if selected_plant:
+                result["selected_plant"] = selected_plant
+            
+            return result
             
         except FileNotFoundError as e:
             safe_print(f"[TOOL] ❌ Erro FileNotFoundError: {e}")

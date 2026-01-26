@@ -6,6 +6,14 @@ import re
 from typing import Optional, Tuple
 from difflib import SequenceMatcher
 
+# Importar safe_print para logs
+try:
+    from backend.core.config import safe_print
+except ImportError:
+    # Fallback se não conseguir importar
+    def safe_print(*args, **kwargs):
+        pass
+
 
 def normalize_usina_name(name: str) -> str:
     """
@@ -70,8 +78,15 @@ def find_usina_match(
     if not query_normalized:
         return None
     
+    # Debug: mostrar query normalizada
+    safe_print(f"[USINA_NAME_MATCHER] Query original: '{query}'")
+    safe_print(f"[USINA_NAME_MATCHER] Query normalizada: '{query_normalized}'")
+    safe_print(f"[USINA_NAME_MATCHER] Threshold: {threshold}")
+    safe_print(f"[USINA_NAME_MATCHER] Nomes disponíveis: {len(available_names)}")
+    
     best_match = None
     best_score = 0.0
+    all_scores = []
     
     for name in available_names:
         if not name:
@@ -85,20 +100,58 @@ def find_usina_match(
         # Comparar tanto o nome normalizado quanto o original
         score1 = SequenceMatcher(None, query_normalized, name_normalized).ratio()
         
-        # Também verificar se o nome normalizado está contido na query normalizada
-        # ou vice-versa (com bônus)
+        # Verificar se o nome normalizado está contido na query normalizada
+        # ou vice-versa (com bônus) - MAS APENAS SE FOR PALAVRA COMPLETA
+        # Isso evita matches parciais como "anta" em "santa"
+        contains_bonus = False
         if name_normalized in query_normalized or query_normalized in name_normalized:
-            score1 = max(score1, 0.7)  # Bônus para matches parciais
+            # Verificar se é uma palavra completa usando word boundaries
+            # Isso evita matches parciais como "anta" em "santa clara"
+            pattern_name_in_query = r'\b' + re.escape(name_normalized) + r'\b'
+            pattern_query_in_name = r'\b' + re.escape(query_normalized) + r'\b'
+            
+            is_word_boundary_match = (
+                re.search(pattern_name_in_query, query_normalized) or 
+                re.search(pattern_query_in_name, name_normalized)
+            )
+            
+            if is_word_boundary_match:
+                # Bônus apenas para palavras completas (word boundaries)
+                score1 = max(score1, 0.7)
+                contains_bonus = True
+            # Se for substring parcial (sem word boundaries), não dar bônus
+            # O SequenceMatcher já calcula a similaridade corretamente
         
         # Verificar match exato após normalização
+        exact_match = False
         if query_normalized == name_normalized:
             score1 = 1.0
+            exact_match = True
+        
+        all_scores.append((name, score1, exact_match, contains_bonus))
         
         if score1 > best_score:
             best_score = score1
             best_match = name
     
-    if best_match and best_score >= threshold:
-        return (best_match, best_score)
+    # Debug: mostrar top 5 scores
+    all_scores.sort(key=lambda x: x[1], reverse=True)
+    safe_print(f"[USINA_NAME_MATCHER] Top 5 scores:")
+    for idx, (name, score, exact, contains) in enumerate(all_scores[:5], 1):
+        flags = []
+        if exact:
+            flags.append("EXATO")
+        if contains:
+            flags.append("CONTÉM")
+        flags_str = f" [{', '.join(flags)}]" if flags else ""
+        safe_print(f"[USINA_NAME_MATCHER]   {idx}. '{name}': {score:.4f}{flags_str}")
     
-    return None
+    if best_match and best_score >= threshold:
+        safe_print(f"[USINA_NAME_MATCHER] ✅ Match encontrado: '{best_match}' (score: {best_score:.4f})")
+        return (best_match, best_score)
+    else:
+        if best_match:
+            safe_print(f"[USINA_NAME_MATCHER] ⚠️ Melhor match '{best_match}' (score: {best_score:.4f}) abaixo do threshold {threshold}")
+        else:
+            safe_print(f"[USINA_NAME_MATCHER] ⚠️ Nenhum match encontrado")
+        return None

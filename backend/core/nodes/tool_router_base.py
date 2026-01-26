@@ -197,3 +197,93 @@ def find_tool_by_name(tool_name: str, tools: list):
         if tool.get_name() == tool_name:
             return tool
     return None
+
+
+def generate_plant_correction_followup(
+    tool_result: Dict[str, Any],
+    original_query: str,
+    all_plants: list = None
+) -> Optional[Dict[str, Any]]:
+    """
+    Gera mensagem de follow-up se o resultado envolve uma usina específica.
+    
+    Args:
+        tool_result: Resultado da execução da tool
+        original_query: Query original do usuário
+        all_plants: Lista completa de usinas disponíveis (opcional, será obtida do matcher se necessário)
+        
+    Returns:
+        Dict com dados de plant_correction ou None se não aplicável
+    """
+    selected_plant = tool_result.get("selected_plant")
+    if not selected_plant:
+        return None
+    
+    safe_print(f"[TOOL ROUTER] Gerando follow-up de correção de usina para {selected_plant.get('type')} código {selected_plant.get('codigo')}")
+    
+    # Obter lista completa de usinas do matcher apropriado
+    if all_plants is None:
+        plant_type = selected_plant.get("type")
+        all_plants = []
+        try:
+            if plant_type == "hydraulic":
+                from backend.newave.utils.hydraulic_plant_matcher import get_hydraulic_plant_matcher
+                matcher = get_hydraulic_plant_matcher()
+                for codigo, (nome_arquivo, nome_completo, _) in matcher.code_to_names.items():
+                    all_plants.append({
+                        "codigo": codigo,
+                        "nome": nome_arquivo,
+                        "nome_completo": nome_completo if nome_completo else nome_arquivo
+                    })
+            elif plant_type == "thermal":
+                from backend.newave.utils.thermal_plant_matcher import get_thermal_plant_matcher
+                matcher = get_thermal_plant_matcher()
+                for codigo, (nome_arquivo, nome_completo) in matcher.code_to_names.items():
+                    all_plants.append({
+                        "codigo": codigo,
+                        "nome": nome_arquivo,
+                        "nome_completo": nome_completo if nome_completo else nome_arquivo
+                    })
+        except Exception as e:
+            safe_print(f"[TOOL ROUTER] [AVISO] Erro ao obter lista de usinas: {e}")
+            all_plants = []  # Garantir que sempre seja uma lista vazia em caso de erro
+    
+    # Garantir que all_plants seja sempre uma lista
+    if not isinstance(all_plants, list):
+        all_plants = []
+    
+    return {
+        "type": "plant_correction",
+        "message": "Essa usina não condiz com sua busca?",
+        "selected_plant": selected_plant,
+        "all_plants": all_plants,
+        "original_query": original_query
+    }
+
+
+def parse_plant_correction_query(query: str) -> tuple[bool, Optional[str], Optional[int], Optional[str]]:
+    """
+    Parseia query de correção de usina.
+    
+    Args:
+        query: Query recebida
+        
+    Returns:
+        Tupla (is_correction, tool_name, plant_code, original_query)
+        - is_correction: True se é query de correção
+        - tool_name: Nome da tool (ou None)
+        - plant_code: Código da usina (ou None)
+        - original_query: Query original (ou None)
+    """
+    if query.startswith("__PLANT_CORR__:"):
+        try:
+            parts = query.split(":", 3)  # ["__PLANT_CORR__", "ToolName", "codigo", "original_query"]
+            if len(parts) == 4:
+                tool_name = parts[1].strip()
+                plant_code = int(parts[2].strip())
+                original_query = parts[3].strip()
+                return True, tool_name, plant_code, original_query
+        except (ValueError, IndexError):
+            pass
+    
+    return False, None, None, None

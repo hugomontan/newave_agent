@@ -242,6 +242,21 @@ class MudancasGeracoesTermicasTool(NEWAVETool):
                     "periodo_fim": mudanca.get("periodo_fim", "N/A")
                 })
             
+            # Obter metadados da usina selecionada (apenas se uma única usina foi filtrada)
+            selected_plant = None
+            if codigo_usina_filtro is not None:
+                from backend.newave.utils.thermal_plant_matcher import get_thermal_plant_matcher
+                matcher = get_thermal_plant_matcher()
+                if codigo_usina_filtro in matcher.code_to_names:
+                    nome_arquivo_csv, nome_completo_csv = matcher.code_to_names[codigo_usina_filtro]
+                    selected_plant = {
+                        "type": "thermal",
+                        "codigo": codigo_usina_filtro,
+                        "nome": nome_arquivo_csv,
+                        "nome_completo": nome_completo_csv if nome_completo_csv else nome_arquivo_csv,
+                        "tool_name": self.get_name()
+                    }
+            
             # Ajustar descrição se houver filtro por usina (NOVO)
             if codigo_usina_filtro is not None:
                 nome_usina_filtro = mapeamento_codigo_nome.get(codigo_usina_filtro, f"Usina {codigo_usina_filtro}")
@@ -249,7 +264,7 @@ class MudancasGeracoesTermicasTool(NEWAVETool):
             else:
                 description = f"Análise de {len(mudancas_ordenadas)} mudanças de GTMIN entre {deck_december_name} e {deck_january_name}, ordenadas por magnitude."
             
-            return {
+            result = {
                 "success": True,
                 "is_comparison": True,
                 "tool": self.get_name(),
@@ -257,6 +272,12 @@ class MudancasGeracoesTermicasTool(NEWAVETool):
                 "stats": stats,
                 "description": description
             }
+            
+            # Adicionar metadados da usina selecionada se disponível
+            if selected_plant:
+                result["selected_plant"] = selected_plant
+            
+            return result
             
         except Exception as e:
             safe_print(f"[TOOL] ❌ Erro ao processar: {type(e).__name__}: {e}")

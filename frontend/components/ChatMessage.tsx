@@ -16,6 +16,7 @@ import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { DataTable } from "./DataTable";
 import { ComparisonView } from "./ComparisonView";
 import { SingleDeckRouter } from "./single-deck/SingleDeckRouter";
+import { PlantCorrectionPrompt } from "./PlantCorrectionPrompt";
 import { motion } from "framer-motion";
 import { Copy, Check, Download, User, Bot } from "lucide-react";
 import type { SingleDeckVisualizationData } from "./single-deck/shared/types";
@@ -121,6 +122,19 @@ interface Message {
     original_query: string;
     isLoading?: boolean;
     selectedOption?: string;
+  };
+  plantCorrectionData?: {
+    type: "plant_correction";
+    message: string;
+    selectedPlant: {
+      type: "hydraulic" | "thermal";
+      codigo: number;
+      nome: string;
+      nome_completo: string;
+      tool_name: string;
+    };
+    allPlants: Array<{codigo: number; nome: string; nome_completo: string}>;
+    originalQuery: string;
   };
   requires_user_choice?: boolean;
   alternative_type?: string;
@@ -586,6 +600,19 @@ export function ChatMessage({ message, onOptionClick }: ChatMessageProps) {
                       {message.content}
                     </ReactMarkdown>
                 </div>
+                )}
+
+                {/* Plant Correction Prompt */}
+                {message.plantCorrectionData && message.plantCorrectionData.selectedPlant && (
+                  <PlantCorrectionPrompt
+                    selectedPlant={message.plantCorrectionData.selectedPlant}
+                    allPlants={message.plantCorrectionData.allPlants}
+                    originalQuery={message.plantCorrectionData.originalQuery}
+                    onSelectPlant={(codigo, toolName, query) => {
+                      const correctionQuery = `__PLANT_CORR__:${toolName}:${codigo}:${query}`;
+                      onOptionClick?.(correctionQuery, message.id);
+                    }}
+                  />
                 )}
               </div>
 

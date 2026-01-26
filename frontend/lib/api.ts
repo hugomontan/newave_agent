@@ -146,6 +146,19 @@ export interface StreamEvent {
     };
     tool_name?: string;
   };
+  plant_correction_followup?: {
+    type: "plant_correction";
+    message: string;
+    selectedPlant: {
+      type: "hydraulic" | "thermal";
+      codigo: number;
+      nome: string;
+      nome_completo: string;
+      tool_name: string;
+    };
+    allPlants: Array<{codigo: number; nome: string; nome_completo: string}>;
+    originalQuery: string;
+  };
   comparison_data?: {
     deck_1: {
       name: string;
