@@ -323,38 +323,33 @@ def run_query_stream(
                 elif node_name == "comparison_interpreter":
                     response = node_output.get("final_response") if node_output else None
                     comparison_data = node_output.get("comparison_data") if node_output else None
+                    plant_correction_followup = node_output.get("plant_correction_followup")
+                    has_response = response and response.strip()
+                    has_comparison = bool(comparison_data)
+                    has_followup = bool(plant_correction_followup)
                     safe_print(f"[GRAPH] Comparison Interpreter retornou resposta: {len(response) if response else 0} caracteres")
-                    if response and response.strip():
-                        safe_print(f"[GRAPH] Emitindo resposta do comparison interpreter ({len(response)} caracteres)")
-                        yield f"data: {json.dumps({'type': 'response_start'})}\n\n"
-                        chunk_size = 50
-                        for i in range(0, len(response), chunk_size):
-                            yield f"data: {json.dumps({'type': 'response_chunk', 'chunk': response[i:i + chunk_size]})}\n\n"
+                    if has_response or has_comparison or has_followup:
+                        if has_response:
+                            safe_print(f"[GRAPH] Emitindo resposta do comparison interpreter ({len(response)} caracteres)")
+                            yield f"data: {json.dumps({'type': 'response_start'})}\n\n"
+                            chunk_size = 50
+                            for i in range(0, len(response), chunk_size):
+                                yield f"data: {json.dumps({'type': 'response_chunk', 'chunk': response[i:i + chunk_size]})}\n\n"
                         cleaned_comparison_data = clean_nan_for_json(comparison_data) if comparison_data else None
-                        # Debug: verificar dados antes de enviar
                         if cleaned_comparison_data:
                             safe_print(f"[GRAPH] [DEBUG] Enviando comparison_data - visualization_type: {cleaned_comparison_data.get('visualization_type')}")
                             safe_print(f"[GRAPH] [DEBUG] Enviando comparison_data - tool_name: {cleaned_comparison_data.get('tool_name')}")
                             safe_print(f"[GRAPH] [DEBUG] Enviando comparison_data - keys: {list(cleaned_comparison_data.keys())}")
-                            safe_print(f"[GRAPH] [DEBUG] Enviando comparison_data - chart_data presente: {cleaned_comparison_data.get('chart_data') is not None}")
                             matrix_data = cleaned_comparison_data.get('matrix_data')
-                            if matrix_data:
-                                safe_print(f"[GRAPH] [DEBUG] Enviando comparison_data - matrix_data presente: {len(matrix_data) if isinstance(matrix_data, list) else 'N/A'} registros")
-                                if isinstance(matrix_data, list) and len(matrix_data) > 0:
-                                    safe_print(f"[GRAPH] [DEBUG] Enviando comparison_data - matrix_data[0]: {matrix_data[0]}")
-                            else:
-                                safe_print(f"[GRAPH] [DEBUG] Enviando comparison_data - matrix_data: None ou vazio")
-                        
-                        # Incluir plant_correction_followup se disponível
+                            if matrix_data and isinstance(matrix_data, list) and len(matrix_data) > 0:
+                                safe_print(f"[GRAPH] [DEBUG] Enviando comparison_data - matrix_data presente: {len(matrix_data)} registros")
                         response_complete_data = {
                             'type': 'response_complete',
-                            'response': response,
+                            'response': response or '',
                             'comparison_data': cleaned_comparison_data
                         }
-                        plant_correction_followup = node_output.get("plant_correction_followup")
-                        if plant_correction_followup:
+                        if has_followup:
                             response_complete_data['plant_correction_followup'] = plant_correction_followup
-                        
                         yield f"data: {json.dumps(response_complete_data, allow_nan=False)}\n\n"
                 
                 if not (node_name == "comparison_tool_router" and node_output.get("disambiguation")):

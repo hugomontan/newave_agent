@@ -299,33 +299,52 @@ class DsvaguaTool(NEWAVETool):
             
             debug_print(f"[TOOL] ✅ {len(desvios_df)} registro(s) de desvio encontrado(s)")
             
-            # ETAPA 4: Identificar filtros
+            # ETAPA 4: Identificar filtros (codigo_usina=CONFHD/DSVAGUA para filtro; codigo_csv para selected_plant)
             debug_print("[TOOL] ETAPA 4: Identificando filtros...")
-            # Verificar se há código forçado (correção de usina)
+            codigo_usina = None
+            codigo_csv = None
+            mapeamento = self._carregar_mapeamento_usinas()
             forced_plant_code = kwargs.get("forced_plant_code")
             if forced_plant_code is not None:
                 debug_print(f"[TOOL] Usando código forçado (correção): {forced_plant_code}")
-                codigo_usina = forced_plant_code
-            else:
-                codigo_usina = self._extract_usina_from_query(query, dsvagua)
-            periodo = self._extract_periodo_from_query(query)
-            
-            # ETAPA 4.5: Criar selected_plant ANTES de aplicar filtros (para garantir que follow-up apareça)
-            # Isso é crítico quando forced_plant_code está presente
-            selected_plant = None
-            if codigo_usina is not None:
+                codigo_csv = int(forced_plant_code)
                 from backend.newave.utils.hydraulic_plant_matcher import get_hydraulic_plant_matcher
                 matcher = get_hydraulic_plant_matcher()
-                if codigo_usina in matcher.code_to_names:
-                    nome_arquivo_csv, nome_completo_csv, _ = matcher.code_to_names[codigo_usina]
+                if codigo_csv in matcher.code_to_names and getattr(self, "_mapeamento_nome_codigo", None):
+                    nome_csv, _, _ = matcher.code_to_names[codigo_csv]
+                    nome_upper = (nome_csv or "").upper().strip()
+                    codigo_usina = self._mapeamento_nome_codigo.get(nome_upper)
+            else:
+                codigo_usina = self._extract_usina_from_query(query, dsvagua)
+                if codigo_usina is not None and mapeamento:
+                    from backend.newave.utils.hydraulic_plant_matcher import get_hydraulic_plant_matcher
+                    matcher = get_hydraulic_plant_matcher()
+                    nome_confhd = mapeamento.get(codigo_usina)
+                    if nome_confhd:
+                        nome_upper = nome_confhd.upper().strip()
+                        for c, (nome_arq, nome_compl, _) in matcher.code_to_names.items():
+                            if (nome_arq and nome_arq.upper().strip() == nome_upper) or (nome_compl and nome_compl.upper().strip() == nome_upper):
+                                codigo_csv = c
+                                break
+                    if codigo_csv is None:
+                        codigo_csv = codigo_usina
+            periodo = self._extract_periodo_from_query(query)
+            
+            # ETAPA 4.5: Criar selected_plant (sempre codigo_csv para follow-up)
+            selected_plant = None
+            if codigo_csv is not None:
+                from backend.newave.utils.hydraulic_plant_matcher import get_hydraulic_plant_matcher
+                matcher = get_hydraulic_plant_matcher()
+                if codigo_csv in matcher.code_to_names:
+                    nome_arquivo_csv, nome_completo_csv, _ = matcher.code_to_names[codigo_csv]
                     selected_plant = {
                         "type": "hydraulic",
-                        "codigo": codigo_usina,
+                        "codigo": codigo_csv,
                         "nome": nome_arquivo_csv,
                         "nome_completo": nome_completo_csv if nome_completo_csv else nome_arquivo_csv,
                         "tool_name": self.get_name()
                     }
-                    debug_print(f"[TOOL] ✅ selected_plant criado: código={codigo_usina}, nome={nome_arquivo_csv}")
+                    debug_print(f"[TOOL] ✅ selected_plant criado: código={codigo_csv}, nome={nome_arquivo_csv}")
             
             if codigo_usina is not None:
                 debug_print(f"[TOOL] ✅ Filtro por usina: {codigo_usina}")

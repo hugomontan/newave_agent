@@ -27,7 +27,11 @@ from backend.newave.config import (
     safe_print
 )
 from backend.core.utils.debug import write_debug_log
-from backend.core.nodes.tool_router_base import generate_plant_correction_followup
+from backend.core.nodes.tool_router_base import (
+    generate_plant_correction_followup,
+    parse_plant_correction_query,
+    find_tool_by_name,
+)
 
 
 # Mapeamento de descrições curtas fixas para cada tool
@@ -173,7 +177,7 @@ def comparison_tool_router_node(state: MultiDeckState) -> dict:
             }
     
     # Função para executar tool em N decks (modo comparison)
-    def _execute_tool_comparison(tool_class, tool_name: str, query_to_use: str = None):
+    def _execute_tool_comparison(tool_class, tool_name: str, query_to_use: str = None, forced_plant_code: Optional[int] = None):
         """
         Executa uma tool em N decks e retorna resultado de comparação.
         
@@ -209,8 +213,8 @@ def comparison_tool_router_node(state: MultiDeckState) -> dict:
                     }
                 }
                 
-                # Adicionar follow-up de correção de usina se aplicável
-                if result.get("success"):
+                # Adicionar follow-up de correção de usina se aplicável (mesmo com success=False se houver selected_plant)
+                if result.get("selected_plant"):
                     followup = generate_plant_correction_followup(result, query_to_use)
                     if followup:
                         tool_result_dict["plant_correction_followup"] = followup
@@ -231,8 +235,11 @@ def comparison_tool_router_node(state: MultiDeckState) -> dict:
                 forced_tool_class=tool_class  # Tool já identificada, passar diretamente
             )
             
-            # Executar com a tool já identificada
-            result = multi_tool.execute(query_to_use)
+            # Executar com a tool já identificada (repassar forced_plant_code se correção de usina)
+            if forced_plant_code is not None:
+                result = multi_tool.execute(query_to_use, forced_plant_code=forced_plant_code)
+            else:
+                result = multi_tool.execute(query_to_use)
             
             # O resultado já vem no formato correto com todos os decks
             safe_print(f"[TOOL ROUTER] [OK] Comparação concluída em {len(selected_decks)} decks via MultiDeckComparisonTool")
@@ -250,8 +257,8 @@ def comparison_tool_router_node(state: MultiDeckState) -> dict:
                 }
             }
             
-            # Adicionar follow-up de correção de usina se aplicável
-            if result.get("success"):
+            # Adicionar follow-up de correção de usina se aplicável (mesmo com success=False se houver selected_plant)
+            if result.get("selected_plant"):
                 followup = generate_plant_correction_followup(result, query_to_use)
                 if followup:
                     tool_result_dict["plant_correction_followup"] = followup
@@ -274,6 +281,20 @@ def comparison_tool_router_node(state: MultiDeckState) -> dict:
                     "return_code": -1
                 }
             }
+    
+    # Detectar se a query veio de correção de usina (__PLANT_CORR__)
+    is_plant_correction, correction_tool_name, plant_code, original_query_correction = parse_plant_correction_query(query)
+    if is_plant_correction and correction_tool_name and plant_code is not None:
+        selected_tool = find_tool_by_name(correction_tool_name, tools)
+        if selected_tool:
+            query_to_use = original_query_correction or query
+            safe_print(f"[TOOL ROUTER] Query de correção de usina: tool={correction_tool_name}, codigo={plant_code}")
+            result = _execute_tool_comparison(
+                selected_tool.__class__, correction_tool_name, query_to_use=query_to_use, forced_plant_code=plant_code
+            )
+            result["from_plant_correction"] = True
+            return result
+        safe_print(f"[TOOL ROUTER] Tool {correction_tool_name} não encontrada para correção de usina")
     
     # Detectar se a query veio de uma escolha de disambiguation
     # Formato novo: "__DISAMBIG__:ToolName:original_query"

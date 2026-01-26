@@ -109,12 +109,47 @@ class VariacaoReservatorioInicialTool(NEWAVETool):
             confhd = Confhd.read(confhd_path)
             debug_print("[TOOL] ✅ Arquivo lido com sucesso")
             
-            # ETAPA 3: Identificar filtros
+            # ETAPA 3: Identificar filtros (codigo_usina=CONFHD interno para filtro; codigo_csv para selected_plant)
             debug_print("[TOOL] ETAPA 3: Identificando filtros...")
-            codigo_usina = self._extract_usina_from_query(query, confhd)
+            codigo_usina = None
+            codigo_csv = None
+            usinas_df = confhd.usinas if confhd.usinas is not None else pd.DataFrame()
+            forced = kwargs.get("forced_plant_code")
+            if forced is not None:
+                codigo_csv = int(forced)
+                from backend.newave.utils.hydraulic_plant_matcher import get_hydraulic_plant_matcher
+                matcher = get_hydraulic_plant_matcher()
+                if codigo_csv in matcher.code_to_names and not usinas_df.empty:
+                    nome_csv, _, _ = matcher.code_to_names[codigo_csv]
+                    nome_upper = (nome_csv or "").upper().strip()
+                    match = usinas_df[usinas_df["nome_usina"].astype(str).str.upper().str.strip() == nome_upper]
+                    if not match.empty:
+                        codigo_usina = int(match.iloc[0]["codigo_usina"])
+                    else:
+                        for _, row in usinas_df.iterrows():
+                            n = str(row.get("nome_usina", "")).upper().strip()
+                            if nome_upper in n or n in nome_upper:
+                                codigo_usina = int(row["codigo_usina"])
+                                break
+            else:
+                ext = self._extract_usina_from_query(query, confhd)
+                if ext is not None:
+                    codigo_usina = ext
+                    from backend.newave.utils.hydraulic_plant_matcher import get_hydraulic_plant_matcher
+                    matcher = get_hydraulic_plant_matcher()
+                    if not usinas_df.empty:
+                        confhd_row = usinas_df[usinas_df["codigo_usina"] == codigo_usina]
+                        if not confhd_row.empty:
+                            nome_confhd = str(confhd_row.iloc[0].get("nome_usina", "")).upper().strip()
+                            for c, (nome_arq, nome_compl, _) in matcher.code_to_names.items():
+                                if (nome_arq and nome_arq.upper().strip() == nome_confhd) or (nome_compl and nome_compl.upper().strip() == nome_confhd):
+                                    codigo_csv = c
+                                    break
+                    if codigo_csv is None:
+                        codigo_csv = codigo_usina
             
             if codigo_usina is not None:
-                debug_print(f"[TOOL] ✅ Filtro por usina: {codigo_usina}")
+                debug_print(f"[TOOL] ✅ Filtro por usina: CONFHD={codigo_usina} CSV={codigo_csv}")
             
             # ETAPA 4: Processar dados de volume inicial
             debug_print("[TOOL] ETAPA 4: Processando dados de volume inicial...")
@@ -159,16 +194,16 @@ class VariacaoReservatorioInicialTool(NEWAVETool):
             else:
                 debug_print("[TOOL] ⚠️ Nenhum dado de usinas disponível (confhd.usinas é None)")
             
-            # ETAPA 5: Obter metadados da usina selecionada (sempre que uma usina foi identificada)
+            # ETAPA 5: Obter metadados da usina selecionada (sempre codigo_csv para follow-up)
             selected_plant = None
-            if codigo_usina is not None:
+            if codigo_csv is not None:
                 from backend.newave.utils.hydraulic_plant_matcher import get_hydraulic_plant_matcher
                 matcher = get_hydraulic_plant_matcher()
-                if codigo_usina in matcher.code_to_names:
-                    nome_arquivo_csv, nome_completo_csv, _ = matcher.code_to_names[codigo_usina]
+                if codigo_csv in matcher.code_to_names:
+                    nome_arquivo_csv, nome_completo_csv, _ = matcher.code_to_names[codigo_csv]
                     selected_plant = {
                         "type": "hydraulic",
-                        "codigo": codigo_usina,
+                        "codigo": codigo_csv,
                         "nome": nome_arquivo_csv,
                         "nome_completo": nome_completo_csv if nome_completo_csv else nome_arquivo_csv,
                         "tool_name": self.get_name()

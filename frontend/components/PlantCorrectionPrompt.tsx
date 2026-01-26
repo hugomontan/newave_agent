@@ -85,7 +85,7 @@ export function PlantCorrectionPrompt({
   }
 
   return (
-    <div className="mt-4 p-4 rounded-lg bg-background/50 border border-border">
+    <div className="mt-4 p-4 rounded-lg bg-background/50 border border-border max-w-lg w-full">
       <p className="text-sm font-semibold text-foreground mb-3">
         Selecione a usina correta:
       </p>
@@ -96,7 +96,7 @@ export function PlantCorrectionPrompt({
         onChange={(e) => setSearchTerm(e.target.value)}
         className="mb-3"
       />
-      <ScrollArea className="h-[300px]">
+      <ScrollArea className="h-[250px]">
         <div className="space-y-2">
           {filteredPlants.length > 0 ? (
             filteredPlants.map((plant) => (

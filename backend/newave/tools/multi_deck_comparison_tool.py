@@ -141,7 +141,7 @@ class MultiDeckComparisonTool(NEWAVETool):
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 futures = {
                     executor.submit(
-                        self._execute_tool_safe, tool_class, self.deck_paths[deck_name], query
+                        self._execute_tool_safe, tool_class, self.deck_paths[deck_name], query, **kwargs
                     ): deck_name
                     for deck_name in self.selected_decks
                 }
@@ -177,13 +177,13 @@ class MultiDeckComparisonTool(NEWAVETool):
         # 3. Formatar e comparar resultados
         return self._build_comparison_result_multi(deck_results, tool_name, query)
     
-    def _execute_tool_safe(self, tool_class, deck_path: str, query: str) -> Dict[str, Any]:
+    def _execute_tool_safe(self, tool_class, deck_path: str, query: str, **kwargs) -> Dict[str, Any]:
         """Executa uma tool de forma segura."""
         import traceback
         try:
             print(f"[MULTI-DECK] [DEBUG] Iniciando execução da tool {tool_class.__name__} no deck: {deck_path}")
             tool = tool_class(deck_path)
-            result = tool.execute(query)
+            result = tool.execute(query, **kwargs)
             
             # Verificar se o resultado indica sucesso ou falha
             if result is None:
@@ -339,7 +339,7 @@ class MultiDeckComparisonTool(NEWAVETool):
         # Verificar se temos dados suficientes
         decks_with_data = [d for d in decks_data if d["data"]]
         if len(decks_with_data) < 1:
-            return {
+            out = {
                 "success": False,
                 "is_comparison": True,
                 "is_multi_deck": True,
@@ -348,6 +348,12 @@ class MultiDeckComparisonTool(NEWAVETool):
                 "differences": [],
                 "chart_data": None
             }
+            for d in decks_data:
+                sp = d.get("full_result", {}).get("selected_plant")
+                if sp is not None:
+                    out["selected_plant"] = sp
+                    break
+            return out
         
         # Verificar se algum deck já retorna comparison_table (ex: MudancasGeracoesTermicasTool)
         # Nesse caso, preservar a estrutura original em vez de reprocessar
@@ -385,6 +391,13 @@ class MultiDeckComparisonTool(NEWAVETool):
             result["stats"] = stats
         if description is not None:
             result["description"] = description
+        
+        # Propagar selected_plant do primeiro deck que tiver (para follow-up de correção)
+        for d in decks_data:
+            sp = d.get("full_result", {}).get("selected_plant")
+            if sp is not None:
+                result["selected_plant"] = sp
+                break
         
         # Adicionar deck_1 e deck_2 para compatibilidade com formatters legados
         # Incluir full_result preservando a estrutura original completa

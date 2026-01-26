@@ -138,7 +138,7 @@ class MudancasVazaoMinimaTool(NEWAVETool):
             # Verificar se há mais de 2 decks - usar matriz de comparação
             if len(self.selected_decks) > 2:
                 debug_print(f"[TOOL] ✅ {len(self.selected_decks)} decks detectados - usando matriz de comparação")
-                return self._execute_multi_deck_matrix(query)
+                return self._execute_multi_deck_matrix(query, **kwargs)
             
             # Para compatibilidade, usar primeiro e último deck (2 decks)
             deck_december_path = self.deck_paths.get(self.selected_decks[0])
@@ -173,12 +173,25 @@ class MudancasVazaoMinimaTool(NEWAVETool):
             mapeamento_codigo_nome = self._create_codigo_nome_mapping(modif_dec, modif_jan)
             debug_print(f"[TOOL] ✅ Mapeamento criado: {len(mapeamento_codigo_nome)} usinas mapeadas")
             
-            # ETAPA 3.5: Extrair usina da query (se especificada)
+            # ETAPA 3.5: Extrair usina da query (se especificada) ou forced_plant_code (correção, CSV)
+            # codigo_modif: filtra MODIF; codigo_csv: selected_plant/follow-up (sempre base CSV)
             debug_print("[TOOL] ETAPA 3.5: Verificando se há filtro por usina na query...")
-            codigo_usina_filtro = self._extract_usina_from_query(query, modif_dec, modif_jan, mapeamento_codigo_nome)
+            codigo_modif = None
+            codigo_csv = None
+            forced = kwargs.get("forced_plant_code")
+            if forced is not None:
+                codigo_csv = int(forced)
+                codigo_modif = self._csv_to_modif_code(codigo_csv, mapeamento_codigo_nome)
+            else:
+                codigo_modif = self._extract_usina_from_query(query, modif_dec, modif_jan, mapeamento_codigo_nome)
+                if codigo_modif is not None:
+                    codigo_csv = self._modif_to_csv_code(codigo_modif, mapeamento_codigo_nome)
+                    if codigo_csv is None:
+                        codigo_csv = codigo_modif
+            codigo_usina_filtro = codigo_modif
             if codigo_usina_filtro is not None:
                 nome_usina_filtro = mapeamento_codigo_nome.get(codigo_usina_filtro, f"Usina {codigo_usina_filtro}")
-                debug_print(f"[TOOL] ✅ Filtro por usina detectado: {codigo_usina_filtro} - {nome_usina_filtro}")
+                debug_print(f"[TOOL] ✅ Filtro por usina detectado: MODIF={codigo_usina_filtro} CSV={codigo_csv} - {nome_usina_filtro}")
             else:
                 debug_print("[TOOL] ℹ️ Nenhum filtro por usina detectado - retornando todas as mudanças")
             
@@ -252,16 +265,16 @@ class MudancasVazaoMinimaTool(NEWAVETool):
             descricao_parts.append("ordenadas por magnitude.")
             description = " ".join(descricao_parts)
             
-            # Obter metadados da usina selecionada (apenas se uma única usina foi filtrada)
+            # Obter metadados da usina selecionada (sempre codigo_csv para follow-up)
             selected_plant = None
-            if codigo_usina_filtro is not None:
+            if codigo_csv is not None:
                 from backend.newave.utils.hydraulic_plant_matcher import get_hydraulic_plant_matcher
                 matcher = get_hydraulic_plant_matcher()
-                if codigo_usina_filtro in matcher.code_to_names:
-                    nome_arquivo_csv, nome_completo_csv, _ = matcher.code_to_names[codigo_usina_filtro]
+                if codigo_csv in matcher.code_to_names:
+                    nome_arquivo_csv, nome_completo_csv, _ = matcher.code_to_names[codigo_csv]
                     selected_plant = {
                         "type": "hydraulic",
-                        "codigo": codigo_usina_filtro,
+                        "codigo": codigo_csv,
                         "nome": nome_arquivo_csv,
                         "nome_completo": nome_completo_csv if nome_completo_csv else nome_arquivo_csv,
                         "tool_name": self.get_name()
@@ -319,7 +332,7 @@ class MudancasVazaoMinimaTool(NEWAVETool):
                 "tool": self.get_name()
             }
     
-    def _execute_multi_deck_matrix(self, query: str) -> Dict[str, Any]:
+    def _execute_multi_deck_matrix(self, query: str, **kwargs) -> Dict[str, Any]:
         """
         Executa análise de vazão mínima para múltiplos decks (mais de 2) usando matriz de comparação.
         
@@ -371,12 +384,24 @@ class MudancasVazaoMinimaTool(NEWAVETool):
             mapeamento_codigo_nome = self._create_codigo_nome_mapping(first_modif, last_modif)
             debug_print(f"[TOOL] ✅ Mapeamento criado: {len(mapeamento_codigo_nome)} usinas mapeadas")
             
-            # ETAPA 3: Extrair usina da query (opcional)
+            # ETAPA 3: Extrair usina (codigo_modif para filtro; codigo_csv para selected_plant)
             debug_print("[TOOL] ETAPA 3: Verificando se há filtro por usina na query...")
-            codigo_usina_filtro = self._extract_usina_from_query(query, first_modif, last_modif, mapeamento_codigo_nome)
+            codigo_modif = None
+            codigo_csv = None
+            forced = kwargs.get("forced_plant_code")
+            if forced is not None:
+                codigo_csv = int(forced)
+                codigo_modif = self._csv_to_modif_code(codigo_csv, mapeamento_codigo_nome)
+            else:
+                codigo_modif = self._extract_usina_from_query(query, first_modif, last_modif, mapeamento_codigo_nome)
+                if codigo_modif is not None:
+                    codigo_csv = self._modif_to_csv_code(codigo_modif, mapeamento_codigo_nome)
+                    if codigo_csv is None:
+                        codigo_csv = codigo_modif
+            codigo_usina_filtro = codigo_modif
             if codigo_usina_filtro is not None:
                 nome_usina_filtro = mapeamento_codigo_nome.get(codigo_usina_filtro, f"Usina {codigo_usina_filtro}")
-                debug_print(f"[TOOL] ✅ Filtro por usina detectado: {codigo_usina_filtro} - {nome_usina_filtro}")
+                debug_print(f"[TOOL] ✅ Filtro por usina detectado: MODIF={codigo_usina_filtro} CSV={codigo_csv} - {nome_usina_filtro}")
                 # Aplicar filtro
                 for deck_name in decks_vazmin:
                     decks_vazmin[deck_name] = [
@@ -559,7 +584,7 @@ class MudancasVazaoMinimaTool(NEWAVETool):
                 }
             }
             
-            return {
+            out = {
                 "success": True,
                 "is_comparison": True,
                 "tool": self.get_name(),
@@ -571,6 +596,19 @@ class MudancasVazaoMinimaTool(NEWAVETool):
                 "visualization_type": "vazao_minima_matrix",
                 "description": f"Matriz de vazão mínima com forward fill. {len(expanded_data)} linhas VAZMINT (Usina x Deck) expandidas para {len(all_months_sorted)} meses. {len(matrix_data_vazmin)} registros VAZMIN."
             }
+            if codigo_csv is not None:
+                from backend.newave.utils.hydraulic_plant_matcher import get_hydraulic_plant_matcher
+                matcher = get_hydraulic_plant_matcher()
+                if codigo_csv in matcher.code_to_names:
+                    nome_arquivo_csv, nome_completo_csv, _ = matcher.code_to_names[codigo_csv]
+                    out["selected_plant"] = {
+                        "type": "hydraulic",
+                        "codigo": codigo_csv,
+                        "nome": nome_arquivo_csv,
+                        "nome_completo": nome_completo_csv if nome_completo_csv else nome_arquivo_csv,
+                        "tool_name": self.get_name()
+                    }
+            return out
             
         except Exception as e:
             safe_print(f"[TOOL] ❌ Erro ao processar: {type(e).__name__}: {e}")
@@ -686,6 +724,34 @@ class MudancasVazaoMinimaTool(NEWAVETool):
                 debug_print(f"[TOOL] ⚠️ Erro ao ler HIDR.DAT para nomes: {e}")
         
         return mapeamento
+    
+    def _modif_to_csv_code(self, codigo_modif: int, mapeamento_codigo_nome: Dict[int, str]) -> Optional[int]:
+        """Mapeia código MODIF -> código CSV (deparahidro) via nome. selected_plant usa sempre CSV."""
+        from backend.newave.utils.hydraulic_plant_matcher import get_hydraulic_plant_matcher
+        matcher = get_hydraulic_plant_matcher()
+        nome_modif = mapeamento_codigo_nome.get(codigo_modif)
+        if not nome_modif:
+            return None
+        nome_upper = nome_modif.upper().strip()
+        for csv_cod, (nome_arq, nome_compl, _) in matcher.code_to_names.items():
+            if (nome_arq and nome_arq.upper().strip() == nome_upper) or (nome_compl and nome_compl.upper().strip() == nome_upper):
+                return csv_cod
+        return None
+    
+    def _csv_to_modif_code(self, codigo_csv: int, mapeamento_codigo_nome: Dict[int, str]) -> Optional[int]:
+        """Mapeia código CSV (follow-up) -> código MODIF para filtrar dados."""
+        from backend.newave.utils.hydraulic_plant_matcher import get_hydraulic_plant_matcher
+        matcher = get_hydraulic_plant_matcher()
+        if codigo_csv not in matcher.code_to_names:
+            return None
+        nome_arq, nome_compl, _ = matcher.code_to_names[codigo_csv]
+        nome_busca = (nome_arq or nome_compl or "").upper().strip()
+        if not nome_busca:
+            return None
+        for modif_cod, nome in mapeamento_codigo_nome.items():
+            if nome and nome.upper().strip() == nome_busca:
+                return modif_cod
+        return None
     
     def _extract_usina_from_query(
         self, 

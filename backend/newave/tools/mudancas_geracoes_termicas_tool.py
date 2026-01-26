@@ -137,7 +137,7 @@ class MudancasGeracoesTermicasTool(NEWAVETool):
             # Verificar se há mais de 2 decks - usar matriz de comparação
             if len(self.selected_decks) > 2:
                 debug_print(f"[TOOL] ✅ {len(self.selected_decks)} decks detectados - usando matriz de comparação")
-                return self._execute_multi_deck_matrix(query)
+                return self._execute_multi_deck_matrix(query, **kwargs)
             
             # Para compatibilidade, usar primeiro e último deck (2 decks)
             deck_december_path = self.deck_paths.get(self.selected_decks[0])
@@ -172,9 +172,13 @@ class MudancasGeracoesTermicasTool(NEWAVETool):
             mapeamento_codigo_nome = self._create_codigo_nome_mapping(expt_dec, expt_jan)
             debug_print(f"[TOOL] ✅ Mapeamento criado: {len(mapeamento_codigo_nome)} usinas mapeadas")
             
-            # ETAPA 3.5: Extrair usina da query (NOVO)
+            # ETAPA 3.5: Extrair usina da query ou forced_plant_code (correção)
             debug_print("[TOOL] ETAPA 3.5: Verificando se há filtro por usina na query...")
-            codigo_usina_filtro = self._extract_usina_from_query(query, expt_dec, expt_jan, mapeamento_codigo_nome)
+            forced = kwargs.get("forced_plant_code")
+            if forced is not None:
+                codigo_usina_filtro = int(forced)
+            else:
+                codigo_usina_filtro = self._extract_usina_from_query(query, expt_dec, expt_jan, mapeamento_codigo_nome)
             if codigo_usina_filtro is not None:
                 nome_usina_filtro = mapeamento_codigo_nome.get(codigo_usina_filtro, f"Usina {codigo_usina_filtro}")
                 debug_print(f"[TOOL] ✅ Filtro por usina detectado: {codigo_usina_filtro} - {nome_usina_filtro}")
@@ -290,7 +294,7 @@ class MudancasGeracoesTermicasTool(NEWAVETool):
                 "tool": self.get_name()
             }
     
-    def _execute_multi_deck_matrix(self, query: str) -> Dict[str, Any]:
+    def _execute_multi_deck_matrix(self, query: str, **kwargs) -> Dict[str, Any]:
         """
         Executa análise de GTMIN para múltiplos decks (mais de 2) usando matriz de comparação.
         
@@ -338,9 +342,13 @@ class MudancasGeracoesTermicasTool(NEWAVETool):
             mapeamento_codigo_nome = self._create_codigo_nome_mapping(first_expt, last_expt)
             debug_print(f"[TOOL] ✅ Mapeamento criado: {len(mapeamento_codigo_nome)} usinas mapeadas")
             
-            # ETAPA 3: Extrair usina da query (opcional)
+            # ETAPA 3: Extrair usina da query (opcional) ou forced_plant_code (correção)
             debug_print("[TOOL] ETAPA 3: Verificando se há filtro por usina na query...")
-            codigo_usina_filtro = self._extract_usina_from_query(query, first_expt, last_expt, mapeamento_codigo_nome)
+            forced = kwargs.get("forced_plant_code")
+            if forced is not None:
+                codigo_usina_filtro = int(forced)
+            else:
+                codigo_usina_filtro = self._extract_usina_from_query(query, first_expt, last_expt, mapeamento_codigo_nome)
             if codigo_usina_filtro is not None:
                 nome_usina_filtro = mapeamento_codigo_nome.get(codigo_usina_filtro, f"Usina {codigo_usina_filtro}")
                 debug_print(f"[TOOL] ✅ Filtro por usina detectado: {codigo_usina_filtro} - {nome_usina_filtro}")
@@ -445,7 +453,7 @@ class MudancasGeracoesTermicasTool(NEWAVETool):
                 "usinas_unicas": len(set(row["codigo_usina"] for row in matrix_data))
             }
             
-            return {
+            out = {
                 "success": True,
                 "is_comparison": True,
                 "tool": self.get_name(),
@@ -455,6 +463,19 @@ class MudancasGeracoesTermicasTool(NEWAVETool):
                 "visualization_type": "gtmin_matrix",
                 "description": f"Matriz de comparação de GTMIN entre {len(deck_names)} decks, com {len(matrix_data)} registros com variações."
             }
+            if codigo_usina_filtro is not None:
+                from backend.newave.utils.thermal_plant_matcher import get_thermal_plant_matcher
+                matcher = get_thermal_plant_matcher()
+                if codigo_usina_filtro in matcher.code_to_names:
+                    nome_arquivo_csv, nome_completo_csv = matcher.code_to_names[codigo_usina_filtro]
+                    out["selected_plant"] = {
+                        "type": "thermal",
+                        "codigo": codigo_usina_filtro,
+                        "nome": nome_arquivo_csv,
+                        "nome_completo": nome_completo_csv if nome_completo_csv else nome_arquivo_csv,
+                        "tool_name": self.get_name()
+                    }
+            return out
             
         except Exception as e:
             safe_print(f"[TOOL] ❌ Erro ao processar: {type(e).__name__}: {e}")
