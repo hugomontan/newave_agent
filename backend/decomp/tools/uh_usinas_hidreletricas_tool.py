@@ -90,16 +90,31 @@ class UHUsinasHidrelétricasTool(DECOMPTool):
         return """
         Tool específica para consultar volume inicial/nível de partida de uma usina hidrelétrica.
         
+        Acessa dados do Bloco UH do DECOMP que define o volume inicial (VINI) de usinas hidrelétricas.
         Retorna apenas o volume inicial (VINI) do Bloco UH do DECOMP para uma usina específica.
         
-        Termos-chave: volume inicial, nível de partida, VINI, volume inicial da usina, nível de partida da usina.
+        O volume inicial representa o nível de partida do reservatório da usina no início do período de estudo,
+        expresso como percentual do volume útil do reservatório.
+        
+        Palavras-chave relacionadas:
+        - volume inicial, volume inicial da usina, volume inicial de [nome usina]
+        - nível de partida, nível de partida da usina, nível de partida de [nome usina]
+        - VINI, vini da usina, vini de [nome usina]
+        - qual o volume inicial, qual o volume inicial de, qual o volume inicial da
+        - volume inicial qual, volume inicial de qual usina
+        
+        Termos-chave: volume inicial, nível de partida, VINI, volume inicial da usina, nível de partida da usina,
+        volume inicial de, volume inicial qual, qual volume inicial.
         
         Exemplos de queries:
         - "Qual o volume inicial da usina 1?"
+        - "Qual o volume inicial de Camargos"
         - "Volume inicial de Furnas"
+        - "Volume inicial de [nome da usina]"
         - "Qual o nível de partida da usina Tucuruí?"
         - "VINI da usina 24"
         - "Volume inicial da usina hidrelétrica de Itaipu"
+        - "Qual o volume inicial de [qualquer nome de usina]"
         """
     
     def execute(self, query: str, **kwargs) -> Dict[str, Any]:

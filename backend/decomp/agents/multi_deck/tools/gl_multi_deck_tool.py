@@ -87,11 +87,36 @@ class GLMultiDeckTool(DECOMPTool):
         return """
         Tool para consultar gerações GNL já comandadas (Registro GL) em múltiplos decks DECOMP.
         
+        Acessa dados do registro GL que define:
+        - Gerações de termelétricas GNL já comandadas (despacho antecipado)
+        - Código da usina e submercado
+        - Estágio/Semana de despacho
+        - Dados por patamar (1=PESADA, 2=MÉDIA, 3=LEVE):
+          * Geração (MW)
+          * Duração do patamar (horas)
+        - Data de início do despacho (DDMMYYYY)
+        
         Executa a consulta em paralelo em todos os decks selecionados,
         retornando dados de geração por patamar para usinas GNL.
         
         Retorna resultados agregados com datas calculadas (quinta-feira de cada semana)
-        para visualização temporal.
+        para visualização temporal e comparação entre decks.
+        
+        Palavras-chave relacionadas:
+        - gerações GNL, geração GNL, registro GL, bloco GL
+        - despacho antecipado, despacho antecipado GNL
+        - termelétricas GNL, termelétricas GNL já comandadas
+        - gerações comandadas, geração comandada
+        
+        Exemplos de queries:
+        - "Gerações GNL da usina 86"
+        - "Registro GL de Santa Cruz"
+        - "GL GNL de santa cruz"
+        - "Despacho antecipado da usina 224"
+        - "GL GNL usina 15"
+        - "Gerações comandadas GNL"
+        
+        OTIMIZADO para máxima performance com paralelismo inteligente.
         """
     
     def execute(self, query: str, **kwargs) -> Dict[str, Any]:

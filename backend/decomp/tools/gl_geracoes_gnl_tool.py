@@ -77,19 +77,19 @@ class GLGeracoesGNLTool(DECOMPTool):
     def get_description(self) -> str:
         return """
         Tool para consultar informações do Registro GL (Gerações de Termelétricas GNL já Comandadas) do DECOMP.
-        
+    
         Acessa dados do registro GL que define:
         - Gerações de termelétricas GNL já comandadas (despacho antecipado)
         - Código da usina e submercado
         - Estágio/Semana de despacho
         - Dados por patamar (1=PESADA, 2=MÉDIA, 3=LEVE):
-          * Geração (MW)
-          * Duração do patamar (horas)
+        * Geração (MW)
+        * Duração do patamar (horas)
         - Data de início do despacho (DDMMYYYY)
         
         Exemplos de queries:
         - "Gerações GNL da usina 86"
-        - "Registro GL de Santa Cruz"
+        - "Registro GL de Santa Cruz"  ⭐ EXEMPLO ESPECÍFICO
         - "Despacho antecipado da usina 224"
         - "GL GNL usina 15"
         - "Gerações comandadas GNL"
