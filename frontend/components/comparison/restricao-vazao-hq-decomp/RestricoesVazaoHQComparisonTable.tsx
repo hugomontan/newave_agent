@@ -24,18 +24,22 @@ export function RestricoesVazaoHQComparisonTable({
   const hasMoreRows = data.length > INITIAL_ROWS;
   const displayedData = isExpanded ? data : data.slice(0, INITIAL_ROWS);
 
+  // null/undefined = sem restrição → N/A no CSV; 0 = restrição zero → "0"
+  const cellToCsv = (val: unknown): string =>
+    val === null || val === undefined ? "N/A" : String(val);
+
   const handleDownloadCSV = () => {
     const csvData = data.map((row) => {
       const rowData = row as any;
       return {
         Deck: rowData.display_name || rowData.deck || "",
         Nome: rowData.Nome || "",
-        "GMIN P1": rowData["GMIN P1"] ?? "",
-        "GMIN P2": rowData["GMIN P2"] ?? "",
-        "GMIN P3": rowData["GMIN P3"] ?? "",
-        "GMAX P1": rowData["GMAX P1"] ?? "",
-        "GMAX P2": rowData["GMAX P2"] ?? "",
-        "GMAX P3": rowData["GMAX P3"] ?? "",
+        "VAZMIN P1": cellToCsv(rowData["VAZMIN P1"]),
+        "VAZMIN P2": cellToCsv(rowData["VAZMIN P2"]),
+        "VAZMIN P3": cellToCsv(rowData["VAZMIN P3"]),
+        "VAZMAX P1": cellToCsv(rowData["VAZMAX P1"]),
+        "VAZMAX P2": cellToCsv(rowData["VAZMAX P2"]),
+        "VAZMAX P3": cellToCsv(rowData["VAZMAX P3"]),
       };
     });
     exportToCSV(csvData, "restricoes-vazao-hq-comparison");
@@ -43,11 +47,16 @@ export function RestricoesVazaoHQComparisonTable({
 
   return (
     <div className="bg-card border border-border rounded-lg p-2 sm:p-3 max-w-full">
-      <div className="flex items-center justify-between mb-2">
-        <h4 className="text-base sm:text-lg font-semibold text-card-foreground">
-          Valores por Deck
-        </h4>
-        <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between mb-2 gap-2">
+        <div>
+          <h4 className="text-base sm:text-lg font-semibold text-card-foreground" title="— = sem restrição neste patamar; 0 = restrição zero">
+            Valores por Deck
+          </h4>
+          <p className="text-[10px] text-muted-foreground mt-0.5">
+            — = sem restrição · 0 = restrição zero
+          </p>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
           <Button
             variant="outline"
             size="sm"
@@ -100,22 +109,22 @@ export function RestricoesVazaoHQComparisonTable({
                 Nome
               </th>
               <th className="px-1.5 py-1.5 text-right text-[10px] font-semibold text-card-foreground uppercase tracking-tight whitespace-nowrap">
-                GMIN P1
+                VAZMIN P1
               </th>
               <th className="px-1.5 py-1.5 text-right text-[10px] font-semibold text-card-foreground uppercase tracking-tight whitespace-nowrap">
-                GMIN P2
+                VAZMIN P2
               </th>
               <th className="px-1.5 py-1.5 text-right text-[10px] font-semibold text-card-foreground uppercase tracking-tight whitespace-nowrap">
-                GMIN P3
+                VAZMIN P3
               </th>
               <th className="px-1.5 py-1.5 text-right text-[10px] font-semibold text-card-foreground uppercase tracking-tight whitespace-nowrap">
-                GMAX P1
+                VAZMAX P1
               </th>
               <th className="px-1.5 py-1.5 text-right text-[10px] font-semibold text-card-foreground uppercase tracking-tight whitespace-nowrap">
-                GMAX P2
+                VAZMAX P2
               </th>
               <th className="px-1.5 py-1.5 text-right text-[10px] font-semibold text-card-foreground uppercase tracking-tight whitespace-nowrap">
-                GMAX P3
+                VAZMAX P3
               </th>
             </tr>
           </thead>
@@ -133,42 +142,19 @@ export function RestricoesVazaoHQComparisonTable({
                   <td className="px-2 py-1.5 text-xs text-card-foreground font-medium whitespace-nowrap">
                     {rowData.Nome || "-"}
                   </td>
-                  <td className="px-1.5 py-1.5 text-xs text-card-foreground text-right whitespace-nowrap font-mono">
-                    {rowData["GMIN P1"] !== null && rowData["GMIN P1"] !== undefined 
-                      ? formatNumber(rowData["GMIN P1"])
-                      : "-"
-                    }
-                  </td>
-                  <td className="px-1.5 py-1.5 text-xs text-card-foreground text-right whitespace-nowrap font-mono">
-                    {rowData["GMIN P2"] !== null && rowData["GMIN P2"] !== undefined 
-                      ? formatNumber(rowData["GMIN P2"])
-                      : "-"
-                    }
-                  </td>
-                  <td className="px-1.5 py-1.5 text-xs text-card-foreground text-right whitespace-nowrap font-mono">
-                    {rowData["GMIN P3"] !== null && rowData["GMIN P3"] !== undefined 
-                      ? formatNumber(rowData["GMIN P3"])
-                      : "-"
-                    }
-                  </td>
-                  <td className="px-1.5 py-1.5 text-xs text-card-foreground text-right whitespace-nowrap font-mono">
-                    {rowData["GMAX P1"] !== null && rowData["GMAX P1"] !== undefined 
-                      ? formatNumber(rowData["GMAX P1"])
-                      : "-"
-                    }
-                  </td>
-                  <td className="px-1.5 py-1.5 text-xs text-card-foreground text-right whitespace-nowrap font-mono">
-                    {rowData["GMAX P2"] !== null && rowData["GMAX P2"] !== undefined 
-                      ? formatNumber(rowData["GMAX P2"])
-                      : "-"
-                    }
-                  </td>
-                  <td className="px-1.5 py-1.5 text-xs text-card-foreground text-right whitespace-nowrap font-mono">
-                    {rowData["GMAX P3"] !== null && rowData["GMAX P3"] !== undefined 
-                      ? formatNumber(rowData["GMAX P3"])
-                      : "-"
-                    }
-                  </td>
+                  {(["VAZMIN P1", "VAZMIN P2", "VAZMIN P3", "VAZMAX P1", "VAZMAX P2", "VAZMAX P3"] as const).map((key) => {
+                    const val = rowData[key];
+                    const isMissing = val === null || val === undefined;
+                    return (
+                      <td
+                        key={key}
+                        className="px-1.5 py-1.5 text-xs text-card-foreground text-right whitespace-nowrap font-mono"
+                        title={isMissing ? "Sem restrição neste patamar" : (val === 0 ? "Restrição zero" : undefined)}
+                      >
+                        {isMissing ? "—" : formatNumber(val)}
+                      </td>
+                    );
+                  })}
                 </tr>
               );
             })}

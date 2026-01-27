@@ -1,6 +1,6 @@
 """
 Formatter de comparação para RestricoesVazaoHQTool no multi deck.
-Consolida dados de múltiplos decks em uma tabela e dois gráficos (GMIN e GMAX).
+Consolida dados de múltiplos decks em uma tabela e dois gráficos (VAZMIN e VAZMAX).
 """
 
 from typing import Dict, Any, List, Optional
@@ -25,9 +25,9 @@ class RestricoesVazaoHQComparisonFormatter(ComparisonFormatter):
     Formatter específico para comparação de Restrições de Vazão (HQ) entre múltiplos decks DECOMP.
     
     Formata como:
-    - Tabela consolidada: uma linha por deck com GMIN/GMAX por patamar
-    - Gráfico GMIN: evolução temporal dos limites mínimos (P1, P2, P3)
-    - Gráfico GMAX: evolução temporal dos limites máximos (P1, P2, P3)
+    - Tabela consolidada: uma linha por deck com VAZMIN/VAZMAX por patamar
+    - Gráfico VAZMIN: evolução temporal dos limites mínimos de vazão (P1, P2, P3)
+    - Gráfico VAZMAX: evolução temporal dos limites máximos de vazão (P1, P2, P3)
     """
     
     def can_format(self, tool_name: str, result_structure: Dict[str, Any]) -> bool:
@@ -130,6 +130,13 @@ class RestricoesVazaoHQComparisonFormatter(ComparisonFormatter):
         
         # Coletar dados de todos os decks
         # Agrupar restrições por tipo_vazao (QTUR/QDEF)
+        def _first(*vals):
+            """Primeiro valor não-None (0 é valor válido)."""
+            for v in vals:
+                if v is not None:
+                    return v
+            return None
+        
         comparison_tables_by_type = {}  # {tipo_vazao: [rows]}
         nome_restricao = None
         
@@ -197,49 +204,26 @@ class RestricoesVazaoHQComparisonFormatter(ComparisonFormatter):
                             if nomes:
                                 nome_restricao = " + ".join(nomes)
                 
-                # Extrair GMIN/GMAX - verificar múltiplos formatos possíveis
-                # Formato 1: "GMIN P1", "GMAX P1" (do single-deck formatter)
-                # Formato 2: "limite_inferior_1", "limite_superior_1" (do tool bruto)
-                # Para vazão, permitir None (será exibido como "-" ou 0)
-                gmin_p1 = _to_num(
-                    row.get("GMIN P1") or 
-                    row.get("limite_inferior_1") or
-                    row.get("limites_inferiores_1")
-                )
-                gmin_p2 = _to_num(
-                    row.get("GMIN P2") or 
-                    row.get("limite_inferior_2") or
-                    row.get("limites_inferiores_2")
-                )
-                gmin_p3 = _to_num(
-                    row.get("GMIN P3") or 
-                    row.get("limite_inferior_3") or
-                    row.get("limites_inferiores_3")
-                )
-                
-                gmax_p1 = _to_num(
-                    row.get("GMAX P1") or 
-                    row.get("limite_superior_1") or
-                    row.get("limites_superiores_1")
-                )
-                gmax_p2 = _to_num(
-                    row.get("GMAX P2") or 
-                    row.get("limite_superior_2") or
-                    row.get("limites_superiores_2")
-                )
-                gmax_p3 = _to_num(
-                    row.get("GMAX P3") or 
-                    row.get("limite_superior_3") or
-                    row.get("limites_superiores_3")
-                )
-                
-                # Converter None para 0 para exibição (ou manter None se preferir "-")
-                gmin_p1 = gmin_p1 if gmin_p1 is not None else 0
-                gmin_p2 = gmin_p2 if gmin_p2 is not None else 0
-                gmin_p3 = gmin_p3 if gmin_p3 is not None else 0
-                gmax_p1 = gmax_p1 if gmax_p1 is not None else 0
-                gmax_p2 = gmax_p2 if gmax_p2 is not None else 0
-                gmax_p3 = gmax_p3 if gmax_p3 is not None else 0
+                # Extrair VAZMIN/VAZMAX - primeiro valor não-None (0 = restrição zero; None = sem restrição)
+                gmin_p1 = _to_num(_first(
+                    row.get("GMIN P1"), row.get("limite_inferior_1"), row.get("limites_inferiores_1")
+                ))
+                gmin_p2 = _to_num(_first(
+                    row.get("GMIN P2"), row.get("limite_inferior_2"), row.get("limites_inferiores_2")
+                ))
+                gmin_p3 = _to_num(_first(
+                    row.get("GMIN P3"), row.get("limite_inferior_3"), row.get("limites_inferiores_3")
+                ))
+                gmax_p1 = _to_num(_first(
+                    row.get("GMAX P1"), row.get("limite_superior_1"), row.get("limites_superiores_1")
+                ))
+                gmax_p2 = _to_num(_first(
+                    row.get("GMAX P2"), row.get("limite_superior_2"), row.get("limites_superiores_2")
+                ))
+                gmax_p3 = _to_num(_first(
+                    row.get("GMAX P3"), row.get("limite_superior_3"), row.get("limites_superiores_3")
+                ))
+                # Manter None (não converter para 0): None = sem restrição; 0 = restrição zero
                 
                 # Criar nome completo incluindo tipo de vazão
                 nome_completo = f"{nome_restricao or '?'} ({tipo_vazao_descricao})"
@@ -250,12 +234,12 @@ class RestricoesVazaoHQComparisonFormatter(ComparisonFormatter):
                     "Nome": nome_completo,
                     "Tipo": tipo_vazao,
                     "TipoDescricao": tipo_vazao_descricao,
-                    "GMIN P1": gmin_p1,
-                    "GMIN P2": gmin_p2,
-                    "GMIN P3": gmin_p3,
-                    "GMAX P1": gmax_p1,
-                    "GMAX P2": gmax_p2,
-                    "GMAX P3": gmax_p3,
+                    "VAZMIN P1": gmin_p1,
+                    "VAZMIN P2": gmin_p2,
+                    "VAZMIN P3": gmin_p3,
+                    "VAZMAX P1": gmax_p1,
+                    "VAZMAX P2": gmax_p2,
+                    "VAZMAX P3": gmax_p3,
                 })
         
         # Consolidar todas as tabelas em uma única tabela (com todas as restrições)
@@ -289,29 +273,29 @@ class RestricoesVazaoHQComparisonFormatter(ComparisonFormatter):
                 for row in rows
             ]
             
-            # Construir gráfico GMIN para este tipo (3 séries: P1, P2, P3)
+            # Construir gráfico VAZMIN para este tipo (3 séries: P1, P2, P3)
             chart_data_gmin = {
                 "labels": chart_labels,
                 "datasets": [
                     {
-                        "label": f"GMIN P1 ({tipo_vazao})",
-                        "data": [row.get("GMIN P1") for row in rows],
+                        "label": f"VAZMIN P1 ({tipo_vazao})",
+                        "data": [row.get("VAZMIN P1") for row in rows],
                         "borderColor": "rgb(59, 130, 246)",  # blue-500
                         "backgroundColor": "rgba(59, 130, 246, 0.1)",
                         "fill": False,
                         "tension": 0.4
                     },
                     {
-                        "label": f"GMIN P2 ({tipo_vazao})",
-                        "data": [row.get("GMIN P2") for row in rows],
+                        "label": f"VAZMIN P2 ({tipo_vazao})",
+                        "data": [row.get("VAZMIN P2") for row in rows],
                         "borderColor": "rgb(16, 185, 129)",  # emerald-500
                         "backgroundColor": "rgba(16, 185, 129, 0.1)",
                         "fill": False,
                         "tension": 0.4
                     },
                     {
-                        "label": f"GMIN P3 ({tipo_vazao})",
-                        "data": [row.get("GMIN P3") for row in rows],
+                        "label": f"VAZMIN P3 ({tipo_vazao})",
+                        "data": [row.get("VAZMIN P3") for row in rows],
                         "borderColor": "rgb(245, 158, 11)",  # amber-500
                         "backgroundColor": "rgba(245, 158, 11, 0.1)",
                         "fill": False,
@@ -320,29 +304,29 @@ class RestricoesVazaoHQComparisonFormatter(ComparisonFormatter):
                 ]
             }
             
-            # Construir gráfico GMAX para este tipo (3 séries: P1, P2, P3)
+            # Construir gráfico VAZMAX para este tipo (3 séries: P1, P2, P3)
             chart_data_gmax = {
                 "labels": chart_labels,
                 "datasets": [
                     {
-                        "label": f"GMAX P1 ({tipo_vazao})",
-                        "data": [row.get("GMAX P1") for row in rows],
+                        "label": f"VAZMAX P1 ({tipo_vazao})",
+                        "data": [row.get("VAZMAX P1") for row in rows],
                         "borderColor": "rgb(239, 68, 68)",  # red-500
                         "backgroundColor": "rgba(239, 68, 68, 0.1)",
                         "fill": False,
                         "tension": 0.4
                     },
                     {
-                        "label": f"GMAX P2 ({tipo_vazao})",
-                        "data": [row.get("GMAX P2") for row in rows],
+                        "label": f"VAZMAX P2 ({tipo_vazao})",
+                        "data": [row.get("VAZMAX P2") for row in rows],
                         "borderColor": "rgb(234, 179, 8)",  # yellow-500
                         "backgroundColor": "rgba(234, 179, 8, 0.1)",
                         "fill": False,
                         "tension": 0.4
                     },
                     {
-                        "label": f"GMAX P3 ({tipo_vazao})",
-                        "data": [row.get("GMAX P3") for row in rows],
+                        "label": f"VAZMAX P3 ({tipo_vazao})",
+                        "data": [row.get("VAZMAX P3") for row in rows],
                         "borderColor": "rgb(139, 92, 246)",  # violet-500
                         "backgroundColor": "rgba(139, 92, 246, 0.1)",
                         "fill": False,
@@ -357,7 +341,7 @@ class RestricoesVazaoHQComparisonFormatter(ComparisonFormatter):
             }
         
         # Consolidar gráficos: combinar todos os tipos em um único gráfico
-        # Para GMIN: combinar todas as séries de todos os tipos
+        # Para VAZMIN: combinar todas as séries de todos os tipos
         chart_data_gmin = None
         chart_data_gmax = None
         
@@ -381,7 +365,7 @@ class RestricoesVazaoHQComparisonFormatter(ComparisonFormatter):
                     for d in valid_decks
                 ]
             
-            # Construir gráfico GMIN consolidado (todas as séries de todos os tipos)
+            # Construir gráfico VAZMIN consolidado (todas as séries de todos os tipos)
             if all_gmin_datasets and all_labels_list:
                 chart_data_gmin = {
                     "labels": all_labels_list,
@@ -395,31 +379,31 @@ class RestricoesVazaoHQComparisonFormatter(ComparisonFormatter):
                     "datasets": all_gmax_datasets
                 }
         
-        # Configurações dos gráficos
+        # Configurações dos gráficos (nomenclatura de vazão: VAZMIN/VAZMAX)
         chart_config_gmin = {
             "type": "line",
-            "title": "Evolução dos Limites Mínimos de Vazão (GMIN) por Patamar",
+            "title": "VAZMIN - Evolução da Vazão Mínima por Patamar",
             "x_axis": "Deck/Data",
-            "y_axis": "GMIN (m³/s)",
+            "y_axis": "VAZMIN (m³/s)",
             "tool_name": tool_name
         }
         
         chart_config_gmax = {
             "type": "line",
-            "title": "Evolução dos Limites Máximos de Vazão (GMAX) por Patamar",
+            "title": "VAZMAX - Evolução da Vazão Máxima por Patamar",
             "x_axis": "Deck/Data",
-            "y_axis": "GMAX (m³/s)",
+            "y_axis": "VAZMAX (m³/s)",
             "tool_name": tool_name
         }
         
-        # Resposta final
+        # Resposta final (menciona VAZMIN/VAZMAX)
         nome_display = nome_restricao or "?"
         tipos_encontrados = sorted(comparison_tables_by_type.keys())
         if len(tipos_encontrados) > 1:
             tipos_str = " e ".join([f"{'QTUR' if t == 'QTUR' else 'QDEF' if t == 'QDEF' else t}" for t in tipos_encontrados])
-            final_response = f"Evolução das restrições de vazão ({tipos_str}): {nome_display} ao longo do tempo."
+            final_response = f"Evolução das restrições de vazão (VAZMIN e VAZMAX, {tipos_str}): {nome_display} ao longo do tempo."
         else:
-            final_response = f"Evolução das restrições de vazão: {nome_display} ao longo do tempo."
+            final_response = f"Evolução das restrições de vazão (VAZMIN e VAZMAX): {nome_display} ao longo do tempo."
         
         return {
             "comparison_table": comparison_table,

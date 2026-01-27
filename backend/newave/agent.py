@@ -329,6 +329,11 @@ def run_query_stream(query: str, deck_path: str, session_id: Optional[str] = Non
                             safe_print(f"[GRAPH] ⚠️ plant_correction_followup não encontrado no node_output")
                             safe_print(f"[GRAPH]   Chaves disponíveis no node_output: {list(node_output.keys())}")
                         
+                        # Incluir requires_user_choice e alternative_type para exibir caixa de alternativa (ex: VAZMIN -> VAZMINT)
+                        if node_output.get("requires_user_choice") and node_output.get("alternative_type"):
+                            response_complete_data["requires_user_choice"] = True
+                            response_complete_data["alternative_type"] = node_output.get("alternative_type", "")
+                        
                         yield f"data: {json.dumps(response_complete_data, allow_nan=False)}\n\n"
                         
                         # #region agent log

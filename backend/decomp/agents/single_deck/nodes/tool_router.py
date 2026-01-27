@@ -20,7 +20,7 @@ from backend.decomp.config import (
     DISAMBIGUATION_MIN_SCORE,
     safe_print
 )
-from backend.decomp.tools.semantic_matcher import find_best_tool_semantic
+from backend.decomp.tools.semantic_matcher import find_best_tool_semantic, find_top_tools_semantic
 from backend.core.utils.debug import write_debug_log
 from backend.core.nodes.tool_router_base import (
     execute_tool as shared_execute_tool,
@@ -142,13 +142,35 @@ def tool_router_node(state: SingleDeckState) -> dict:
     
     # Estratégia de matching: Semantic matching (se habilitado) + Keyword matching (fallback)
     if SEMANTIC_MATCHING_ENABLED or USE_HYBRID_MATCHING:
-        # Tentar semantic matching primeiro
+        # Tentar semantic matching primeiro (top 5 para aplicar regra vazão conjunta vs unitária)
         safe_print("[TOOL ROUTER DECOMP] Tentando semantic matching...")
         try:
-            semantic_result = find_best_tool_semantic(query, tools, threshold=SEMANTIC_MATCH_THRESHOLD)
-            if semantic_result:
-                best_tool, score = semantic_result
+            top_tools = find_top_tools_semantic(
+                query, tools, top_n=5, threshold=SEMANTIC_MATCH_THRESHOLD
+            )
+            if top_tools:
+                best_tool, score = top_tools[0]
                 tool_name = best_tool.get_name()
+                # Regra: query sem "conjunta/conjunto/somatorio" não deve preferir a tool conjunta
+                # quando a unitária tem score próximo (ex.: "restricao vazao de baixo iguacu" -> unitária)
+                query_lower = query.lower()
+                conjunta_keywords = [
+                    "conjunta", "conjunto", "somatorio", "somatório",
+                    "conjuntas", "conjuntos", "somatórios",
+                ]
+                if (
+                    tool_name == "RestricoesVazaoHQConjuntaTool"
+                    and not any(k in query_lower for k in conjunta_keywords)
+                ):
+                    for t, s in top_tools[1:]:
+                        if t.get_name() == "RestricoesVazaoHQTool":
+                            best_tool, score = t, s
+                            tool_name = "RestricoesVazaoHQTool"
+                            safe_print(
+                                "[TOOL ROUTER DECOMP] Regra vazão: query sem 'conjunta/conjunto' → "
+                                "preferindo RestricoesVazaoHQTool (unitária)"
+                            )
+                            break
                 safe_print(f"[TOOL ROUTER DECOMP] ✅ Semantic matching encontrou tool: {tool_name} (score: {score:.4f})")
                 return _execute_tool(best_tool, tool_name)
             else:

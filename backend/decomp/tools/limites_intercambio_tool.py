@@ -16,6 +16,37 @@ import re
 from typing import Dict, Any, Optional, List
 
 
+# Dicionário do layout DECOMP IA: alias da query -> valor canônico no arquivo.
+# Pares válidos pelo layout: Norte-Nofict1, Nordeste-Nofict1, Sudeste-Nofict1,
+# Sudeste-Nordeste, Ivaipora/IV-Sul, Norte-Sudeste (cada par tem ambos os sentidos).
+QUERY_TO_LAYOUT_SUBMERCADO: Dict[str, str] = {
+    "NORTE": "Norte",
+    "N": "Norte",
+    "NORDESTE": "Nordeste",
+    "NE": "Nordeste",
+    "SUDESTE": "Sudeste",
+    "SE": "Sudeste",
+    "SUL": "Sul",
+    "S": "Sul",
+    "NOFICT1": "Nofict1",
+    "NOFICT": "Nofict1",
+    "FC": "Nofict1",  # sigla fictício em muitos decks
+    "FICTICIO": "Nofict1",
+    "IVAIPORA": "Ivaipora",
+    "IV": "Ivaipora",  # Ivaipora (IV) no layout
+}
+
+# Para filtro: valor canônico -> variantes aceitas no DataFrame (idecomp pode retornar siglas ou nomes).
+LAYOUT_VARIACOES_PARA_MATCH: Dict[str, List[str]] = {
+    "Norte": ["Norte", "N"],
+    "Nordeste": ["Nordeste", "NE"],
+    "Sudeste": ["Sudeste", "SE"],
+    "Sul": ["Sul", "S"],
+    "Nofict1": ["Nofict1", "Nofict", "NOFICT1", "FC"],  # FC = fictício em muitos decks
+    "Ivaipora": ["Ivaipora", "IV"],
+}
+
+
 class LimitesIntercambioDECOMPTool(DECOMPTool):
     """
     Tool SIMPLIFICADA para consultar limites de intercâmbio entre subsistemas do DECOMP.
@@ -46,12 +77,17 @@ class LimitesIntercambioDECOMPTool(DECOMPTool):
     
     def get_description(self) -> str:
         return """
-        Consulta limites de intercâmbio entre subsistemas do DECOMP.
+        Consulta limites de intercâmbio entre subsistemas do DECOMP (registro IA).
+        
+        Pares válidos pelo layout: Norte-Nofict1, Nordeste-Nofict1, Sudeste-Nofict1,
+        Sudeste-Nordeste, Ivaipora/IV-Sul, Norte-Sudeste (cada par tem ambos os sentidos).
         
         Exemplos de queries:
-        - "Limite N para FC"
-        - "Limite SE para NE"
-        - "Limites de intercâmbio de S para SE"
+        - "limite norte para nofict1"
+        - "limite nordeste para nofict1"
+        - "sudeste para nordeste"
+        - "entre norte e nofict1"
+        - "ivaipora para sul" ou "iv para sul"
         """
     
     def execute(self, query: str, **kwargs) -> Dict[str, Any]:
@@ -275,19 +311,32 @@ class LimitesIntercambioDECOMPTool(DECOMPTool):
             
             safe_print(f"[LIMITES IA] Registros encontrados: {len(registros_filtrados)}")
             
+            # 6b. Usar os valores exatos do DataFrame na chamada ao dadger (idecomp filtra por match exato; no arquivo estão SE/NE, não Sudeste/Nordeste)
+            col_de_options = ["nome_submercado_de", "submercado_de", "s1", "sub_de", "de", "origem", "submercado_origem"]
+            col_para_options = ["nome_submercado_para", "submercado_para", "s2", "sub_para", "para", "destino", "submercado_destino"]
+            col_de = next((c for c in col_de_options if c in registros_filtrados.columns), None)
+            col_para = next((c for c in col_para_options if c in registros_filtrados.columns), None)
+            if col_de and col_para:
+                sub_de_para_dadger = str(registros_filtrados.iloc[0][col_de]).strip()
+                sub_para_para_dadger = str(registros_filtrados.iloc[0][col_para]).strip()
+                safe_print(f"[LIMITES IA] Valores para dadger.ia (do DataFrame): {sub_de_para_dadger} -> {sub_para_para_dadger}")
+            else:
+                sub_de_para_dadger = sub_de
+                sub_para_para_dadger = sub_para
+            
             # 7. LER COMO OBJETOS para acessar os limites dos patamares - APENAS ESTÁGIO 1
-            # O DataFrame não contém os valores dos limites, apenas metadados
-            # Usar sub_de e sub_para que podem ter sido invertidos acima
-            safe_print(f"[LIMITES IA] Lendo registros como objetos para acessar limites (estágio 1, {sub_de}->{sub_para})...")
+            # O DataFrame não contém os valores dos limites, apenas metadados.
+            # dadger.ia() exige os valores exatos do registro (ex: SE, NE), não os canônicos (Sudeste, Nordeste).
+            safe_print(f"[LIMITES IA] Lendo registros como objetos para acessar limites (estágio 1, {sub_de_para_dadger}->{sub_para_para_dadger})...")
             ia_objetos = dadger.ia(
                 estagio=1,  # FILTRO: apenas estágio 1
-                nome_submercado_de=sub_de,
-                nome_submercado_para=sub_para,
+                nome_submercado_de=sub_de_para_dadger,
+                nome_submercado_para=sub_para_para_dadger,
                 df=False
             )
             
             if ia_objetos is None:
-                return self._error(f"Nenhum limite encontrado para {sub_de} -> {sub_para} no estágio 1")
+                return self._error(f"Nenhum limite encontrado para {sub_de_original} -> {sub_para_original} no estágio 1")
             
             # Converter para lista se necessário
             if not isinstance(ia_objetos, list):
@@ -476,78 +525,59 @@ class LimitesIntercambioDECOMPTool(DECOMPTool):
             return candidate
         return None
     
+    def _normalize_submercado_layout(self, nome: str) -> str:
+        """Normaliza token da query para o valor canônico do layout DECOMP IA."""
+        if not nome:
+            return nome
+        key = nome.upper().strip()
+        return QUERY_TO_LAYOUT_SUBMERCADO.get(key, nome.strip())  # fallback: manter original
+
     def _extrair_par_simples(self, query: str) -> tuple:
         """
         Extrai par de submercados da query de forma simples.
         Retorna: (sub_de, sub_para, sentido)
         - sentido: "de_para" = apenas DE→PARA (padrão quando especifica direção)
         - sentido: None = ambos os sentidos (quando não especifica direção clara)
+        Layout aceito: Norte, Nordeste, Sudeste, Sul, Nofict1, Ivaipora/IV.
         """
         query_upper = query.upper()
         
-        # Normalização básica de nomes de submercado para siglas
-        # Importante: manter os demais mapeamentos como estão por enquanto
-        def _normalize_submercado(nome: str) -> str:
-            if not nome:
-                return nome
-            nome = nome.upper().strip()
-            # Variações pedidas explicitamente:
-            # NE = NORDESTE, SE = SUDESTE, N = NORTE, S = SUL
-            normalizacao = {
-                "NORDESTE": "NE",
-                "NE": "NE",
-                "SUDESTE": "SE",
-                "SE": "SE",
-                "NORTE": "N",
-                "N": "N",
-                "SUL": "S",
-                "S": "S",
-            }
-            return normalizacao.get(nome, nome)
-        
+        # Artigos opcionais antes do submercado (evita capturar "o" em "para o nordeste")
+        _art = r'(?:o\s+|a\s+|os\s+|as\s+)?'
         # Padrões que indicam DIREÇÃO CLARA (X para Y = apenas X→Y)
-        # Quando o usuário diz "de N para FC", ele quer apenas N→FC
         patterns_direcional = [
-            r'(?:DE\s+)?(\w+)\s+(?:PARA|->|→)\s+(\w+)',  # "de N para FC" ou "N para FC" ou "N -> FC"
-            r'LIMITE\s+(?:DE\s+)?(\w+)\s+(?:PARA|->|→)\s+(\w+)',  # "limite de N para FC"
+            r'(?:DE\s+)?(\w+)\s+(?:PARA|->|→)\s+' + _art + r'(\w+)',  # "sudeste para o nordeste"
+            r'LIMITE\s+(?:DE\s+)?(\w+)\s+(?:PARA|->|→)\s+' + _art + r'(\w+)',
         ]
-        
-        # Padrões que indicam AMBOS OS SENTIDOS
+        # Padrões que indicam AMBOS OS SENTIDOS ("entre X e Y" / "entre o X e o Y")
         patterns_bidirecional = [
-            r'ENTRE\s+(\w+)\s+E\s+(\w+)',  # "entre N e FC" = ambos os sentidos
+            r'ENTRE\s+' + _art + r'(\w+)\s+E\s+' + _art + r'(\w+)',
         ]
         
         # Primeiro tentar padrões bidirecionais
         for pattern in patterns_bidirecional:
             match = re.search(pattern, query_upper)
             if match:
-                sub_de = match.group(1).strip()
-                sub_para = match.group(2).strip()
-                # Limpar palavras de ruído
-                sub_de = re.sub(r'\b(DE|LIMITE|LIMITES)\b', '', sub_de).strip()
-                sub_para = re.sub(r'\b(PARA|LIMITE|LIMITES)\b', '', sub_para).strip()
-                # Normalizar nomes para siglas (ex: SUDESTE -> SE)
-                sub_de = _normalize_submercado(sub_de)
-                sub_para = _normalize_submercado(sub_para)
+                sub_de = re.sub(r'\b(DE|LIMITE|LIMITES)\b', '', match.group(1).strip()).strip()
+                sub_para = re.sub(r'\b(PARA|LIMITE|LIMITES)\b', '', match.group(2).strip()).strip()
+                sub_de = self._normalize_submercado_layout(sub_de)
+                sub_para = self._normalize_submercado_layout(sub_para)
                 if sub_de and sub_para:
                     safe_print(f"[LIMITES IA] Padrão bidirecional detectado: {sub_de} ↔ {sub_para}")
                     return (sub_de, sub_para, None)  # None = ambos os sentidos
         
         # Depois tentar padrões direcionais (mais comum)
+        _stopwords = {"O", "A", "OS", "AS", "DE", "DO", "DA", "DOS", "DAS", "PARA", "LIMITE", "LIMITES"}
         for pattern in patterns_direcional:
             match = re.search(pattern, query_upper)
             if match:
-                sub_de = match.group(1).strip()
-                sub_para = match.group(2).strip()
-                # Remover palavras comuns
-                sub_de = re.sub(r'\b(DE|LIMITE|LIMITES|INTERCAMBIO|INTERCÂMBIO)\b', '', sub_de).strip()
-                sub_para = re.sub(r'\b(PARA|LIMITE|LIMITES)\b', '', sub_para).strip()
-                # Normalizar nomes para siglas (ex: SUDESTE -> SE)
-                sub_de = _normalize_submercado(sub_de)
-                sub_para = _normalize_submercado(sub_para)
-                
-                if sub_de and sub_para:
-                    # Por padrão, "X para Y" significa apenas X→Y (sentido único)
+                sub_de = re.sub(r'\b(DE|LIMITE|LIMITES|INTERCAMBIO|INTERCÂMBIO|DO|DA)\b', '', match.group(1).strip()).strip()
+                sub_para = re.sub(r'\b(PARA|LIMITE|LIMITES)\b', '', match.group(2).strip()).strip()
+                if sub_para.upper() in _stopwords:
+                    continue  # evita aceitar "o"/"a" como destino
+                sub_de = self._normalize_submercado_layout(sub_de)
+                sub_para = self._normalize_submercado_layout(sub_para)
+                if sub_de and sub_para and sub_para.upper() not in _stopwords:
                     sentido = "de_para"
                     safe_print(f"[LIMITES IA] Padrão direcional detectado: {sub_de} → {sub_para} (sentido: {sentido})")
                     return (sub_de, sub_para, sentido)
@@ -587,30 +617,9 @@ class LimitesIntercambioDECOMPTool(DECOMPTool):
         
         safe_print(f"[LIMITES IA] Usando colunas: {col_de} e {col_para}")
         
-        # Criar mapeamento de nomes comuns para códigos
-        # Ex: "S" pode ser "SUL" ou "S", "SUDESTE" pode ser "SE" ou "SUDESTE"
-        # Inclui mapeamentos bidirecionais
-        mapeamento_submercados = {
-            "S": ["S", "SUL"],
-            "SUL": ["S", "SUL"],
-            "SE": ["SE", "SUDESTE"],
-            "SUDESTE": ["SE", "SUDESTE"],
-            "N": ["N", "NORTE"],
-            "NORTE": ["N", "NORTE"],
-            "NE": ["NE", "NORDESTE"],
-            "NORDESTE": ["NE", "NORDESTE"],
-            "FC": ["FC", "FICTICIO"],
-            "FICTICIO": ["FC", "FICTICIO"],
-            "IV": ["IV", "ITAIPU"],
-            "ITAIPU": ["IV", "ITAIPU"],
-        }
-        
-        # Obter variações possíveis dos submercados
-        sub_de_upper = sub_de.upper().strip()
-        sub_para_upper = sub_para.upper().strip()
-        
-        variacoes_de = mapeamento_submercados.get(sub_de_upper, [sub_de_upper])
-        variacoes_para = mapeamento_submercados.get(sub_para_upper, [sub_para_upper])
+        # Valores canônicos vindos da extração (Norte, Nofict1, etc.); obter variantes para match no DataFrame
+        variacoes_de = LAYOUT_VARIACOES_PARA_MATCH.get(sub_de, [sub_de])
+        variacoes_para = LAYOUT_VARIACOES_PARA_MATCH.get(sub_para, [sub_para])
         
         safe_print(f"[LIMITES IA] Variações de '{sub_de}': {variacoes_de}")
         safe_print(f"[LIMITES IA] Variações de '{sub_para}': {variacoes_para}")

@@ -153,6 +153,10 @@ def interpreter_node(
                     "final_response": clean_response_text(formatted.get("final_response", ""), max_emojis=2),
                     "visualization_data": formatted.get("visualization_data")
                 }
+                # Repassar requires_user_choice e alternative_type quando a tool oferece alternativa (ex: VAZMIN -> VAZMINT)
+                if formatted.get("requires_user_choice") and formatted.get("alternative_type"):
+                    result["requires_user_choice"] = True
+                    result["alternative_type"] = formatted.get("alternative_type", "")
                 
                 # Incluir plant_correction_followup se disponível no state
                 plant_correction_followup = state.get("plant_correction_followup")

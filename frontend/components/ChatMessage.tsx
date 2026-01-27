@@ -267,22 +267,26 @@ export function ChatMessage({ message, onOptionClick }: ChatMessageProps) {
                       <div className="space-y-2">
                         <Button
                           onClick={() => {
-                            // Quando clicar em "Sim", fazer query com o tipo alternativo
-                            // Extrair informação da usina da mensagem
+                            // Quando clicar em "Sim", fazer query com o tipo alternativo (VAZMINT).
+                            // Preferir o NOME da usina (ex: "P. PRIMAVERA") em "usina 46 (P. PRIMAVERA)",
+                            // para que o backend resolva pela usina correta. O código "46" na mensagem
+                            // é interno ao MODIF; na reconsulta, "usina 46" é interpretado como código
+                            // do CSV e pode apontar para outra usina (ex: JUPIA).
                             let query = "vazão mínima por período";
-                            
-                            // Tentar extrair código da usina (formato: "usina 14" ou "usina 14 (CACONDE)")
-                            const usinaMatch = message.content.match(/usina\s+(\d+)/i);
-                            if (usinaMatch) {
-                              query += ` da usina ${usinaMatch[1]}`;
+                            const usinaComNome = message.content.match(/usina\s+\d+\s*\(([^)]+)\)/i);
+                            if (usinaComNome) {
+                              query += ` de ${usinaComNome[1].trim()}`;
                             } else {
-                              // Tentar extrair nome da usina entre parênteses
-                              const nomeMatch = message.content.match(/\(([^)]+)\)/);
-                              if (nomeMatch) {
-                                query += ` de ${nomeMatch[1]}`;
+                              const usinaMatch = message.content.match(/usina\s+(\d+)/i);
+                              if (usinaMatch) {
+                                query += ` da usina ${usinaMatch[1]}`;
+                              } else {
+                                const nomeMatch = message.content.match(/\(([^)]+)\)/);
+                                if (nomeMatch) {
+                                  query += ` de ${nomeMatch[1].trim()}`;
+                                }
                               }
                             }
-                            
                             console.log("[ChatMessage] Botão Sim clicado, query gerada:", query);
                             onOptionClick?.(query);
                           }}

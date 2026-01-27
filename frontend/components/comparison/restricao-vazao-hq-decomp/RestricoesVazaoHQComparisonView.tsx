@@ -36,10 +36,12 @@ export function RestricoesVazaoHQComparisonView({ comparison }: RestricoesVazaoH
       {/* Header com informações */}
       <div className="bg-card border border-border rounded-lg p-4 sm:p-6">
         <h3 className="text-base sm:text-lg font-semibold text-card-foreground mb-2">
-          Comparação de Restrições de Vazão
+          Comparação de Restrições de Vazão (VAZMIN e VAZMAX)
         </h3>
         <p className="text-sm text-muted-foreground">
-          {deck_names && deck_names.length > 0 ? `${deck_names.length} decks comparados` : ""}
+          {deck_names && deck_names.length > 0 
+            ? `${deck_names.length} decks comparados — VAZMIN (vazão mínima) e VAZMAX (vazão máxima) por patamar.`
+            : "VAZMIN (vazão mínima) e VAZMAX (vazão máxima) por patamar."}
         </p>
       </div>
 
@@ -50,7 +52,7 @@ export function RestricoesVazaoHQComparisonView({ comparison }: RestricoesVazaoH
         />
       )}
 
-      {/* Gráfico GMIN */}
+      {/* Gráfico VAZMIN */}
       {hasGminChart && (
         <RestricoesVazaoHQComparisonChart 
           data={chart_data_gmin} 
@@ -58,7 +60,7 @@ export function RestricoesVazaoHQComparisonView({ comparison }: RestricoesVazaoH
         />
       )}
 
-      {/* Gráfico GMAX */}
+      {/* Gráfico VAZMAX */}
       {hasGmaxChart && (
         <RestricoesVazaoHQComparisonChart 
           data={chart_data_gmax} 

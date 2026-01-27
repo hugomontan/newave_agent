@@ -88,11 +88,11 @@ class RestricoesVazaoHQMultiDeckTool(DECOMPTool):
         Tool para consultar restrições de vazão (bloco HQ/LQ/CQ) em múltiplos decks DECOMP.
         
         Esta tool permite consultar restrições de vazão por nome de usina (ex: Serra da Mesa, Itaipu, Furnas)
-        em múltiplos decks, retornando os valores de GMIN (limite mínimo) e GMAX (limite máximo)
+        em múltiplos decks, retornando os valores de VAZMIN (vazão mínima) e VAZMAX (vazão máxima)
         por patamar para cada restrição.
         
         Executa a consulta de restrições de vazão em paralelo em todos os decks selecionados,
-        retornando valores de GMIN e GMAX por patamar para comparação temporal.
+        retornando valores de VAZMIN e VAZMAX por patamar para comparação temporal.
         
         Suporta tanto restrições unitárias (uma usina) quanto restrições conjuntas (múltiplas usinas).
         
@@ -100,7 +100,7 @@ class RestricoesVazaoHQMultiDeckTool(DECOMPTool):
         para visualização temporal e comparação entre decks.
         
         Use para consultar: restrições de vazão, bloco HQ, registro HQ, limites de vazão,
-        restrição de vazão de [NOME_USINA], GMIN, GMAX, limites mínimos e máximos de vazão.
+        restrição de vazão de [NOME_USINA], VAZMIN, VAZMAX, limites mínimos e máximos de vazão.
         
         OTIMIZADO para máxima performance com paralelismo inteligente.
         """

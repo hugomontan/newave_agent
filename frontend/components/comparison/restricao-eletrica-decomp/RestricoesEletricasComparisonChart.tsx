@@ -100,6 +100,7 @@ export function RestricoesEletricasComparisonChart({
                   strokeWidth={2}
                   dot={false}
                   activeDot={{ r: 4 }}
+                  connectNulls={false}
                 />
               );
             })}

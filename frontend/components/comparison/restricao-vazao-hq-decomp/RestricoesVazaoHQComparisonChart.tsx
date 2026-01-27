@@ -51,7 +51,7 @@ export function RestricoesVazaoHQComparisonChart({
   return (
     <div className="bg-card border border-border rounded-lg p-4 sm:p-6">
       <h4 className="text-base sm:text-lg font-semibold text-card-foreground mb-4">
-        {config?.title || "Evolução dos Limites de Vazão"}
+        {config?.title || "Evolução dos Limites de Vazão (VAZMIN/VAZMAX)"}
       </h4>
       <div className="w-full h-[400px]">
         <ResponsiveContainer width="100%" height="100%">
@@ -73,7 +73,7 @@ export function RestricoesVazaoHQComparisonChart({
               className="text-xs"
               tick={{ fill: "currentColor" }}
               label={{ 
-                value: config?.y_axis || "Valor (m³/s)", 
+                value: config?.y_axis || "VAZMIN/VAZMAX (m³/s)", 
                 angle: -90, 
                 position: "insideLeft",
                 style: { textAnchor: "middle", fill: "currentColor" }
@@ -100,6 +100,7 @@ export function RestricoesVazaoHQComparisonChart({
                   strokeWidth={2}
                   dot={false}
                   activeDot={{ r: 4 }}
+                  connectNulls={false}
                 />
               );
             })}

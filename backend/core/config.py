@@ -122,7 +122,7 @@ CODE_EXECUTION_TIMEOUT = int(os.getenv("CODE_EXECUTION_TIMEOUT", "30"))
 
 # Semantic tool matching settings
 SEMANTIC_MATCHING_ENABLED = os.getenv("SEMANTIC_MATCHING_ENABLED", "true").lower() == "true"
-SEMANTIC_MATCH_THRESHOLD = float(os.getenv("SEMANTIC_MATCH_THRESHOLD", "0.55"))  # Threshold para ranking (não usado para decisão final)
+SEMANTIC_MATCH_THRESHOLD = float(os.getenv("SEMANTIC_MATCH_THRESHOLD", "0.4"))  # Threshold para ranking; >= 0.4 aceita tools de restrição vazão (~0.49)
 SEMANTIC_MATCH_MIN_SCORE = float(os.getenv("SEMANTIC_MATCH_MIN_SCORE", "0.35"))  # Score mínimo para executar tool (>= 0.35 sempre executa)
 USE_HYBRID_MATCHING = os.getenv("USE_HYBRID_MATCHING", "true").lower() == "true"
 QUERY_EXPANSION_ENABLED = os.getenv("QUERY_EXPANSION_ENABLED", "true").lower() == "true"

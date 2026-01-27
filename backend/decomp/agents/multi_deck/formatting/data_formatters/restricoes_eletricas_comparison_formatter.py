@@ -10,14 +10,22 @@ import math
 
 
 def _to_num(v):
-    """Helper para converter valores numéricos (NaN/None -> 0)."""
+    """Helper para converter valores numéricos. None/NaN -> None (sem restrição); 0 = restrição zero."""
     if v is None:
-        return 0
+        return None
     try:
         f = float(v)
-        return 0 if math.isnan(f) else f
+        return None if math.isnan(f) else f
     except (ValueError, TypeError):
-        return 0
+        return None
+
+
+def _first(*vals):
+    """Primeiro valor não-None (0 é valor válido = restrição zero)."""
+    for v in vals:
+        if v is not None:
+            return v
+    return None
 
 
 class RestricoesEletricasComparisonFormatter(ComparisonFormatter):
@@ -149,40 +157,37 @@ class RestricoesEletricasComparisonFormatter(ComparisonFormatter):
                     None
                 )
             
-            # Extrair GMIN/GMAX - verificar múltiplos formatos possíveis
-            # Formato 1: "GMIN P1", "GMAX P1" (do single-deck formatter)
-            # Formato 2: "limites_inferiores_1", "limites_superiores_1" (do tool bruto)
-            gmin_p1 = _to_num(
-                first_row.get("GMIN P1") or 
-                first_row.get("limite_inferior_1") or
-                first_row.get("limites_inferiores_1")
-            )
-            gmin_p2 = _to_num(
-                first_row.get("GMIN P2") or 
-                first_row.get("limite_inferior_2") or
-                first_row.get("limites_inferiores_2")
-            )
-            gmin_p3 = _to_num(
-                first_row.get("GMIN P3") or 
-                first_row.get("limite_inferior_3") or
-                first_row.get("limites_inferiores_3")
-            )
-            
-            gmax_p1 = _to_num(
-                first_row.get("GMAX P1") or 
-                first_row.get("limite_superior_1") or
-                first_row.get("limites_superiores_1")
-            )
-            gmax_p2 = _to_num(
-                first_row.get("GMAX P2") or 
-                first_row.get("limite_superior_2") or
-                first_row.get("limites_superiores_2")
-            )
-            gmax_p3 = _to_num(
-                first_row.get("GMAX P3") or 
-                first_row.get("limite_superior_3") or
-                first_row.get("limites_superiores_3")
-            )
+            # Extrair GMIN/GMAX - primeiro valor não-None (0 = restrição zero; None = sem restrição)
+            gmin_p1 = _to_num(_first(
+                first_row.get("GMIN P1"),
+                first_row.get("limite_inferior_1"),
+                first_row.get("limites_inferiores_1"),
+            ))
+            gmin_p2 = _to_num(_first(
+                first_row.get("GMIN P2"),
+                first_row.get("limite_inferior_2"),
+                first_row.get("limites_inferiores_2"),
+            ))
+            gmin_p3 = _to_num(_first(
+                first_row.get("GMIN P3"),
+                first_row.get("limite_inferior_3"),
+                first_row.get("limites_inferiores_3"),
+            ))
+            gmax_p1 = _to_num(_first(
+                first_row.get("GMAX P1"),
+                first_row.get("limite_superior_1"),
+                first_row.get("limites_superiores_1"),
+            ))
+            gmax_p2 = _to_num(_first(
+                first_row.get("GMAX P2"),
+                first_row.get("limite_superior_2"),
+                first_row.get("limites_superiores_2"),
+            ))
+            gmax_p3 = _to_num(_first(
+                first_row.get("GMAX P3"),
+                first_row.get("limite_superior_3"),
+                first_row.get("limites_superiores_3"),
+            ))
             
             comparison_table.append({
                 "deck": deck.name,

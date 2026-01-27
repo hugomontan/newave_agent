@@ -24,14 +24,17 @@ export function RestricaoVazaoHQTable({ data }: RestricaoVazaoHQTableProps) {
 
   const maxPatamares = 3;
 
+  const cellToCsv = (val: unknown): string =>
+    val === null || val === undefined ? "N/A" : String(val);
+
   const handleDownloadCSV = () => {
     const csvData = data.map((row) => {
-      const csvRow: Record<string, any> = {
-        Nome: row["Nome"] ?? "",
+      const csvRow: Record<string, string> = {
+        Nome: (row["Nome"] ?? "") as string,
       };
       for (let i = 1; i <= maxPatamares; i++) {
-        csvRow[`GMIN P${i}`] = row[`GMIN P${i}`] ?? null;
-        csvRow[`GMAX P${i}`] = row[`GMAX P${i}`] ?? null;
+        csvRow[`VAZMIN P${i}`] = cellToCsv(row[`GMIN P${i}`]);
+        csvRow[`VAZMAX P${i}`] = cellToCsv(row[`GMAX P${i}`]);
       }
       return csvRow;
     });
@@ -40,11 +43,14 @@ export function RestricaoVazaoHQTable({ data }: RestricaoVazaoHQTableProps) {
 
   return (
     <div className="bg-card border border-border rounded-lg p-2 sm:p-3">
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">
+      <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
+        <div>
+          <span className="text-xs text-muted-foreground block">
             {data.length} registros
           </span>
+          <p className="text-[10px] text-muted-foreground mt-0.5" title="— = sem restrição neste patamar; 0 = restrição zero">
+            — = sem restrição · 0 = restrição zero
+          </p>
         </div>
         <button
           onClick={handleDownloadCSV}
@@ -66,18 +72,18 @@ export function RestricaoVazaoHQTable({ data }: RestricaoVazaoHQTableProps) {
                 </th>
                 {Array.from({ length: maxPatamares }, (_, i) => (
                   <th
-                    key={`gmin-${i + 1}`}
+                    key={`vazmin-${i + 1}`}
                     className="px-1.5 py-1.5 text-right text-[10px] font-semibold text-card-foreground uppercase tracking-tight"
                   >
-                    GMIN P{i + 1}
+                    VAZMIN P{i + 1}
                   </th>
                 ))}
                 {Array.from({ length: maxPatamares }, (_, i) => (
                   <th
-                    key={`gmax-${i + 1}`}
+                    key={`vazmax-${i + 1}`}
                     className="px-1.5 py-1.5 text-right text-[10px] font-semibold text-card-foreground uppercase tracking-tight"
                   >
-                    GMAX P{i + 1}
+                    VAZMAX P{i + 1}
                   </th>
                 ))}
               </tr>
@@ -101,16 +107,18 @@ export function RestricaoVazaoHQTable({ data }: RestricaoVazaoHQTableProps) {
                     <td className="px-2 py-1.5 text-xs text-card-foreground font-medium max-w-[200px] truncate" title={nome}>
                       {nome}
                     </td>
-                    {[...gminValues, ...gmaxValues].map((val, idx) => (
-                      <td
-                        key={idx}
-                        className="px-1.5 py-1.5 text-xs text-card-foreground text-right whitespace-nowrap font-mono"
-                      >
-                        {val !== null && val !== undefined
-                          ? formatInteger(Number(val))
-                          : "0"}
-                      </td>
-                    ))}
+                    {[...gminValues, ...gmaxValues].map((val, idx) => {
+                      const isMissing = val === null || val === undefined;
+                      return (
+                        <td
+                          key={idx}
+                          className="px-1.5 py-1.5 text-xs text-card-foreground text-right whitespace-nowrap font-mono"
+                          title={isMissing ? "Sem restrição neste patamar" : (val === 0 ? "Restrição zero" : undefined)}
+                        >
+                          {isMissing ? "—" : formatInteger(Number(val))}
+                        </td>
+                      );
+                    })}
                   </tr>
                 );
               })}

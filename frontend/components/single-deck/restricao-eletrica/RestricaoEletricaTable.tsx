@@ -31,21 +31,19 @@ export function RestricaoEletricaTable({ data }: RestricaoEletricaTableProps) {
   // Usar sempre 3 patamares (P1, P2, P3)
   const maxPatamares = 3;
 
+  const cellToCsv = (val: unknown): string =>
+    val === null || val === undefined ? "N/A" : String(val);
+
   const handleDownloadCSV = () => {
     let csvData;
     if (isDecompFormat) {
-      const csvRow: Record<string, any> = { Nome: "" };
-      for (let i = 1; i <= maxPatamares; i++) {
-        csvRow[`GMIN P${i}`] = null;
-        csvRow[`GMAX P${i}`] = null;
-      }
       csvData = data.map((row) => {
-        const csvRow: Record<string, any> = {
-          Nome: row["Nome"] ?? "",
+        const csvRow: Record<string, string> = {
+          Nome: (row["Nome"] ?? "") as string,
         };
         for (let i = 1; i <= maxPatamares; i++) {
-          csvRow[`GMIN P${i}`] = row[`GMIN P${i}`] ?? null;
-          csvRow[`GMAX P${i}`] = row[`GMAX P${i}`] ?? null;
+          csvRow[`GMIN P${i}`] = cellToCsv(row[`GMIN P${i}`]);
+          csvRow[`GMAX P${i}`] = cellToCsv(row[`GMAX P${i}`]);
         }
         return csvRow;
       });
@@ -62,11 +60,16 @@ export function RestricaoEletricaTable({ data }: RestricaoEletricaTableProps) {
 
   return (
     <div className="bg-card border border-border rounded-lg p-4 sm:p-6">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-3">
-          <span className="text-sm text-muted-foreground">
+      <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
+        <div>
+          <span className="text-sm text-muted-foreground block">
             {data.length} registros
           </span>
+          {isDecompFormat && (
+            <p className="text-[10px] text-muted-foreground mt-0.5" title="— = sem restrição neste patamar; 0 = restrição zero">
+              — = sem restrição · 0 = restrição zero
+            </p>
+          )}
         </div>
         <button
           onClick={handleDownloadCSV}
@@ -141,16 +144,18 @@ export function RestricaoEletricaTable({ data }: RestricaoEletricaTableProps) {
                       <td className="px-3 sm:px-4 py-2.5 text-sm text-card-foreground font-medium whitespace-nowrap">
                         {nome}
                       </td>
-                      {[...gminValues, ...gmaxValues].map((val, idx) => (
-                        <td
-                          key={idx}
-                          className="px-3 sm:px-4 py-2.5 text-sm text-card-foreground text-right whitespace-nowrap font-mono"
-                        >
-                          {val !== null && val !== undefined
-                            ? formatInteger(Number(val))
-                            : "0"}
-                        </td>
-                      ))}
+                      {[...gminValues, ...gmaxValues].map((val, idx) => {
+                        const isMissing = val === null || val === undefined;
+                        return (
+                          <td
+                            key={idx}
+                            className="px-3 sm:px-4 py-2.5 text-sm text-card-foreground text-right whitespace-nowrap font-mono"
+                            title={isMissing ? "Sem restrição neste patamar" : (val === 0 ? "Restrição zero" : undefined)}
+                          >
+                            {isMissing ? "—" : formatInteger(Number(val))}
+                          </td>
+                        );
+                      })}
                     </tr>
                   );
                 } else {

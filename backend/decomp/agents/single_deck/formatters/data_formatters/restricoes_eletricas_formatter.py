@@ -68,8 +68,7 @@ class RestricoesEletricasSingleDeckFormatter(SingleDeckFormatter):
             }
 
         # Helper para tratar valores numéricos
-        # Para restrições de vazão: NaN/None -> None (será exibido como "-")
-        # Para restrições elétricas: NaN/None -> 0 (comportamento original)
+        # allow_none=True: None = sem restrição; 0 = restrição zero (vazão e elétricas)
         def _to_num(v, allow_none=False):
             from math import isnan
 
@@ -103,6 +102,9 @@ class RestricoesEletricasSingleDeckFormatter(SingleDeckFormatter):
             "RestricoesVazaoHQTool",
             "RestricoesVazaoHQConjuntaTool",
         )
+        is_eletricas = tool_name == "RestricoesEletricasDECOMPTool"
+        # None = sem restrição; 0 = restrição zero (vazão e elétricas)
+        allow_none_valores = is_vazao or is_eletricas
         is_vazao_conjunta = tool_name == "RestricoesVazaoHQConjuntaTool"
 
         for row in data:
@@ -139,13 +141,12 @@ class RestricoesEletricasSingleDeckFormatter(SingleDeckFormatter):
             row_out["Nome"] = nome
 
             # GMIN e GMAX por patamar (até max_patamares)
+            # allow_none: None = sem restrição; 0 = restrição zero
             for i in range(1, max_patamares + 1):
                 gmin_key = f"GMIN P{i}"
                 gmax_key = f"GMAX P{i}"
-                
-                # Para restrições de vazão, permitir None (será exibido como "-")
-                row_out[gmin_key] = _to_num(row.get(f"limite_inferior_{i}"), allow_none=is_vazao)
-                row_out[gmax_key] = _to_num(row.get(f"limite_superior_{i}"), allow_none=is_vazao)
+                row_out[gmin_key] = _to_num(row.get(f"limite_inferior_{i}"), allow_none=allow_none_valores)
+                row_out[gmax_key] = _to_num(row.get(f"limite_superior_{i}"), allow_none=allow_none_valores)
 
             table_rows.append(row_out)
 
