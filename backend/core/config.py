@@ -92,7 +92,9 @@ def safe_print(*args, **kwargs):
             pass  # Silenciosamente ignora se ainda falhar
 
 # Debug mode - controla se prints de debug são exibidos
-DEBUG_MODE = os.getenv("DEBUG_MODE", "false").lower() == "true"
+# Por padrão, mantemos DEBUG_MODE ligado para facilitar desenvolvimento.
+# Para desativar, defina DEBUG_MODE=false no arquivo .env da raiz do projeto.
+DEBUG_MODE = os.getenv("DEBUG_MODE", "true").lower() == "true"
 
 def debug_print(*args, **kwargs):
     """

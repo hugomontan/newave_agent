@@ -167,6 +167,8 @@ def get_initial_state(
         "tool_used": None,
         # Campos para Disambiguation
         "disambiguation": None,
+        # Campos para Correção de Usina
+        "plant_correction_followup": None,
         # Campos para Comparação
         "comparison_data": None,
         # Campos para escolha do usuário (requires_user_choice)
@@ -253,6 +255,7 @@ def run_query_stream(
                 if node_name == "comparison_interpreter":
                     response = node_output.get("final_response") if node_output else None
                     comparison_data = node_output.get("comparison_data") if node_output else None
+                    plant_correction_followup = node_output.get("plant_correction_followup")
                     
                     if response and response.strip():
                         yield f"data: {json.dumps({'type': 'response_start'})}\n\n"
@@ -261,7 +264,15 @@ def run_query_stream(
                             yield f"data: {json.dumps({'type': 'response_chunk', 'chunk': response[i:i + chunk_size]})}\n\n"
                         
                         cleaned_comparison_data = clean_nan_for_json(comparison_data) if comparison_data else None
-                        yield f"data: {json.dumps({'type': 'response_complete', 'response': response, 'comparison_data': cleaned_comparison_data}, allow_nan=False)}\n\n"
+                        response_complete_data = {
+                            "type": "response_complete",
+                            "response": response,
+                            "comparison_data": cleaned_comparison_data,
+                        }
+                        if plant_correction_followup:
+                            response_complete_data["plant_correction_followup"] = plant_correction_followup
+                        
+                        yield f"data: {json.dumps(response_complete_data, allow_nan=False)}\n\n"
                 
                 if not (node_name == "comparison_tool_router" and node_output.get("disambiguation")):
                     yield f"data: {json.dumps({'type': 'node_complete', 'node': node_name})}\n\n"

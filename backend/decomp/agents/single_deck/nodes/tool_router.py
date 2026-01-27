@@ -27,6 +27,8 @@ from backend.core.nodes.tool_router_base import (
     generate_disambiguation_response,
     parse_disambiguation_query,
     find_tool_by_name,
+    generate_plant_correction_followup,
+    parse_plant_correction_query,
 )
 
 
@@ -72,11 +74,71 @@ def tool_router_node(state: SingleDeckState) -> dict:
         return {"tool_route": False}
     
     # Função auxiliar para executar uma tool (usa função compartilhada)
-    def _execute_tool(tool, tool_name: str, query_to_use: str = None):
+    def _execute_tool(tool, tool_name: str, query_to_use: str = None, **kwargs):
         """Executa uma tool e retorna o resultado formatado."""
         if query_to_use is None:
             query_to_use = query
-        return shared_execute_tool(tool, tool_name, query_to_use, "[TOOL ROUTER DECOMP]")
+        result = shared_execute_tool(
+            tool,
+            tool_name,
+            query_to_use,
+            "[TOOL ROUTER DECOMP]",
+            **kwargs,
+        )
+        
+        # Adicionar follow-up de correção de usina se aplicável
+        if result.get("tool_route"):
+            tool_result = result.get("tool_result", {})
+            if tool_result.get("selected_plant"):
+                followup = generate_plant_correction_followup(tool_result, query_to_use)
+                if followup:
+                    result["plant_correction_followup"] = followup
+                    safe_print(
+                        f"[TOOL ROUTER DECOMP] ✅ Follow-up de correção de usina gerado "
+                        f"(success={tool_result.get('success')})"
+                    )
+        
+        return result
+    
+    # Detectar se a query veio de uma correção de usina
+    # Formato: "__PLANT_CORR__:ToolName:codigo:original_query"
+    is_plant_correction, correction_tool_name, plant_code, original_query_correction = parse_plant_correction_query(
+        query
+    )
+    
+    if is_plant_correction:
+        safe_print("[TOOL ROUTER DECOMP] ✅ Query de correção de usina detectada")
+        safe_print(f"[TOOL ROUTER DECOMP]   Tool: {correction_tool_name}")
+        safe_print(f"[TOOL ROUTER DECOMP]   Código da usina: {plant_code}")
+        safe_print(f"[TOOL ROUTER DECOMP]   Query original: {original_query_correction}")
+        
+        # Encontrar a tool correspondente
+        selected_tool = find_tool_by_name(correction_tool_name, tools) if correction_tool_name else None
+        if selected_tool and plant_code is not None:
+            try:
+                result = _execute_tool(
+                    selected_tool,
+                    correction_tool_name,
+                    original_query_correction or query,
+                    forced_plant_code=plant_code,
+                )
+                result["from_plant_correction"] = True
+                result["plant_code_forced"] = plant_code
+                safe_print("[TOOL ROUTER DECOMP] ✅ Tool executada com correção de usina")
+                return result
+            except Exception as e:
+                safe_print(f"[TOOL ROUTER DECOMP] ❌ Erro ao executar tool com correção: {e}")
+                import traceback
+                traceback.print_exc()
+                return {
+                    "tool_route": False,
+                    "error": f"Erro ao executar tool com correção: {str(e)}",
+                }
+        else:
+            safe_print(
+                f"[TOOL ROUTER DECOMP] ❌ Tool {correction_tool_name} não encontrada ou código inválido "
+                "para correção de usina"
+            )
     
     # Estratégia de matching: Semantic matching (se habilitado) + Keyword matching (fallback)
     if SEMANTIC_MATCHING_ENABLED or USE_HYBRID_MATCHING:

@@ -149,7 +149,7 @@ class DisponibilidadeUsinaTool(PatamarCalculationBase):
         Mantém estrutura muito próxima da InflexibilidadeUsinaTool, mas com chave
         disponibilidade_total e campos de detalhes rotulados como disponibilidade.
         """
-        return {
+        result = {
             "success": True,
             "disponibilidade_total": resultado["total"],
             "usina": {
@@ -174,6 +174,18 @@ class DisponibilidadeUsinaTool(PatamarCalculationBase):
             "calculo": resultado["calculo"],
             "tool": self.get_name(),
         }
+        
+        # Adicionar selected_plant para follow-up mechanism (compatível com NEWAVE)
+        result["selected_plant"] = {
+            "type": "thermal",
+            "codigo": codigo_usina,
+            "nome": nome_usina,
+            "nome_completo": nome_usina,
+            "context": "decomp",
+            "tool_name": self.get_name(),
+        }
+        
+        return result
     
     def _execute_with_ct_loaded(
         self,

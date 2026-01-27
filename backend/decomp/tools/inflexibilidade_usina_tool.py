@@ -104,7 +104,7 @@ class InflexibilidadeUsinaTool(PatamarCalculationBase):
         Returns:
             Dict formatado com resultado de inflexibilidade
         """
-        return {
+        result = {
             "success": True,
             "inflexibilidade_total": resultado["total"],
             "usina": {
@@ -129,6 +129,18 @@ class InflexibilidadeUsinaTool(PatamarCalculationBase):
             "calculo": resultado["calculo"],
             "tool": self.get_name()
         }
+        
+        # Adicionar selected_plant para follow-up mechanism (compatível com NEWAVE)
+        result["selected_plant"] = {
+            "type": "thermal",
+            "codigo": codigo_usina,
+            "nome": nome_usina,
+            "nome_completo": nome_usina,
+            "context": "decomp",
+            "tool_name": self.get_name(),
+        }
+        
+        return result
     
     # Manter método execute_with_codigo_usina para compatibilidade com multi-deck
     def execute_with_codigo_usina(

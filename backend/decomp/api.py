@@ -78,6 +78,7 @@ class QueryResponse(BaseModel):
     error: str | None = None
     comparison_data: dict | None = None
     visualization_data: dict | None = None
+    plant_correction_followup: dict | None = None
 
 class UploadResponse(BaseModel):
     session_id: str
@@ -277,7 +278,8 @@ async def query_deck(request: QueryRequest):
             response=result.get("final_response", ""),
             error=result.get("error"),
             comparison_data=result.get("comparison_data"),
-            visualization_data=result.get("visualization_data")
+            visualization_data=result.get("visualization_data"),
+            plant_correction_followup=result.get("plant_correction_followup"),
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro ao processar query: {str(e)}")

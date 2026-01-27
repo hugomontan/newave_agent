@@ -12,6 +12,9 @@ from backend.decomp.config import (
     safe_print
 )
 from backend.decomp.tools.semantic_matcher import find_best_tool_semantic
+from backend.core.nodes.tool_router_base import (
+    generate_plant_correction_followup,
+)
 
 
 TOOL_SHORT_DESCRIPTIONS = {}
@@ -33,12 +36,26 @@ def comparison_tool_router_node(state: MultiDeckState) -> dict:
         def _execute_tool(tool, tool_name: str):
             safe_print(f"[TOOL ROUTER DECOMP MULTI] Executando tool {tool_name}...")
             result = tool.execute(query)
-            return {
+            
+            tool_result_dict = {
                 "tool_result": result,
                 "tool_used": tool_name,
                 "tool_route": True,
-                "execution_result": {"success": result.get("success", False), "stdout": "", "stderr": ""}
+                "execution_result": {
+                    "success": result.get("success", False),
+                    "stdout": "",
+                    "stderr": result.get("error", "") if not result.get("success", False) else "",
+                },
             }
+            
+            # Adicionar follow-up de correção de usina se aplicável
+            if result.get("selected_plant"):
+                followup = generate_plant_correction_followup(result, query)
+                if followup:
+                    tool_result_dict["plant_correction_followup"] = followup
+                    safe_print("[TOOL ROUTER DECOMP MULTI] ✅ Follow-up de correção de usina gerado")
+            
+            return tool_result_dict
         
         # Estratégia de matching: Apenas semantic matching
         if SEMANTIC_MATCHING_ENABLED:

@@ -10,6 +10,7 @@ import pandas as pd
 import re
 from typing import Dict, Any, Optional
 from difflib import SequenceMatcher
+from backend.decomp.utils.hydraulic_plant_matcher import get_decomp_hydraulic_plant_matcher
 
 # ⚡ Cache global para mapeamento código -> nome das usinas hidrelétricas
 # O mapeamento é global (não depende do deck específico), então pode ser compartilhado
@@ -161,13 +162,19 @@ class UHUsinasHidrelétricasTool(DECOMPTool):
             # Criar mapeamento código -> nome das usinas (usando HIDR.DAT do NEWAVE)
             mapeamento_codigo_nome = self._create_codigo_nome_mapping(dadger, data)
             
-            # Extrair código da usina da query (código numérico ou nome)
-            codigo_usina = self._extract_codigo_usina(query)
-            
-            # Se não encontrou código numérico, tentar buscar por nome
-            if codigo_usina is None:
-                safe_print(f"[UH TOOL] Tentando extrair usina da query (código ou nome)...")
-                codigo_usina = self._extract_usina_from_query(query, dadger, data, mapeamento_codigo_nome)
+            # Extrair código da usina da query (código numérico ou nome),
+            # permitindo sobrescrever via forced_plant_code (follow-up)
+            forced_plant_code = kwargs.get("forced_plant_code")
+            if forced_plant_code is not None:
+                codigo_usina = int(forced_plant_code)
+                safe_print(f"[UH TOOL] ⚙️ Código forçado recebido via follow-up: {codigo_usina}")
+            else:
+                codigo_usina = self._extract_codigo_usina(query)
+                
+                # Se não encontrou código numérico, tentar buscar por nome
+                if codigo_usina is None:
+                    safe_print(f"[UH TOOL] Tentando extrair usina da query (código ou nome)...")
+                    codigo_usina = self._extract_usina_from_query(query, dadger, data, mapeamento_codigo_nome)
             
             if codigo_usina is None:
                 return {
@@ -209,7 +216,7 @@ class UHUsinasHidrelétricasTool(DECOMPTool):
             
             safe_print(f"[UH TOOL] ✅ Volume inicial encontrado: {volume_inicial}% para usina {codigo_usina} ({nome_usina})")
             
-            return {
+            result = {
                 "success": True,
                 "volume_inicial": float(volume_inicial),
                 "usina": {
@@ -221,6 +228,18 @@ class UHUsinasHidrelétricasTool(DECOMPTool):
                 "descricao": f"Volume inicial (VINI) da usina {nome_usina}",
                 "tool": self.get_name()
             }
+            
+            # Adicionar selected_plant para follow-up mechanism (compatível com NEWAVE)
+            result["selected_plant"] = {
+                "type": "hydraulic",
+                "codigo": codigo_usina,
+                "nome": nome_usina,
+                "nome_completo": nome_usina,
+                "context": "decomp",
+                "tool_name": self.get_name(),
+            }
+            
+            return result
             
         except Exception as e:
             safe_print(f"[UH TOOL] ❌ Erro ao consultar volume inicial: {e}")

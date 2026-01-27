@@ -17,6 +17,7 @@ from difflib import SequenceMatcher
 # Adicionar shared ao path para importar o matcher
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent / "shared"))
 from backend.core.utils.usina_name_matcher import find_usina_match, normalize_usina_name
+from backend.decomp.utils.thermal_plant_matcher import get_decomp_thermal_plant_matcher
 
 
 class PatamarCalculationBase(DECOMPTool):
@@ -87,6 +88,7 @@ class PatamarCalculationBase(DECOMPTool):
                 }
             
             verbose = kwargs.get("verbose", True)
+            forced_plant_code = kwargs.get("forced_plant_code")
             calc_type = self.get_calculation_type()
             
             if verbose:
@@ -100,8 +102,13 @@ class PatamarCalculationBase(DECOMPTool):
                     "error": "Dados do bloco CT (estágio 1) não encontrados"
                 }
             
-            # Passar ct_df já carregado para evitar leituras duplicadas
-            codigo_usina = self._extract_usina_from_query_fast(query, ct_df)
+            # Priorizar código vindo do follow-up (__PLANT_CORR__) se disponível
+            if forced_plant_code is not None:
+                codigo_usina = int(forced_plant_code)
+                safe_print(f"[{calc_type.upper()} TOOL] ⚙️ Código forçado recebido via follow-up: {codigo_usina}")
+            else:
+                # Passar ct_df já carregado para evitar leituras duplicadas
+                codigo_usina = self._extract_usina_from_query_fast(query, ct_df)
             
             if codigo_usina is None:
                 return {
@@ -128,14 +135,8 @@ class PatamarCalculationBase(DECOMPTool):
     
     def _extract_usina_from_query_fast(self, query: str, ct_df: pd.DataFrame) -> Optional[int]:
         """
-        ⚡ VERSÃO OTIMIZADA: Extrai código da usina da query.
+        ⚡ VERSÃO OTIMIZADA: Extrai código da usina da query usando DecompThermalPlantMatcher.
         Recebe ct_df já carregado para evitar leituras duplicadas.
-        
-        Otimizações:
-        - Usa patterns pré-compilados (constantes de classe)
-        - Recebe ct_df já carregado
-        - Operações vetorizadas do pandas
-        - Early return agressivo
         
         Args:
             query: Query do usuário
@@ -144,100 +145,25 @@ class PatamarCalculationBase(DECOMPTool):
         Returns:
             Código da usina ou None
         """
-        query_lower = query.lower()
         calc_type = self.get_calculation_type()
         
-        # ⚡ OTIMIZAÇÃO: Códigos válidos extraídos UMA vez (operação vetorizada)
-        codigos_validos = set(ct_df['codigo_usina'].unique())
+        # Usar matcher DECOMP com CSV como fonte de verdade
+        matcher = get_decomp_thermal_plant_matcher()
         
-        # ETAPA 1: Tentar extrair código numérico (usa patterns pré-compilados)
-        for pattern in self._CODIGO_PATTERNS:
-            match = pattern.search(query_lower)
-            if match:
-                try:
-                    codigo = int(match.group(1))
-                    if codigo in codigos_validos:
-                        safe_print(f"[{calc_type.upper()} TOOL] ✅ Código {codigo} encontrado por padrão numérico")
-                        return codigo  # Early return!
-                except (ValueError, KeyError):
-                    continue
+        # O matcher usa CSV como fonte de verdade, mas valida contra DataFrame
+        codigo = matcher.extract_plant_from_query(
+            query=query,
+            available_plants=ct_df,
+            entity_type="usina",
+            threshold=0.5
+        )
         
-        # ETAPA 2: Buscar por nome (operações vetorizadas)
-        if 'nome_usina' not in ct_df.columns:
-            return None
+        if codigo is not None:
+            safe_print(f"[{calc_type.upper()} TOOL] ✅ Código {codigo} encontrado via DecompThermalPlantMatcher")
+        else:
+            safe_print(f"[{calc_type.upper()} TOOL] ⚠️ Nenhuma usina específica detectada na query")
         
-        # ⚡ OTIMIZAÇÃO: Preparar dados uma vez com operações vetorizadas
-        usinas_unicas = ct_df[['codigo_usina', 'nome_usina']].drop_duplicates()
-        usinas_unicas = usinas_unicas.dropna(subset=['nome_usina'])
-        usinas_unicas = usinas_unicas.copy()
-        usinas_unicas['nome_lower'] = usinas_unicas['nome_usina'].str.lower().str.strip()
-        
-        # Criar dicionário para busca O(1)
-        nome_to_codigo = dict(zip(usinas_unicas['nome_lower'], usinas_unicas['codigo_usina']))
-        
-        # PRIORIDADE 0: Usar matcher centralizado (normaliza nomes entre NEWAVE e DECOMP)
-        available_names = usinas_unicas['nome_usina'].tolist()
-        match_result = find_usina_match(query, available_names, threshold=0.5)
-        
-        if match_result:
-            matched_name, score = match_result
-            # Encontrar código correspondente ao nome encontrado
-            matched_row = usinas_unicas[usinas_unicas['nome_usina'] == matched_name]
-            if not matched_row.empty:
-                codigo = int(matched_row.iloc[0]['codigo_usina'])
-                safe_print(f"[{calc_type.upper()} TOOL] ✅ Código {codigo} encontrado via matcher centralizado: '{matched_name}' → '{normalize_usina_name(matched_name)}' (score: {score:.2f})")
-                return codigo
-        
-        # PRIORIDADE 1: Match exato (busca O(1))
-        query_stripped = query_lower.strip()
-        if query_stripped in nome_to_codigo:
-            codigo = int(nome_to_codigo[query_stripped])
-            safe_print(f"[{calc_type.upper()} TOOL] ✅ Código {codigo} encontrado por match exato")
-            return codigo
-        
-        # PRIORIDADE 2: Nome completo contido na query
-        # IMPORTANTE: Ordenar por tamanho (mais longo primeiro) para priorizar matches específicos
-        matches_prioridade2 = []
-        for nome_lower, codigo in nome_to_codigo.items():
-            if len(nome_lower) >= 4 and nome_lower in query_lower:
-                # Verificar word boundaries
-                pattern = r'\b' + re.escape(nome_lower) + r'\b'
-                if re.search(pattern, query_lower):
-                    matches_prioridade2.append((len(nome_lower), int(codigo), nome_lower))
-        
-        # Retornar o match mais longo (mais específico)
-        if matches_prioridade2:
-            matches_prioridade2.sort(reverse=True)  # Ordenar por tamanho (maior primeiro)
-            codigo = matches_prioridade2[0][1]
-            nome_lower = matches_prioridade2[0][2]
-            safe_print(f"[{calc_type.upper()} TOOL] ✅ Código {codigo} encontrado por nome completo na query: '{nome_lower}'")
-            return codigo
-        
-        # PRIORIDADE 3: Match de todas as palavras significativas
-        palavras_query = set(p for p in query_lower.split() if len(p) > 2 and p not in self._PALAVRAS_IGNORAR)
-        
-        for row in usinas_unicas.itertuples(index=False):
-            nome_lower = row.nome_lower
-            palavras_nome = set(p for p in nome_lower.split() if len(p) > 2 and p not in self._PALAVRAS_IGNORAR)
-            if palavras_nome and all(p in query_lower for p in palavras_nome):
-                safe_print(f"[{calc_type.upper()} TOOL] ✅ Código {int(row.codigo_usina)} encontrado: todas palavras significativas")
-                return int(row.codigo_usina)
-        
-        # PRIORIDADE 4: Similaridade (apenas se não encontrou antes)
-        candidatos = []
-        for row in usinas_unicas.itertuples(index=False):
-            nome_lower = row.nome_lower
-            similarity = SequenceMatcher(None, query_lower, nome_lower).ratio()
-            if similarity > 0.6:
-                candidatos.append((int(row.codigo_usina), nome_lower, similarity))
-        
-        if candidatos:
-            candidatos.sort(key=lambda x: x[2], reverse=True)
-            melhor = candidatos[0]
-            safe_print(f"[{calc_type.upper()} TOOL] ✅ Código {melhor[0]} encontrado por similaridade (score: {melhor[2]:.2f})")
-            return melhor[0]
-        
-        return None
+        return codigo
     
     def _execute_with_ct_loaded(
         self, 

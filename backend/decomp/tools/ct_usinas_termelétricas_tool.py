@@ -15,6 +15,7 @@ from typing import Dict, Any, Optional, List
 # Adicionar shared ao path para importar o matcher
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent / "shared"))
 from backend.core.utils.usina_name_matcher import find_usina_match, normalize_usina_name
+from backend.decomp.utils.thermal_plant_matcher import get_decomp_thermal_plant_matcher
 
 class CTUsinasTermelétricasTool(DECOMPTool):
     """
@@ -132,7 +133,12 @@ class CTUsinasTermelétricasTool(DECOMPTool):
                 }
             
             # Extrair filtros da query
-            codigo_usina = self._extract_codigo_usina(query)
+            forced_plant_code = kwargs.get("forced_plant_code")
+            if forced_plant_code is not None:
+                codigo_usina = int(forced_plant_code)
+                safe_print(f"[CT TOOL] ⚙️ Código forçado recebido via follow-up: {codigo_usina}")
+            else:
+                codigo_usina = self._extract_codigo_usina(query)
             codigo_submercado = self._extract_codigo_submercado(query)
             estagio = self._extract_estagio(query)
             patamar = self._extract_patamar(query)  # NOVO: extrair patamar
@@ -188,7 +194,8 @@ class CTUsinasTermelétricasTool(DECOMPTool):
                     safe_print(f"[CT TOOL] Filtro por código aplicado: {total_antes} -> {len(data)} registros (Usina {codigo_usina})")
             
             # Tentar extrair usina da query (código ou nome) - PRIORIDADE MÁXIMA
-            if codigo_usina is None:
+            # Somente quando NÃO houver código forçado pelo follow-up
+            if codigo_usina is None and forced_plant_code is None:
                 safe_print(f"[CT TOOL] Tentando extrair usina da query (código ou nome)...")
                 codigo_usina_extraido = self._extract_usina_from_query(query, dadger, data)
                 if codigo_usina_extraido is not None:
@@ -249,6 +256,9 @@ class CTUsinasTermelétricasTool(DECOMPTool):
                 "cvu_apenas": is_cvu_only,  # NOVO
                 "filtros_aplicados": filtros_aplicados_list,  # NOVO
             }
+            
+            # Adicionar selected_plant para follow-up mechanism
+            selected_plant = None
             if codigo_usina is not None:
                 # Tentar obter nome da usina
                 nome_usina = None
@@ -259,14 +269,27 @@ class CTUsinasTermelétricasTool(DECOMPTool):
                         break
                 if nome_usina:
                     filtros_dict["nome_usina"] = nome_usina
+                    selected_plant = {
+                        "type": "thermal",
+                        "codigo": codigo_usina,
+                        "nome": nome_usina,
+                        "nome_completo": nome_usina,
+                        "context": "decomp",
+                        "tool_name": self.get_name(),
+                    }
             
-            return {
+            result = {
                 "success": True,
                 "data": data,
                 "total_usinas": len(data),
                 "filtros": filtros_dict,
                 "tool": self.get_name()
             }
+            
+            if selected_plant:
+                result["selected_plant"] = selected_plant
+            
+            return result
             
         except Exception as e:
             safe_print(f"[CT TOOL] ❌ Erro ao consultar Bloco CT: {e}")
@@ -592,8 +615,7 @@ class CTUsinasTermelétricasTool(DECOMPTool):
         data_usinas: list
     ) -> Optional[int]:
         """
-        Extrai código da usina da query usando o mesmo mecanismo da ModifOperacaoTool do NEWAVE.
-        Baseado em modif_operacao_tool.py do NEWAVE.
+        Extrai código da usina da query usando DecompThermalPlantMatcher.
         
         Args:
             query: Query do usuário
@@ -603,142 +625,24 @@ class CTUsinasTermelétricasTool(DECOMPTool):
         Returns:
             Código da usina ou None
         """
-        query_lower = query.lower()
+        # Usar matcher DECOMP com CSV como fonte de verdade
+        matcher = get_decomp_thermal_plant_matcher()
         
-        # ETAPA 1: Tentar extrair número explícito
-        patterns = [
-            r'usina\s*(\d+)',
-            r'usina\s*térmica\s*(\d+)',
-            r'usina\s*termica\s*(\d+)',
-            r'usina\s*#?\s*(\d+)',
-            r'código\s*(\d+)',
-            r'codigo\s*(\d+)',
-            r'térmica\s*(\d+)',
-            r'termica\s*(\d+)',
-            r'ute\s*(\d+)',
-        ]
-        
-        for pattern in patterns:
-            match = re.search(pattern, query_lower)
-            if match:
-                try:
-                    codigo = int(match.group(1))
-                    # Verificar se existe nos dados
-                    if any(d.get('codigo_usina') == codigo for d in data_usinas):
-                        safe_print(f"[CT TOOL] ✅ Código {codigo} encontrado por padrão numérico")
-                        return codigo
-                except ValueError:
-                    continue
-        
-        # ETAPA 2: Buscar por nome da usina usando matcher centralizado
-        # Criar lista de usinas (similar ao modif.usina(df=True))
-        usinas_list = []
-        codigo_to_nome = {}
-        for record in data_usinas:
-            codigo = record.get('codigo_usina')
-            nome = str(record.get('nome_usina', '')).strip()
-            if codigo and nome and nome != 'nan' and nome != '':
-                usinas_list.append({'codigo': codigo, 'nome': nome})
-                codigo_to_nome[codigo] = nome
-        
-        if not usinas_list:
-            safe_print(f"[CT TOOL] ⚠️ Nenhuma usina encontrada nos dados")
-            return None
-        
-        safe_print(f"[CT TOOL] Usinas disponíveis no arquivo:")
-        for usina in usinas_list[:10]:  # Mostrar apenas primeiras 10 para não poluir log
-            safe_print(f"[CT TOOL]   - Código {usina['codigo']}: \"{usina['nome']}\"")
-        if len(usinas_list) > 10:
-            safe_print(f"[CT TOOL]   ... e mais {len(usinas_list) - 10} usinas")
-        
-        # Usar matcher centralizado que normaliza nomes entre NEWAVE e DECOMP
-        available_names = [u['nome'] for u in usinas_list]
-        match_result = find_usina_match(query, available_names, threshold=0.5)
-        
-        if match_result:
-            matched_name, score = match_result
-            # Encontrar código correspondente ao nome encontrado
-            for codigo, nome in codigo_to_nome.items():
-                if normalize_usina_name(nome) == normalize_usina_name(matched_name):
-                    safe_print(f"[CT TOOL] ✅ Código {codigo} encontrado via matcher centralizado: '{nome}' → '{normalize_usina_name(nome)}' (score: {score:.2f})")
-                    return codigo
-        
-        # Fallback: busca original se matcher não encontrou nada
-        # Ordenar por tamanho do nome (maior primeiro) para priorizar matches mais específicos
-        usinas_sorted = sorted(
-            usinas_list,
-            key=lambda x: len(x['nome'].strip()),
-            reverse=True
+        # Converter data_usinas para formato que o matcher aceita
+        # O matcher usa CSV como fonte de verdade, mas valida contra DataFrame
+        codigo = matcher.extract_plant_from_query(
+            query=query,
+            available_plants=data_usinas,
+            entity_type="usina",
+            threshold=0.5
         )
         
-        # ETAPA 2.1: Buscar match exato do nome completo (prioridade máxima)
-        for usina in usinas_sorted:
-            codigo_usina = usina['codigo']
-            nome_usina = usina['nome']
-            nome_usina_lower = nome_usina.lower().strip()
-            
-            if not nome_usina_lower:
-                continue
-            
-            # Match exato do nome completo
-            if nome_usina_lower == query_lower.strip():
-                safe_print(f"[CT TOOL] ✅ Código {codigo_usina} encontrado por match exato '{nome_usina}'")
-                return codigo_usina
-            
-            # Match exato do nome completo dentro da query (com word boundaries)
-            if len(nome_usina_lower) >= 4:  # Nomes com pelo menos 4 caracteres
-                pattern = r'\b' + re.escape(nome_usina_lower) + r'\b'
-                if re.search(pattern, query_lower):
-                    safe_print(f"[CT TOOL] ✅ Código {codigo_usina} encontrado por nome completo '{nome_usina}' na query")
-                    return codigo_usina
+        if codigo is not None:
+            safe_print(f"[CT TOOL] ✅ Código {codigo} encontrado via DecompThermalPlantMatcher")
+        else:
+            safe_print(f"[CT TOOL] ⚠️ Nenhuma usina específica detectada na query")
         
-        # ETAPA 2.2: Buscar por palavras-chave do nome (apenas se match exato não encontrou)
-        palavras_ignorar = {
-            'de', 'da', 'do', 'das', 'dos', 'e', 'a', 'o', 'as', 'os', 'em', 'na', 'no', 'nas', 'nos',
-            'usina', 'usinas', 'ute', 'utes', 'térmica', 'termica', 'termeletrica', 'termelétrica',
-            'decomp', 'bloco', 'registro', 'qual', 'foi', 'para', 'por', 'com', 'sem'
-        }
-        
-        palavras_candidatas = []
-        for usina in usinas_sorted:
-            codigo_usina = usina['codigo']
-            nome_usina = usina['nome']
-            nome_usina_lower = nome_usina.lower().strip()
-            
-            if not nome_usina_lower:
-                continue
-            
-            palavras_nome = nome_usina_lower.split()
-            palavras_nome_filtradas = [p for p in palavras_nome if p not in palavras_ignorar and len(p) > 3]
-            palavras_nome_sorted = sorted(palavras_nome_filtradas, key=len, reverse=True)
-            
-            palavras_encontradas = []
-            for palavra in palavras_nome_sorted:
-                pattern = r'\b' + re.escape(palavra) + r'\b'
-                if re.search(pattern, query_lower):
-                    palavras_encontradas.append(palavra)
-            
-            if len(palavras_encontradas) >= 2 or (len(palavras_encontradas) >= 1 and any(len(p) >= 6 for p in palavras_encontradas)):
-                melhor_palavra = max(palavras_encontradas, key=len)
-                palavras_candidatas.append({
-                    'codigo': codigo_usina,
-                    'nome': nome_usina,
-                    'palavra': melhor_palavra,
-                    'tamanho': len(melhor_palavra),
-                    'tamanho_nome': len(nome_usina_lower),
-                    'num_palavras': len(palavras_encontradas)
-                })
-        
-        if palavras_candidatas:
-            melhor_match = max(
-                palavras_candidatas,
-                key=lambda x: (x.get('num_palavras', 0), x['tamanho'], x['tamanho_nome'])
-            )
-            safe_print(f"[CT TOOL] ✅ Código {melhor_match['codigo']} encontrado por palavra-chave '{melhor_match['palavra']}' do nome '{melhor_match['nome']}'")
-            return melhor_match['codigo']
-        
-        safe_print(f"[CT TOOL] ⚠️ Nenhuma usina específica detectada na query")
-        return None
+        return codigo
     
     def _ct_to_dict(self, ct_obj) -> Dict[str, Any]:
         """Converte objeto CT para dict."""

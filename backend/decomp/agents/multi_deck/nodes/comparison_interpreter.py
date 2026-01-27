@@ -36,20 +36,31 @@ def comparison_interpreter_node(state: MultiDeckState) -> dict:
             if comparison_data:
                 safe_print(f"[COMPARISON INTERPRETER] Comparison data keys: {list(comparison_data.keys()) if isinstance(comparison_data, dict) else 'not a dict'}")
             
-            return {
+            result: dict = {
                 "final_response": clean_response_text(formatted.get("final_response", ""), max_emojis=2),
-                "comparison_data": comparison_data
+                "comparison_data": comparison_data,
             }
+            
+            # Propagar plant_correction_followup se estiver presente no estado
+            plant_correction_followup = state.get("plant_correction_followup")
+            if plant_correction_followup:
+                result["plant_correction_followup"] = plant_correction_followup
+            
+            return result
         except Exception as e:
             safe_print(f"[COMPARISON INTERPRETER] Erro ao formatar resposta: {e}")
             import traceback
             traceback.print_exc()
             # Fallback: formatação básica
             response = f"## Comparação Multi-Deck\n\nDados processados com sucesso.\n"
-            return {
+            result = {
                 "final_response": clean_response_text(response, max_emojis=2),
-                "comparison_data": tool_result.get("comparison_data")
+                "comparison_data": tool_result.get("comparison_data"),
             }
+            plant_correction_followup = state.get("plant_correction_followup")
+            if plant_correction_followup:
+                result["plant_correction_followup"] = plant_correction_followup
+            return result
     
     # Se não há tool_result, retornar mensagem genérica
     safe_print(f"[COMPARISON INTERPRETER DECOMP] Nenhuma tool disponível para processar a consulta de comparação")

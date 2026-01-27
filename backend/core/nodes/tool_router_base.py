@@ -228,26 +228,49 @@ def generate_plant_correction_followup(
     # Obter lista completa de usinas do matcher apropriado
     if all_plants is None:
         plant_type = selected_plant.get("type")
+        context = selected_plant.get("context", "newave")  # Default para NEWAVE se não especificado
         all_plants = []
         try:
             if plant_type == "hydraulic":
-                from backend.newave.utils.hydraulic_plant_matcher import get_hydraulic_plant_matcher
-                matcher = get_hydraulic_plant_matcher()
-                for codigo, (nome_arquivo, nome_completo, _) in matcher.code_to_names.items():
-                    all_plants.append({
-                        "codigo": codigo,
-                        "nome": nome_arquivo,
-                        "nome_completo": nome_completo if nome_completo else nome_arquivo
-                    })
+                if context == "decomp":
+                    from backend.decomp.utils.hydraulic_plant_matcher import get_decomp_hydraulic_plant_matcher
+                    matcher = get_decomp_hydraulic_plant_matcher()
+                    for codigo, (nome_decomp, nome_completo, _) in matcher.code_to_names.items():
+                        all_plants.append({
+                            "codigo": codigo,
+                            "nome": nome_decomp,
+                            "nome_completo": nome_completo if nome_completo else nome_decomp
+                        })
+                else:
+                    # NEWAVE (default)
+                    from backend.newave.utils.hydraulic_plant_matcher import get_hydraulic_plant_matcher
+                    matcher = get_hydraulic_plant_matcher()
+                    for codigo, (nome_arquivo, nome_completo, _) in matcher.code_to_names.items():
+                        all_plants.append({
+                            "codigo": codigo,
+                            "nome": nome_arquivo,
+                            "nome_completo": nome_completo if nome_completo else nome_arquivo
+                        })
             elif plant_type == "thermal":
-                from backend.newave.utils.thermal_plant_matcher import get_thermal_plant_matcher
-                matcher = get_thermal_plant_matcher()
-                for codigo, (nome_arquivo, nome_completo) in matcher.code_to_names.items():
-                    all_plants.append({
-                        "codigo": codigo,
-                        "nome": nome_arquivo,
-                        "nome_completo": nome_completo if nome_completo else nome_arquivo
-                    })
+                if context == "decomp":
+                    from backend.decomp.utils.thermal_plant_matcher import get_decomp_thermal_plant_matcher
+                    matcher = get_decomp_thermal_plant_matcher()
+                    for codigo, (nome_decomp, nome_completo) in matcher.code_to_names.items():
+                        all_plants.append({
+                            "codigo": codigo,
+                            "nome": nome_decomp,
+                            "nome_completo": nome_completo if nome_completo else nome_decomp
+                        })
+                else:
+                    # NEWAVE (default)
+                    from backend.newave.utils.thermal_plant_matcher import get_thermal_plant_matcher
+                    matcher = get_thermal_plant_matcher()
+                    for codigo, (nome_arquivo, nome_completo) in matcher.code_to_names.items():
+                        all_plants.append({
+                            "codigo": codigo,
+                            "nome": nome_arquivo,
+                            "nome_completo": nome_completo if nome_completo else nome_arquivo
+                        })
         except Exception as e:
             safe_print(f"[TOOL ROUTER] [AVISO] Erro ao obter lista de usinas: {e}")
             all_plants = []  # Garantir que sempre seja uma lista vazia em caso de erro
