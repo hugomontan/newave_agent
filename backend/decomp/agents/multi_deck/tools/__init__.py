@@ -2,6 +2,7 @@
 from typing import List, Dict
 from backend.decomp.tools.base import DECOMPTool
 from backend.decomp.agents.multi_deck.tools.inflexibilidade_multi_deck_tool import InflexibilidadeMultiDeckTool
+from backend.decomp.agents.multi_deck.tools.disponibilidade_multi_deck_tool import DisponibilidadeMultiDeckTool
 from backend.decomp.agents.multi_deck.tools.cvu_multi_deck_tool import CVUMultiDeckTool
 from backend.decomp.agents.multi_deck.tools.volume_inicial_multi_deck_tool import VolumeInicialMultiDeckTool
 from backend.decomp.agents.multi_deck.tools.dp_multi_deck_tool import DPMultiDeckTool
@@ -14,6 +15,7 @@ from backend.decomp.agents.multi_deck.tools.gl_multi_deck_tool import GLMultiDec
 
 TOOLS_REGISTRY_MULTI = [
     InflexibilidadeMultiDeckTool,
+    DisponibilidadeMultiDeckTool,
     CVUMultiDeckTool,
     VolumeInicialMultiDeckTool,
     DPMultiDeckTool,

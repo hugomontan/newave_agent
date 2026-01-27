@@ -19,6 +19,7 @@ import { LimitesIntercambioComparisonView } from "./limites-intercambio-decomp";
 import { RestricoesEletricasComparisonView } from "./restricao-eletrica-decomp";
 import { RestricoesVazaoHQComparisonView } from "./restricao-vazao-hq-decomp";
 import { GLComparisonView } from "./gl-decomp/GLComparisonView";
+import { DisponibilidadeComparisonView } from "./disponibilidade";
 import type { ComparisonData } from "./shared/types";
 
 interface ComparisonRouterProps {
@@ -121,6 +122,18 @@ export function ComparisonRouter({ comparison }: ComparisonRouterProps) {
     }
     return <InflexibilidadeComparisonView comparison={comparison} />;
   }
+
+  // Verificar DisponibilidadeUsinaTool ou DisponibilidadeMultiDeckTool
+  if (
+    normalizedToolName.toLowerCase() === "disponibilidadeusinatool" ||
+    normalizedToolName.toLowerCase() === "disponibilidademultidecktool" ||
+    normalizedToolName.toLowerCase().includes("disponibilidade")
+  ) {
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[ComparisonRouter] ✅ Usando DisponibilidadeComparisonView para DisponibilidadeTool');
+    }
+    return <DisponibilidadeComparisonView comparison={comparison} />;
+  }
   
   // Verificar VolumeInicialMultiDeckTool ou UHUsinasHidrelétricasTool (em contexto multi-deck)
   if (
@@ -222,6 +235,12 @@ export function ComparisonRouter({ comparison }: ComparisonRouterProps) {
         normalizedToolName.toLowerCase().includes("inflexibilidade")
       ) {
         return <InflexibilidadeComparisonView comparison={comparison} />;
+      }
+      // Verificar DisponibilidadeTool
+      if (
+        normalizedToolName.toLowerCase().includes("disponibilidade")
+      ) {
+        return <DisponibilidadeComparisonView comparison={comparison} />;
       }
       // Verificar Carga ANDE (multi-deck)
       if (

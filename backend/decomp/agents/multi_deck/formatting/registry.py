@@ -11,6 +11,7 @@ from .base import ComparisonFormatter, DeckData
 from backend.decomp.agents.multi_deck.formatting.data_formatters import (
     UHComparisonFormatter,
     InflexibilidadeComparisonFormatter,
+    DisponibilidadeComparisonFormatter,
     CVUComparisonFormatter,
     VolumeInicialComparisonFormatter,
     DPComparisonFormatter,
@@ -34,6 +35,7 @@ FORMATTERS: List[ComparisonFormatter] = [
     DPComparisonFormatter(),  # Prioridade 10 - específico para DP
     PQComparisonFormatter(),  # Prioridade 10 - específico para PQ
     InflexibilidadeComparisonFormatter(),
+    DisponibilidadeComparisonFormatter(),
     CVUComparisonFormatter(),
     UHComparisonFormatter(),  # Prioridade 10 - genérico, deve vir por último
 ]

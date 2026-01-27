@@ -3,7 +3,7 @@ Tool Multi-Deck para consultar gerações GNL (Registro GL) em múltiplos decks 
 Executa GLGeracoesGNLTool em paralelo em todos os decks selecionados.
 """
 from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FutureTimeoutError
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from backend.decomp.tools.base import DECOMPTool
 from backend.decomp.tools.gl_geracoes_gnl_tool import GLGeracoesGNLTool
 from backend.decomp.utils.deck_loader import (
@@ -12,8 +12,32 @@ from backend.decomp.utils.deck_loader import (
     get_deck_display_name
 )
 from backend.decomp.config import safe_print
+from backend.core.utils.usina_name_matcher import (
+    normalize_usina_name,
+    find_usina_match,
+)
 import multiprocessing
 import re
+
+
+# Catálogo centralizado das usinas GNL (compartilhado com GLGeracoesGNLTool)
+GNL_USINAS = {
+    224: {
+        "canonical_name": "PSERGIPE I",
+        "aliases": [
+            "psergipe i",
+            "porto sergipe i",
+            "porto sergipe 1",
+        ],
+    },
+    86: {
+        "canonical_name": "SANTA CRUZ",
+        "aliases": [
+            "santa cruz",
+            "st cruz",
+        ],
+    },
+}
 
 
 class GLMultiDeckTool(DECOMPTool):
@@ -137,11 +161,11 @@ class GLMultiDeckTool(DECOMPTool):
         codigo_usina = self._extract_codigo_usina(query)
         nome_usina = None
         
-        # Se não encontrou código, tentar buscar por nome
+        # Se não encontrou código, tentar buscar por nome com matcher GNL dedicado
         if codigo_usina is None:
             codigo_usina = self._extract_usina_from_query(query)
         
-        # Obter nome da usina usando mapeamento hardcoded
+        # Obter nome da usina usando catálogo GNL
         if codigo_usina is not None:
             nome_usina = self._get_nome_usina(codigo_usina)
         
@@ -297,24 +321,50 @@ class GLMultiDeckTool(DECOMPTool):
     
     def _extract_usina_from_query(self, query: str) -> Optional[int]:
         """
-        Extrai código da usina da query usando nomes conhecidos.
+        Extrai código da usina GNL da query usando catálogo + matcher centralizado.
         """
-        query_lower = query.lower()
+        if not query:
+            return None
         
-        # Mapeamento de nomes conhecidos para códigos
-        usinas_conhecidas = {
-            "santa cruz": 86,
-            "luiz ormelo": 15,
-            "luizormelo": 15,
-            "psergipe": 224,
-            "psergipe i": 224,
-        }
+        query_norm = normalize_usina_name(query)
+        if not query_norm:
+            return None
         
-        for nome, codigo in usinas_conhecidas.items():
-            if nome in query_lower:
-                safe_print(f"[GL MULTI-DECK] ✅ Usina encontrada por nome: {nome} -> {codigo}")
+        # ETAPA 1 – match direto por alias normalizado (contido na query)
+        for codigo, info in GNL_USINAS.items():
+            all_names = [info.get("canonical_name", "")] + info.get("aliases", [])
+            for raw_name in all_names:
+                name_norm = normalize_usina_name(raw_name)
+                if not name_norm:
+                    continue
+                
+                pattern = r"\b" + re.escape(name_norm) + r"\b"
+                if re.search(pattern, query_norm):
+                    safe_print(f"[GL MULTI-DECK] ✅ Usina GNL encontrada por alias: '{raw_name}' -> {codigo}")
+                    return codigo
+        
+        # ETAPA 2 – fuzzy matching usando matcher centralizado
+        available_names: List[str] = []
+        name_to_codigo: Dict[str, int] = {}
+        for codigo, info in GNL_USINAS.items():
+            all_names = [info.get("canonical_name", "")] + info.get("aliases", [])
+            for n in all_names:
+                if not n:
+                    continue
+                available_names.append(n)
+                name_to_codigo[n] = codigo
+        
+        match = find_usina_match(query, available_names, threshold=0.6)
+        if match:
+            matched_name, score = match
+            codigo = name_to_codigo.get(matched_name)
+            if codigo is not None:
+                safe_print(
+                    f"[GL MULTI-DECK] ✅ Usina GNL encontrada por fuzzy match: '{matched_name}' -> {codigo} (score={score:.4f})"
+                )
                 return codigo
         
+        safe_print("[GL MULTI-DECK] ⚠️ Nenhuma usina GNL identificada a partir da query")
         return None
     
     def _get_nome_usina(self, codigo_usina: int) -> Optional[str]:
@@ -328,15 +378,11 @@ class GLMultiDeckTool(DECOMPTool):
         Returns:
             Nome da usina ou None se não encontrado
         """
-        # Mapeamento hardcoded das usinas GL (não estão no bloco CT)
-        mapeamento_gl = {
-            86: "SANTA CRUZ",
-            224: "PSERGIPE I",
-        }
-        
-        nome_usina = mapeamento_gl.get(codigo_usina)
+        # Usa catálogo GNL para garantir consistência com o matcher.
+        info = GNL_USINAS.get(codigo_usina)
+        nome_usina = info.get("canonical_name") if info else None
         if nome_usina:
-            safe_print(f"[GL MULTI-DECK] ✅ Nome encontrado para usina {codigo_usina} (hardcoded): '{nome_usina}'")
+            safe_print(f"[GL MULTI-DECK] ✅ Nome encontrado para usina {codigo_usina} (catálogo GNL): '{nome_usina}'")
             return nome_usina
         
         safe_print(f"[GL MULTI-DECK] ⚠️ Usina {codigo_usina} não encontrada no mapeamento GL")

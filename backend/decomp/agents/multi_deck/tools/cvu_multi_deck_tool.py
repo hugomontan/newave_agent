@@ -115,6 +115,9 @@ class CVUMultiDeckTool(DECOMPTool):
         safe_print(f"[CVU MULTI-DECK] Query: {query[:100]}")
         safe_print(f"[CVU MULTI-DECK] Decks: {list(self.deck_paths.keys())}")
         safe_print(f"[CVU MULTI-DECK] Workers: {self.max_workers}")
+
+        # Permitir correção de usina via follow-up (forced_plant_code)
+        forced_plant_code = kwargs.get("forced_plant_code")
         
         # OTIMIZAÇÃO 1: Carregar dadgers em paralelo primeiro
         safe_print(f"[CVU MULTI-DECK] Carregando {len(self.deck_paths)} dadgers em paralelo...")
@@ -122,15 +125,14 @@ class CVUMultiDeckTool(DECOMPTool):
         
         safe_print(f"[CVU MULTI-DECK] ✅ {len(dadger_cache)}/{len(self.deck_paths)} dadgers carregados")
         
-        # OTIMIZAÇÃO 2: Identificar nome canônico primeiro, depois buscar código
-        safe_print(f"[CVU MULTI-DECK] Tentando identificar usina da query: '{query}'")
+        # OTIMIZAÇÃO 2: Identificar usina usando o MESMO pipeline da CTUsinasTermelétricasTool
+        safe_print(f"[CVU MULTI-DECK] Tentando identificar usina da query (pipeline CT): '{query}'")
         
-        from backend.core.utils.usina_name_matcher import find_usina_match, normalize_usina_name
+        # Importar o matcher térmico DECOMP (mesmo usado em CTUsinasTermelétricasTool)
+        from backend.decomp.utils.thermal_plant_matcher import get_decomp_thermal_plant_matcher
         
-        # ETAPA 1: Coletar todos os nomes de usinas disponíveis em múltiplos decks
-        all_available_names = set()
-        nome_to_codigo_map = {}
-        
+        # Montar lista de usinas disponíveis a partir dos dadgers carregados
+        available_plants: list = []
         decks_to_check = min(5, len(dadger_cache))
         checked_decks = 0
         
@@ -143,31 +145,30 @@ class CVUMultiDeckTool(DECOMPTool):
                 ct_df = dadger.ct(estagio=1, df=True)
                 if ct_df is not None and isinstance(ct_df, pd.DataFrame) and not ct_df.empty:
                     if 'codigo_usina' in ct_df.columns and 'nome_usina' in ct_df.columns:
+                        # Converter para dicts no formato esperado pelo matcher (lista de usinas disponíveis)
                         for _, row in ct_df[['codigo_usina', 'nome_usina']].drop_duplicates().iterrows():
                             codigo = int(row['codigo_usina'])
                             nome_original = str(row['nome_usina']).strip()
                             if nome_original and nome_original.lower() != 'nan':
-                                nome_normalized = normalize_usina_name(nome_original)
-                                all_available_names.add(nome_original)
-                                if nome_normalized not in nome_to_codigo_map:
-                                    nome_to_codigo_map[nome_normalized] = (codigo, nome_original)
-                                else:
-                                    existing_codigo, existing_nome = nome_to_codigo_map[nome_normalized]
-                                    if len(nome_normalized) > len(normalize_usina_name(existing_nome)):
-                                        nome_to_codigo_map[nome_normalized] = (codigo, nome_original)
+                                available_plants.append(
+                                    {
+                                        "codigo_usina": codigo,
+                                        "nome_usina": nome_original,
+                                    }
+                                )
                         checked_decks += 1
             except Exception as e:
-                safe_print(f"[CVU MULTI-DECK] ⚠️ Erro ao coletar nomes do deck {deck_name}: {e}")
+                safe_print(f"[CVU MULTI-DECK] ⚠️ Erro ao coletar usinas do deck {deck_name}: {e}")
                 continue
         
-        if not all_available_names:
+        if not available_plants:
+            # Fallback idêntico: tentar pelo primeiro deck disponível
             first_deck_path = list(self.deck_paths.values())[0]
-            safe_print(f"[CVU MULTI-DECK] Tentando identificar usina da query (fallback): '{query}'")
+            safe_print(f"[CVU MULTI-DECK] Tentando identificar usina da query (fallback CT): '{query}'")
             try:
                 from backend.decomp.utils.dadger_cache import get_cached_dadger
                 dadger = get_cached_dadger(first_deck_path)
                 if dadger:
-                    # IMPORTANTE: Sempre usar estágio 1 para CVU
                     ct_df = dadger.ct(estagio=1, df=True)
                     if ct_df is not None and isinstance(ct_df, pd.DataFrame) and not ct_df.empty:
                         if 'codigo_usina' in ct_df.columns and 'nome_usina' in ct_df.columns:
@@ -175,15 +176,18 @@ class CVUMultiDeckTool(DECOMPTool):
                                 codigo = int(row['codigo_usina'])
                                 nome_original = str(row['nome_usina']).strip()
                                 if nome_original and nome_original.lower() != 'nan':
-                                    nome_normalized = normalize_usina_name(nome_original)
-                                    all_available_names.add(nome_original)
-                                    if nome_normalized not in nome_to_codigo_map:
-                                        nome_to_codigo_map[nome_normalized] = (codigo, nome_original)
+                                    available_plants.append(
+                                        {
+                                            "codigo_usina": codigo,
+                                            "nome_usina": nome_original,
+                                        }
+                                    )
             except Exception as e:
-                safe_print(f"[CVU MULTI-DECK] ⚠️ Erro no fallback: {e}")
+                safe_print(f"[CVU MULTI-DECK] ⚠️ Erro no fallback CT: {e}")
         
-        if not all_available_names:
-            safe_print(f"[CVU MULTI-DECK] ❌ Nenhuma usina encontrada nos decks")
+        # Quando NÃO há código forçado, precisamos de available_plants para o matcher
+        if not available_plants and forced_plant_code is None:
+            safe_print(f"[CVU MULTI-DECK] ❌ Nenhuma usina encontrada nos decks (pipeline CT)")
             return {
                 "success": False,
                 "is_comparison": True,
@@ -193,60 +197,44 @@ class CVUMultiDeckTool(DECOMPTool):
                 "tool_name": "CTUsinasTermelétricasTool"
             }
         
-        # ETAPA 2: Usar matcher centralizado
-        available_names_list = list(all_available_names)
-        match_result = find_usina_match(query, available_names_list, threshold=0.5)
-        
-        if not match_result:
-            safe_print(f"[CVU MULTI-DECK] ❌ Usina não identificada na query: '{query}'")
-            return {
-                "success": False,
-                "is_comparison": True,
-                "is_multi_deck": True,
-                "error": f"Não foi possível identificar a usina na query '{query}'. Por favor, especifique o nome ou código da usina (ex: 'CVU de Cubatao' ou 'CVU da usina 97')",
-                "decks": [],
-                "tool_name": "CTUsinasTermelétricasTool"
-            }
-        
-        matched_name_original, score = match_result
-        matched_name_normalized = normalize_usina_name(matched_name_original)
-        
-        # ETAPA 3: Buscar código correspondente
-        if matched_name_normalized in nome_to_codigo_map:
-            codigo_usina, nome_usina = nome_to_codigo_map[matched_name_normalized]
+        # Definir código da usina: ou vindo do follow-up (forced_plant_code) ou via matcher
+        if forced_plant_code is not None:
+            codigo_usina = int(forced_plant_code)
+            safe_print(f"[CVU MULTI-DECK] ⚙️ Código de usina forçado via follow-up: {codigo_usina}")
         else:
-            codigo_usina = None
-            nome_usina = matched_name_original
-            
-            for deck_name, dadger in dadger_cache.items():
-                try:
-                    # IMPORTANTE: Sempre usar estágio 1 para CVU
-                    ct_df = dadger.ct(estagio=1, df=True)
-                    if ct_df is not None and isinstance(ct_df, pd.DataFrame) and not ct_df.empty:
-                        if 'codigo_usina' in ct_df.columns and 'nome_usina' in ct_df.columns:
-                            for _, row in ct_df.iterrows():
-                                nome_ct = str(row['nome_usina']).strip()
-                                if normalize_usina_name(nome_ct) == matched_name_normalized:
-                                    codigo_usina = int(row['codigo_usina'])
-                                    nome_usina = nome_ct
-                                    break
-                    if codigo_usina:
-                        break
-                except Exception:
-                    continue
+            matcher = get_decomp_thermal_plant_matcher()
+            codigo_usina = matcher.extract_plant_from_query(
+                query=query,
+                available_plants=available_plants,
+                entity_type="usina",
+                threshold=0.5,
+            )
         
-        if not codigo_usina:
-            safe_print(f"[CVU MULTI-DECK] ❌ Código não encontrado para usina: '{matched_name_original}'")
+        if codigo_usina is None:
+            safe_print(f"[CVU MULTI-DECK] ❌ Usina não identificada na query pelo DecompThermalPlantMatcher: '{query}'")
             return {
                 "success": False,
                 "is_comparison": True,
                 "is_multi_deck": True,
-                "error": f"Nome da usina identificado ('{matched_name_original}'), mas código não encontrado nos decks.",
+                "error": f"Não foi possível identificar a usina na query '{query}'. Por favor, especifique o nome ou código da usina (ex: 'CVU de Cubatao' ou 'CVU da usina 97')",
                 "decks": [],
                 "tool_name": "CTUsinasTermelétricasTool"
             }
         
-        safe_print(f"[CVU MULTI-DECK] ✅ Usina identificada: {nome_usina} (código {codigo_usina}) - nome canônico: '{matched_name_normalized}' (score: {score:.2f})")
+        # Descobrir o nome da usina correspondente ao código retornado (se possível)
+        nome_usina = None
+        for plant in available_plants:
+            try:
+                if int(plant.get("codigo_usina")) == int(codigo_usina):
+                    nome_usina = plant.get("nome_usina")
+                    break
+            except (TypeError, ValueError):
+                continue
+        
+        if nome_usina:
+            safe_print(f"[CVU MULTI-DECK] ✅ Usina identificada: {nome_usina} (código {codigo_usina})")
+        else:
+            safe_print(f"[CVU MULTI-DECK] ⚠️ Nome da usina não encontrado para código {codigo_usina}")
         
         # OTIMIZAÇÃO 3: Executar consulta em paralelo
         safe_print(f"[CVU MULTI-DECK] Executando consulta em {len(self.deck_paths)} decks em paralelo...")
@@ -336,16 +324,27 @@ class CVUMultiDeckTool(DECOMPTool):
         
         safe_print(f"[CVU MULTI-DECK] ✅ {len(successful_results)}/{len(deck_results)} decks processados com sucesso")
         safe_print(f"[CVU MULTI-DECK] ========== FIM ==========")
-        
+
+        # Dados da usina selecionada para follow-up de correção
+        selected_plant = {
+            "type": "thermal",
+            "codigo": codigo_usina,
+            "nome": nome_usina,
+            "nome_completo": nome_usina,
+            "context": "decomp",
+            "tool_name": "CTUsinasTermelétricasTool",
+        }
+
         return {
             "success": True,
             "is_comparison": True,
             "decks": deck_results,
             "usina": {
                 "codigo": codigo_usina,
-                "nome": nome_usina
+                "nome": nome_usina,
             },
-            "tool_name": "CTUsinasTermelétricasTool"
+            "tool_name": "CTUsinasTermelétricasTool",
+            "selected_plant": selected_plant,
         }
     
     def _load_all_dadgers_parallel(self) -> Dict[str, Any]:

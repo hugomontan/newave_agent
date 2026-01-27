@@ -5,6 +5,7 @@ Geram estruturas de dados formatadas (tabelas, gráficos, etc) a partir de resul
 
 from .uh_comparison_formatter import UHComparisonFormatter
 from .inflexibilidade_comparison_formatter import InflexibilidadeComparisonFormatter
+from .disponibilidade_comparison_formatter import DisponibilidadeComparisonFormatter
 from .cvu_comparison_formatter import CVUComparisonFormatter
 from .volume_inicial_comparison_formatter import VolumeInicialComparisonFormatter
 from .dp_comparison_formatter import DPComparisonFormatter
@@ -18,6 +19,7 @@ from .gl_comparison_formatter import GLComparisonFormatter
 __all__ = [
     "UHComparisonFormatter",
     "InflexibilidadeComparisonFormatter",
+    "DisponibilidadeComparisonFormatter",
     "CVUComparisonFormatter",
     "VolumeInicialComparisonFormatter",
     "DPComparisonFormatter",
