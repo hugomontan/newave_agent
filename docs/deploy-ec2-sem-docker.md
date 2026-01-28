@@ -1,37 +1,35 @@
-## Deploy na EC2 sem Docker (SSH + systemd)
+## Deploy na EC2 sem Docker (SSH + systemd, usando usuário `ubuntu`)
 
 ### 1. Preparar a EC2 (uma vez)
 
-- **Criar instância** (Ubuntu/Debian ou Amazon Linux)
+- **Criar instância** (Ubuntu)
   - Liberar no Security Group:
     - Porta 22 (SSH).
     - Portas 80/443 (se usar Nginx).
     - Opcional: 3000/8000 apenas para testes internos.
   - Garantir saída HTTPS para internet (para acessar Azure OpenAI).
 
-- **Instalar dependências básicas** (via SSH na EC2)
+- **Instalar dependências básicas** (via SSH na EC2, como usuário `ubuntu`)
 
 ```bash
 sudo apt update
 sudo apt install -y python3 python3-venv python3-pip nodejs npm git nginx
 ```
 
-- **Criar usuário e diretório da aplicação**
+- **Criar diretório da aplicação (usando o próprio `ubuntu`)**
 
 ```bash
-sudo adduser --system --group nw_multi
 sudo mkdir -p /opt/nw_multi
-sudo chown -R nw_multi:nw_multi /opt/nw_multi
+sudo chown -R ubuntu:ubuntu /opt/nw_multi
 ```
 
 ---
 
 ### 2. Trazer o código para a EC2
 
-- **Via git** (recomendado):
+- **Via git** (recomendado), como `ubuntu`:
 
 ```bash
-sudo -u nw_multi -H bash
 cd /opt/nw_multi
 git clone <URL_DO_REPO> .
 ```
@@ -42,10 +40,9 @@ git clone <URL_DO_REPO> .
 
 ### 3. Configurar e rodar o backend
 
-#### 3.1 Criar venv e instalar dependências
+#### 3.1 Criar venv e instalar dependências (como `ubuntu`)
 
 ```bash
-sudo -u nw_multi -H bash
 cd /opt/nw_multi/backend
 python3 -m venv .venv
 source .venv/bin/activate
@@ -79,7 +76,7 @@ Description=NW Multi Backend (FastAPI)
 After=network.target
 
 [Service]
-User=nw_multi
+User=ubuntu
 WorkingDirectory=/opt/nw_multi/backend
 EnvironmentFile=/etc/nw_multi_backend.env
 ExecStart=/opt/nw_multi/backend/.venv/bin/uvicorn backend.main:app --host 0.0.0.0 --port 8000
@@ -108,10 +105,9 @@ curl http://localhost:8000/
 
 ### 4. Configurar e rodar o frontend
 
-#### 4.1 Instalar dependências e fazer build
+#### 4.1 Instalar dependências e fazer build (como `ubuntu`)
 
 ```bash
-sudo -u nw_multi -H bash
 cd /opt/nw_multi/frontend
 npm install
 
@@ -129,7 +125,7 @@ Description=NW Multi Frontend (Next.js)
 After=network.target
 
 [Service]
-User=nw_multi
+User=ubuntu
 WorkingDirectory=/opt/nw_multi/frontend
 Environment=NODE_ENV=production
 Environment=NEXT_PUBLIC_API_URL=http://SEU_HOST_OU_PROXY:8000
@@ -218,10 +214,9 @@ sudo systemctl stop nw-multi-frontend
 sudo systemctl stop nw-multi-backend
 ```
 
-- **Atualizar código** (via git):
+- **Atualizar código** (via git), como `ubuntu`:
 
 ```bash
-sudo -u nw_multi -H bash
 cd /opt/nw_multi
 git pull
 ```
