@@ -2,7 +2,7 @@
 
 import React from "react";
 import { useRouter } from "next/navigation";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
 import { FileText, ArrowRight, Zap, Calendar } from "lucide-react";
@@ -18,7 +18,7 @@ export default function Home() {
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
               <FileText className="w-8 h-8 text-primary" />
-              <h1 className="text-2xl font-bold text-foreground">NW Multi Agent</h1>
+              <h1 className="text-2xl font-bold text-foreground">ENA - Energy Agent</h1>
             </div>
           </div>
         </div>
@@ -59,28 +59,15 @@ export default function Home() {
                 }}
               >
                 <CardHeader>
-                  <div className="flex items-center space-x-3 mb-2">
+                  <div className="flex items-center space-x-3">
                     <div className="p-3 bg-primary/10 rounded-lg">
                       <Calendar className="w-6 h-6 text-primary" />
                     </div>
                     <CardTitle className="text-2xl">NEWAVE</CardTitle>
                   </div>
-                  <CardDescription className="text-base">
-                    Modelo de médio a longo prazo (até 5 anos, discretização mensal). Planejamento estratégico e geração de FCF.
-                  </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <p className="text-sm font-medium text-foreground">Características:</p>
-                      <ul className="text-sm text-muted-foreground space-y-1">
-                        <li>• Horizonte: até 5 anos</li>
-                        <li>• Discretização: mensal</li>
-                        <li>• Planejamento estratégico</li>
-                        <li>• Geração de FCF</li>
-                      </ul>
-                    </div>
-                    <Button
+                  <Button
                       onClick={(e) => {
                         e.stopPropagation();
                         router.push("/newave");
@@ -91,7 +78,6 @@ export default function Home() {
                       Acessar NEWAVE
                       <ArrowRight className="w-4 h-4 ml-2" />
                     </Button>
-                  </div>
                 </CardContent>
               </Card>
             </motion.div>
@@ -113,28 +99,15 @@ export default function Home() {
                 }}
               >
                 <CardHeader>
-                  <div className="flex items-center space-x-3 mb-2">
+                  <div className="flex items-center space-x-3">
                     <div className="p-3 bg-primary/10 rounded-lg">
                       <Zap className="w-6 h-6 text-primary" />
                     </div>
                     <CardTitle className="text-2xl">DECOMP</CardTitle>
                   </div>
-                  <CardDescription className="text-base">
-                    Modelo de curto prazo (até 12 meses, discretização semanal/mensal). Usinas individuais, PMO, PLD semanal.
-                  </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <p className="text-sm font-medium text-foreground">Características:</p>
-                      <ul className="text-sm text-muted-foreground space-y-1">
-                        <li>• Horizonte: até 12 meses</li>
-                        <li>• Discretização: semanal/mensal</li>
-                        <li>• Usinas individuais</li>
-                        <li>• PMO e PLD semanal</li>
-                      </ul>
-                    </div>
-                    <Button
+                  <Button
                       onClick={(e) => {
                         e.stopPropagation();
                         router.push("/decomp");
@@ -146,7 +119,6 @@ export default function Home() {
                       Acessar DECOMP
                       <ArrowRight className="w-4 h-4 ml-2" />
                     </Button>
-                  </div>
                 </CardContent>
               </Card>
             </motion.div>

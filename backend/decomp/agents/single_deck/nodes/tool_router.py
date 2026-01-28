@@ -151,16 +151,28 @@ def tool_router_node(state: SingleDeckState) -> dict:
             if top_tools:
                 best_tool, score = top_tools[0]
                 tool_name = best_tool.get_name()
-                # Regra: query sem "conjunta/conjunto/somatorio" não deve preferir a tool conjunta
-                # quando a unitária tem score próximo (ex.: "restricao vazao de baixo iguacu" -> unitária)
                 query_lower = query.lower()
                 conjunta_keywords = [
                     "conjunta", "conjunto", "somatorio", "somatório",
                     "conjuntas", "conjuntos", "somatórios",
                 ]
-                if (
+                has_conjunta_keyword = any(k in query_lower for k in conjunta_keywords)
+                # Prioridade: query com "conjunta" → forçar RestricoesVazaoHQConjuntaTool se estiver no top
+                if has_conjunta_keyword:
+                    for t, s in top_tools:
+                        if t.get_name() == "RestricoesVazaoHQConjuntaTool":
+                            best_tool, score = t, s
+                            tool_name = "RestricoesVazaoHQConjuntaTool"
+                            safe_print(
+                                "[TOOL ROUTER DECOMP] Palavra-chave 'conjunta' detectada → "
+                                "RestricoesVazaoHQConjuntaTool (restrição conjunta)"
+                            )
+                            break
+                # Regra: query sem "conjunta/conjunto/somatorio" não deve preferir a tool conjunta
+                # quando a unitária tem score próximo (ex.: "restricao vazao de baixo iguacu" -> unitária)
+                elif (
                     tool_name == "RestricoesVazaoHQConjuntaTool"
-                    and not any(k in query_lower for k in conjunta_keywords)
+                    and not has_conjunta_keyword
                 ):
                     for t, s in top_tools[1:]:
                         if t.get_name() == "RestricoesVazaoHQTool":

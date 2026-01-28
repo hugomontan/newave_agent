@@ -42,8 +42,8 @@ export function RestricaoVazaoHQTable({ data }: RestricaoVazaoHQTableProps) {
   };
 
   return (
-    <div className="bg-card border border-border rounded-lg p-2 sm:p-3">
-      <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
+    <div className="bg-card border border-border rounded-lg p-3 sm:p-4">
+      <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
         <div>
           <span className="text-xs text-muted-foreground block">
             {data.length} registros
@@ -62,18 +62,18 @@ export function RestricaoVazaoHQTable({ data }: RestricaoVazaoHQTableProps) {
         </button>
       </div>
 
-      <div className="w-full overflow-hidden">
-        <div className="w-full">
-          <table className="w-full border-collapse bg-background/30 text-xs">
+      <div className="w-full">
+        <div className="inline-block w-full align-middle px-0">
+          <table className="w-full table-fixed border-collapse bg-background/30">
             <thead>
               <tr className="border-b border-border bg-background/50">
-                <th className="px-2 py-1.5 text-left text-[10px] font-semibold text-card-foreground uppercase tracking-tight">
+                <th className="w-[28%] px-2 py-2 text-left text-[11px] font-semibold text-card-foreground uppercase tracking-tight">
                   Nome
                 </th>
                 {Array.from({ length: maxPatamares }, (_, i) => (
                   <th
                     key={`vazmin-${i + 1}`}
-                    className="px-1.5 py-1.5 text-right text-[10px] font-semibold text-card-foreground uppercase tracking-tight"
+                    className="px-1.5 py-2 text-right text-[11px] font-semibold text-card-foreground uppercase tracking-tight"
                   >
                     VAZMIN P{i + 1}
                   </th>
@@ -81,7 +81,7 @@ export function RestricaoVazaoHQTable({ data }: RestricaoVazaoHQTableProps) {
                 {Array.from({ length: maxPatamares }, (_, i) => (
                   <th
                     key={`vazmax-${i + 1}`}
-                    className="px-1.5 py-1.5 text-right text-[10px] font-semibold text-card-foreground uppercase tracking-tight"
+                    className="px-1.5 py-2 text-right text-[11px] font-semibold text-card-foreground uppercase tracking-tight"
                   >
                     VAZMAX P{i + 1}
                   </th>
@@ -104,7 +104,7 @@ export function RestricaoVazaoHQTable({ data }: RestricaoVazaoHQTableProps) {
                     key={`${nome}-${index}`}
                     className="border-b border-border/50 bg-background/20 hover:bg-background/40 transition-colors"
                   >
-                    <td className="px-2 py-1.5 text-xs text-card-foreground font-medium max-w-[200px] truncate" title={nome}>
+                    <td className="w-[28%] px-2 py-1.5 text-xs text-card-foreground font-medium truncate" title={nome}>
                       {nome}
                     </td>
                     {[...gminValues, ...gmaxValues].map((val, idx) => {
@@ -112,7 +112,7 @@ export function RestricaoVazaoHQTable({ data }: RestricaoVazaoHQTableProps) {
                       return (
                         <td
                           key={idx}
-                          className="px-1.5 py-1.5 text-xs text-card-foreground text-right whitespace-nowrap font-mono"
+                          className="px-1.5 py-1.5 text-xs text-card-foreground text-right font-mono"
                           title={isMissing ? "Sem restrição neste patamar" : (val === 0 ? "Restrição zero" : undefined)}
                         >
                           {isMissing ? "—" : formatInteger(Number(val))}
@@ -130,7 +130,7 @@ export function RestricaoVazaoHQTable({ data }: RestricaoVazaoHQTableProps) {
       {hasMoreRows && (
         <button
           onClick={() => setIsExpanded(!isExpanded)}
-          className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground hover:text-card-foreground transition-colors"
+          className="mt-3 flex items-center gap-2 text-xs text-muted-foreground hover:text-card-foreground transition-colors"
         >
           {isExpanded ? (
             <>
