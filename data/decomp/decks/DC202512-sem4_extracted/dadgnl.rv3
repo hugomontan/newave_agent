@@ -1,0 +1,84 @@
+&----------------------------------------------------------------------------------------
+&         BLOCO 1 *** TERMICAS A GNL ***
+&         (REGISTRO TG)
+&----------------------------------------------------------------------------------------
+&      Usina           Est           Pat 1               Pat 2               Pat3
+&   cod  ss      nome   ip   infl disp    cvu    infl disp    cvu    infl disp    cvu    
+&x  xxx  xx   xxxxxxxxxxXX   xxxxxXXXXXxxxxxxxxxxXXXXXxxxxxXXXXXXXXXXxxxxxXXXXXxxxxxxxxxx
+TG   86   1   SANTA CRUZ 1     0.0500.0    296.52  0.0500.0    296.52  0.0500.0    296.52
+TG   15   1   LUIZORMELO 1     0.0204.0    453.09  0.0204.0    453.09  0.0204.0    453.09
+TG   15   1   LUIZORMELO 2     0.0153.0    453.09  0.0146.7    453.09  0.0142.0    453.09
+TG   15   1   LUIZORMELO 3     0.0  0.0      0.00  0.0  0.0      0.00  0.0  0.0      0.00
+TG  224   3   PSERGIPE I 1     0.01593.    299.00  0.01593.    299.00  0.01593.    299.00
+&----------------------------------------------------------------------------------------
+&         BLOCO 2 *** NUMERO DE SEMANAS ***
+&         (REGISTRO GS)
+&----------------------------------------------------------------------------------------
+&  mes  semanas
+&x  xx   x
+GS   1   2
+GS   2   4
+GS   3   5
+&----------------------------------------------------------------------------------------
+&         BLOCO 3 *** LAG DE ANTECIPACAO DE DESPACHO ***
+&         (REGISTRO NL)
+&----------------------------------------------------------------------------------------
+&   cod  ss  lag
+&x  xxx  xx   x
+NL   86   1   2
+NL   15   1   2
+NL  224   3   2
+&----------------------------------------------------------------------------------------
+&         BLOCO 4 *** GERACOES DE TERMICAS GNL JA COMANDADAS ***
+&         (REGISTRO GL)
+&----------------------------------------------------------------------------------------
+&    Usina             Pat 1           Pat 2          Pat3
+&   cod  ss  sem    geracao   dur  geracao   dur  geracao   dur  data inic
+&x  xxx  xx   xx   xxxxxxxxxxXXXXXxxxxxxxxxxXXXXXxxxxxxxxxxXXXXX xxXXxxxx
+& SANTA CRUZ
+& DEZ/2025
+& Despacho antecipado por ordem de merito
+GL   86   1    1        500.0  32.     500.0  57.     500.0  79. 20122025
+GL   86   1    2        500.0  32.     500.0  57.     500.0  79. 27122025
+& JAN/2026
+GL   86   1    3        500.0  40.     500.0  59.     500.0  69. 03012026
+GL   86   1    4        500.0  40.     500.0  59.     500.0  69. 10012026
+GL   86   1    5        500.0  40.     500.0  59.     500.0  69. 17012026
+GL   86   1    6        500.0  40.     500.0  59.     500.0  69. 24012026
+& FEV/2026
+GL   86   1    7        500.0          500.0          500.0      31012026
+& Sem despacho antecipado
+GL   86   1    8          0.0            0.0            0.0      07022026
+GL   86   1    9          0.0            0.0            0.0      14022026
+& LUIZORMELO
+& DEZ/2025
+& Despacho antecipado por ordem de merito
+GL   15   1    1        204.0  32.     204.0  57.     204.0  79. 20122025
+GL   15   1    2        153.0  32.     146.7  57.     142.0  79. 27122025
+& JAN/2026
+& Sem despacho antecipado
+GL   15   1    3          0.0  40.       0.0  59.       0.0  69. 03012026
+GL   15   1    4          0.0  40.       0.0  59.       0.0  69. 10012026
+GL   15   1    5          0.0  40.       0.0  59.       0.0  69. 17012026
+GL   15   1    6          0.0  40.       0.0  59.       0.0  69. 24012026
+& FEV/2026
+GL   15   1    7          0.0            0.0            0.0      31012026
+GL   15   1    8          0.0            0.0            0.0      07022026
+GL   15   1    9          0.0            0.0            0.0      14022026
+& PSERGIPE I
+& DEZ/2025
+& Sem despacho antecipado
+& Tratamento realizado pela CCEE, respeitando a previsibilidade estabelecida pela Resolucao CNPE no 01/2024
+GL  224   3    1      1593.00  32.   1593.00  57.   1593.00  79. 20122025
+GL  224   3    2      1593.00  32.   1593.00  57.   1593.00  79. 27122025
+& JAN/2026
+& Despacho antecipado por ordem de merito
+GL  224   3    3      1593.00  40.   1593.00  59.   1593.00  69. 03012026
+GL  224   3    4       1593.0  40.    1593.0  59.    1593.0  69. 10012026
+GL  224   3    5       1593.0  40.    1593.0  59.    1593.0  69. 17012026
+GL  224   3    6       1593.0  40.    1593.0  59.    1593.0  69. 24012026
+& FEV/2026
+& Sem despacho antecipado
+GL  224   3    7          0.0            0.0            0.0      31012026
+GL  224   3    8          0.0            0.0            0.0      07022026
+GL  224   3    9          0.0            0.0            0.0      14022026

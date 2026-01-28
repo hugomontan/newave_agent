@@ -22,8 +22,6 @@ env/
 Thumbs.db
 
 # Projeto específico
-data/
-uploads/
 *.log
 
 # Frontend (na raiz)
