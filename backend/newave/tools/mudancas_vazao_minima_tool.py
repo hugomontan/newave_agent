@@ -1339,31 +1339,4 @@ class MudancasVazaoMinimaTool(NEWAVETool):
         Returns:
             String com descrição detalhada
         """
-        return """
-        Mudanças em vazão mínima. Análise de variações de VAZMIN/VAZMINT (Vazão Mínima) entre decks no modo multideck.
-        
-        IMPORTANTE: Esta tool retorna ambos os tipos de vazão mínima:
-        - VAZMIN: Vazão mínima sem período (valor fixo que se aplica a todo o horizonte)
-        - VAZMINT: Vazão mínima com período (valor que se aplica a um período específico)
-        
-        Quando o usuário consulta "vazão mínima", "mudanças vazão mínima" ou termos similares,
-        a tool retorna TODAS as mudanças de ambos os tipos (VAZMIN e VAZMINT), diferenciadas
-        no campo "tipo_vazao" de cada registro e claramente indicadas na descrição do resultado.
-        
-        Esta tool é especializada em:
-        - Identificar todas as mudanças de vazão mínima (VAZMIN e VAZMINT) entre dezembro e janeiro
-        - Diferenciar entre VAZMIN (sem período) e VAZMINT (com período)
-        - Ordenar mudanças por magnitude (maior variação primeiro)
-        - Classificar tipos de mudança (aumento, queda, novo, remocao)
-        - Retornar apenas as mudanças (não todos os registros)
-        
-        Queries que ativam esta tool (retornam ambos VAZMIN e VAZMINT):
-        - "mudanças vazão mínima" ou "mudancas vazao minima"
-        - "variação vazão mínima" ou "variacao vazao minima"
-        - "análise vazão mínima" ou "analise vazao minima"
-        - "mudanças vazmin" ou "mudancas vazmin"
-        - "mudanças vazmint" ou "mudancas vazmint"
-        - "vazão mínima" ou "vazao minima"
-        
-        Termos-chave: mudanças vazão mínima, variação vazão mínima, análise vazão mínima, mudancas vazao minima, variacao vazao minima, analise vazao minima, vazmin, vazmint, mudanças em vazões mínimas, variações de vazão mínima
-        """
+        return """Mudanças VAZMIN VAZMINT vazão mínima decks dezembro janeiro MODIF.DAT."""

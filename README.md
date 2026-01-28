@@ -417,8 +417,12 @@ O frontend está unificado e serve ambos os modelos:
 ## Variáveis de Ambiente
 
 Principais variáveis no `.env`:
-- `OPENAI_API_KEY` - Chave da API OpenAI
+- `OPENAI_API_KEY` - Chave da API OpenAI (pode ser a mesma chave do recurso Azure OpenAI)
 - `OPENAI_MODEL` - Modelo OpenAI a usar (padrão: gpt-4o-mini)
+- `OPENAI_EMBEDDING_MODEL` - Modelo/deployment de embeddings (padrão: text-embedding-3-small)
+- `AZURE_OPENAI_API_KEY` - Chave específica do recurso Azure OpenAI (se não definida, a aplicação usa `OPENAI_API_KEY`)
+- `AZURE_OPENAI_ENDPOINT` - Endpoint Azure OpenAI (ex.: `https://it-commodities.openai.azure.com/`)
+- `AZURE_OPENAI_API_VERSION` - Versão da API Azure OpenAI (ex.: `2024-02-01`)
 - `LANGFUSE_SECRET_KEY` - Chave secreta Langfuse (opcional)
 - `LANGFUSE_PUBLIC_KEY` - Chave pública Langfuse (opcional)
 - `LANGFUSE_HOST` - Host do Langfuse (opcional)

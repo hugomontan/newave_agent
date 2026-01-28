@@ -490,39 +490,5 @@ class CadicTool(NEWAVETool):
         """
         Retorna descrição para semantic matching.
         """
-        return """
-        Cargas e ofertas adicionais do arquivo C_ADIC.DAT. Valores extras somados ou subtraídos da demanda principal do sistema.
-        
-        IMPORTANTE: NÃO confundir com carga mensal principal (demanda base do sistema do SISTEMA.DAT).
-        
-        Cargas adicionais são valores POSITIVOS que AUMENTAM a demanda (somadas ao mercado).
-        Ofertas adicionais são valores NEGATIVOS que REDUZEM a demanda (abatidas do mercado).
-        
-        Queries específicas:
-        - "cargas adicionais por submercado"
-        - "ofertas adicionais do subsistema"
-        - "carga adicional do Sudeste"
-        - "oferta adicional do Sul"
-        - "cargas extras do submercado"
-        - "ofertas extras"
-        - "demanda adicional do subsistema"
-        - "carga adicional do subsistema 1"
-        - "oferta adicional do subsistema 2"
-        - "cargas adicionais de 2023"
-        - "ofertas adicionais em janeiro de 2024"
-        - "valores extras de carga"
-        - "dados do C_ADIC"
-        - "cadic"
-        - "carga adicional de ANDE"
-        - "carga adicional de CONS.ITAIPU"
-        - "carga adicional de MMGD SE"
-        - "qual a carga adicional de ande"
-        - "cargas adicionais de itaipu"
-        - "ofertas adicionais por razão"
-        - "ANDE"
-        
-        Termos-chave: cadic, c_adic, carga adicional, cargas adicionais, oferta adicional, ofertas adicionais, carga extra, ofertas extras, demanda adicional, valores extras, razão, ANDE, CONS.ITAIPU, MMGD.
-        
-        Unidade: MWmédio (megawatts médios).
-        """
+        return """Cargas adicionais ofertas adicionais C_ADIC.DAT ajustes incrementais demanda."""
 

@@ -263,17 +263,4 @@ class VariacaoReservatorioInicialTool(NEWAVETool):
         Returns:
             String com descrição detalhada
         """
-        return """
-        Volume inicial percentual (v.inic) por usina do CONFHD.DAT. Reservatório inicial das usinas hidrelétricas.
-        
-        Queries que ativam esta tool:
-        - "reservatório inicial por usina"
-        - "volume inicial por usina"
-        - "v.inic por usina"
-        - "reservatório inicial"
-        - "volume inicial percentual"
-        - "v.inic"
-        - "volume inicial"
-        
-        Termos-chave: v.inic, volume inicial, reservatório inicial, volume inicial percentual, reservatório inicial por usina.
-        """
+        return """Volume inicial percentual V.INIC reservatórios CONFHD.DAT usina hidrelétrica."""

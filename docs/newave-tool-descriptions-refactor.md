@@ -2,13 +2,46 @@
 
 Este documento apresenta a comparação **antes/depois** das descrições das tools NEWAVE, otimizadas para **matching por embedding** (não LLM textual).
 
+---
+
+## Configuração de Azure OpenAI para Embeddings
+
+Os embeddings usados pelo RAG e pelo matcher semântico agora são servidos via **Azure OpenAI**, utilizando o modelo configurado em `OPENAI_EMBEDDING_MODEL` (default `text-embedding-3-small`).
+
+### Variáveis de ambiente
+
+Para ambientes como a EC2 (produção/intranet), configure:
+
+- `OPENAI_API_KEY`: chave usada pela aplicação (pode ser a mesma chave do Azure).
+- `OPENAI_EMBEDDING_MODEL`: nome do deployment/modelo de embedding (ex.: `text-embedding-3-small`).
+- `AZURE_OPENAI_API_KEY`: chave do recurso Azure OpenAI (se não definida, a aplicação usa `OPENAI_API_KEY`).
+- `AZURE_OPENAI_ENDPOINT`: endpoint Azure, ex.: `https://it-commodities.openai.azure.com/`.
+- `AZURE_OPENAI_API_VERSION`: versão da API, ex.: `2024-02-01` (default se não configurada).
+
+O backend faz a validação dessa configuração na subida da API; se faltar endpoint ou chave, a aplicação falha cedo com mensagem clara, em vez de quebrar apenas na primeira query.
+
+### Exemplo de `.env` (desenvolvimento)
+
+```bash
+OPENAI_API_KEY="sua-chave-azure-ou-openai"
+OPENAI_EMBEDDING_MODEL="text-embedding-3-small"
+
+AZURE_OPENAI_API_KEY="sua-chave-azure"
+AZURE_OPENAI_ENDPOINT="https://it-commodities.openai.azure.com/"
+AZURE_OPENAI_API_VERSION="2024-02-01"
+```
+
+Em produção (EC2), recomenda-se definir as mesmas variáveis diretamente no ambiente (systemd, docker-compose, etc.), sem depender de `.env` no disco.
+
 ## Princípios da Otimização
 
-1. **Concisão**: 1-3 frases curtas em vez de parágrafos longos
-2. **Unicidade**: Palavras-chave exclusivas que diferenciam da tool vizinha
-3. **Fronteiras claras**: Explicitar o que a tool **NÃO** faz
-4. **Sem exemplos de query**: O `NEWAVE_QUERY_EXPANSIONS` já cuida de sinônimos
-5. **Sem instruções para LLM**: Embedding não interpreta "IMPORTANTE:" ou "SEMPRE deve..."
+O match é **semântico (embedding)**: similaridade cosseno entre vetores. Não há interpretação de frases, negações ou referências — só vetores e similaridade.
+
+1. **Apenas keywords positivos**: O que a tool **é** e **faz**. Sem "não é X", "não inclui Y" ou "(ver TOOL_Z)" — o embedding **não interpreta negação**; incluir "C_ADIC" numa descrição **aumenta** a similaridade com queries sobre C_ADIC.
+2. **Unicidade**: Palavras-chave exclusivas (arquivo, bloco, códigos como GTMIN, VAZMIN) que diferenciam o vetor da tool vizinha.
+3. **Concisão**: Poucas frases ou lista de termos; evitar repetição de sinônimos (dilui o vetor).
+4. **Sem exemplos de query**: O `NEWAVE_QUERY_EXPANSIONS` já cuida de sinônimos.
+5. **Sem instruções para LLM**: Embedding não interpreta "IMPORTANTE:", "SEMPRE deve..." ou contexto frasal ("Alterações por período; não é custo...").
 
 ---
 
@@ -29,8 +62,7 @@ Queries que ativam esta tool:
 
 ### Depois
 ```
-Carga mensal principal por submercado do bloco mercado_energia do SISTEMA.DAT.
-Demanda base do sistema elétrico; não inclui C_ADIC nem usinas não simuladas.
+Carga mensal principal submercado mercado_energia SISTEMA.DAT demanda base.
 ```
 
 ### Justificativa
@@ -38,8 +70,8 @@ Demanda base do sistema elétrico; não inclui C_ADIC nem usinas não simuladas.
 |----------|---------|
 | Repetição de sinônimos ("carga", "demanda", "consumo") | Mantém apenas "carga mensal principal" + "demanda base" |
 | Lista de queries redundante | Removida (query expansion já cobre) |
-| Não diferencia de `CadicTool` e `UsinasNaoSimuladasTool` | Fronteira explícita: "não inclui C_ADIC nem usinas não simuladas" |
-| Não menciona arquivo/bloco fonte | Especifica `SISTEMA.DAT` + `mercado_energia` |
+| "não inclui C_ADIC..." | **Removido**: embedding não interpreta negação; incluir "C_ADIC" aumenta similaridade com queries sobre C_ADIC |
+| Diferenciação | Keywords únicos: `mercado_energia`, `SISTEMA.DAT` (Cadic usa C_ADIC, UsinasNaoSimuladas usa `geracao_usinas_nao_simuladas`) |
 
 ---
 
@@ -62,17 +94,16 @@ Queries específicas:
 
 ### Depois
 ```
-Cargas adicionais e ofertas adicionais do C_ADIC.DAT.
-Ajustes incrementais à demanda (positivos = carga, negativos = oferta); não é a carga mensal principal.
+Cargas adicionais ofertas adicionais C_ADIC.DAT ajustes incrementais demanda.
 ```
 
 ### Justificativa
 | Problema | Solução |
 |----------|---------|
 | "IMPORTANTE:" é instrução de LLM, não semântica | Removido |
-| Explicação longa de positivo/negativo | Condensado em parênteses |
+| "não é carga mensal principal" | **Removido**: negação não funciona em embedding |
 | Lista de queries | Removida |
-| Boa fronteira com carga mensal | Mantida de forma curta |
+| Diferenciação | Keyword único: `C_ADIC.DAT` (CargaMensal usa `mercado_energia` SISTEMA.DAT) |
 
 ---
 
@@ -93,17 +124,16 @@ Queries que ativam esta tool:
 
 ### Depois
 ```
-Geração de usinas não simuladas do bloco geracao_usinas_nao_simuladas do SISTEMA.DAT.
-Pequenas centrais (PCH, eólica, solar, biomassa) agregadas por subsistema e fonte; não é carga nem demanda.
+Geração usinas não simuladas geracao_usinas_nao_simuladas SISTEMA.DAT PCH eólica solar biomassa subsistema fonte.
 ```
 
 ### Justificativa
 | Problema | Solução |
 |----------|---------|
 | Não especifica bloco do SISTEMA.DAT | Especifica `geracao_usinas_nao_simuladas` |
-| Pode confundir com carga (ambas no SISTEMA.DAT) | Fronteira: "não é carga nem demanda" |
+| "não é carga nem demanda" | **Removido**: negação não funciona em embedding |
 | Lista de queries | Removida |
-| Fontes não listadas | Adiciona exemplos de fontes (PCH, eólica, solar, biomassa) |
+| Diferenciação | Keywords únicos: `geracao_usinas_nao_simuladas`, PCH, eólica, solar, biomassa (CargaMensal usa `mercado_energia`) |
 
 ---
 
@@ -124,8 +154,7 @@ Queries que ativam esta tool:
 
 ### Depois
 ```
-Custos de classes térmicas (CVU) dos blocos usinas e modificacoes do CLAST.DAT.
-Valores estruturais e conjunturais de custo variável unitário; não é potência nem geração mínima.
+Custos classes térmicas CVU CLAST.DAT usinas modificacoes custo variável unitário.
 ```
 
 ### Justificativa
@@ -133,7 +162,8 @@ Valores estruturais e conjunturais de custo variável unitário; não é potênc
 |----------|---------|
 | "IMPORTANTE: SEMPRE deve..." é instrução de comportamento | Removido (lógica fica no código) |
 | Não menciona blocos fonte | Especifica `usinas` e `modificacoes` |
-| Pode confundir com EXPT (também trata térmicas) | Fronteira: "não é potência nem geração mínima" |
+| "não é potência nem geração mínima" | **Removido**: negação não funciona em embedding |
+| Diferenciação | Keywords únicos: CVU, CLAST.DAT (EXPT usa POTEF/GTMIN, TERM usa cadastro) |
 
 ---
 
@@ -154,16 +184,15 @@ Queries que ativam esta tool:
 
 ### Depois
 ```
-Modificações temporárias de térmicas do EXPT.DAT (POTEF, GTMIN, FCMAX, IPTER, TEIFT).
-Alterações operacionais por período; não é CVU/custo (ver CLAST) nem cadastro fixo (ver TERM).
+Modificações temporárias térmicas EXPT.DAT POTEF GTMIN FCMAX IPTER TEIFT período.
 ```
 
 ### Justificativa
 | Problema | Solução |
 |----------|---------|
 | "Operação térmica" genérico demais | Especifica códigos: POTEF, GTMIN, FCMAX, IPTER, TEIFT |
-| Pode confundir com CLAST (custos) e TERM (cadastro) | Fronteiras explícitas |
-| Não menciona que é por período | Adiciona "por período" |
+| "não é CVU (ver CLAST) nem cadastro (ver TERM)" | **Removido**: embedding não interpreta negação nem "ver X"; incluir CVU/CLAST/TERM **aumentaria** similaridade com queries erradas |
+| Diferenciação | Keywords únicos: EXPT.DAT, POTEF, GTMIN, FCMAX, IPTER, TEIFT (CLAST = CVU, TERM = cadastro) |
 
 ---
 
@@ -183,16 +212,15 @@ Queries que ativam esta tool:
 
 ### Depois
 ```
-Modificações temporárias de hídricas do MODIF.DAT (VOLMIN, VOLMAX, VAZMIN, VAZMAX, TURBM, NUMMAQ, etc.).
-Alterações operacionais por período; não é cadastro fixo (ver HIDR) nem configuração (ver CONFHD).
+Modificações temporárias hídricas MODIF.DAT VOLMIN VOLMAX VAZMIN VAZMAX TURBM NUMMAQ período.
 ```
 
 ### Justificativa
 | Problema | Solução |
 |----------|---------|
 | "Modificações hídricas" genérico | Especifica códigos: VOLMIN, VOLMAX, VAZMIN, VAZMAX, TURBM, NUMMAQ |
-| Pode confundir com HIDR (cadastro) e CONFHD (configuração) | Fronteiras explícitas |
-| Não menciona que é por período | Adiciona "por período" |
+| "não é cadastro (ver HIDR) nem configuração (ver CONFHD)" | **Removido**: embedding não interpreta; incluir HIDR/CONFHD aumentaria similaridade com queries erradas |
+| Diferenciação | Keywords únicos: MODIF.DAT, VOLMIN, VOLMAX, VAZMIN, etc. (HIDR = cadastro, CONFHD = configuração) |
 
 ---
 
@@ -211,16 +239,15 @@ Queries que ativam esta tool:
 
 ### Depois
 ```
-Limites de intercâmbio direto entre pares de subsistemas do bloco limites_intercambio do SISTEMA.DAT.
-Capacidade máxima e mínima de interligação par-a-par; não é agrupamento combinado (ver AGRINT).
+Limites intercâmbio subsistemas limites_intercambio SISTEMA.DAT par-a-par interligação capacidade.
 ```
 
 ### Justificativa
 | Problema | Solução |
 |----------|---------|
-| Repetição de sinônimos | Consolida em "intercâmbio direto" + "par-a-par" |
-| Pode confundir com AGRINT (agrupamentos) | Fronteira explícita: "não é agrupamento combinado" |
-| Não menciona bloco fonte | Especifica `limites_intercambio` |
+| Repetição de sinônimos | Consolida em "intercâmbio", "par-a-par", "interligação" |
+| "não é agrupamento (ver AGRINT)" | **Removido**: negação e "ver X" não funcionam em embedding |
+| Diferenciação | Keywords únicos: `limites_intercambio`, SISTEMA.DAT, par-a-par (AGRINT usa AGRINT.DAT, agrupamentos) |
 
 ---
 
@@ -239,16 +266,15 @@ Queries que ativam esta tool:
 
 ### Depois
 ```
-Agrupamentos de intercâmbio (restrições lineares combinadas) do AGRINT.DAT.
-Limites de soma/diferença de múltiplas interligações; não é limite par-a-par simples (ver SISTEMA.DAT limites_intercambio).
+Agrupamentos intercâmbio AGRINT.DAT restrições lineares combinadas soma diferença múltiplas interligações.
 ```
 
 ### Justificativa
 | Problema | Solução |
 |----------|---------|
 | "Corredores de transmissão" pode confundir | Removido, foca em "agrupamentos" |
-| Pode confundir com LimitesIntercambioTool | Fronteira: "não é limite par-a-par simples" |
-| Não explica o que é agrupamento | Adiciona "soma/diferença de múltiplas interligações" |
+| "não é limite par-a-par (ver SISTEMA...)" | **Removido**: negação e "ver X" não funcionam em embedding |
+| Diferenciação | Keywords únicos: AGRINT.DAT, agrupamentos, soma/diferença (LimitesIntercambio usa limites_intercambio, par-a-par) |
 
 ---
 
@@ -267,16 +293,15 @@ Queries que ativam esta tool:
 
 ### Depois
 ```
-Séries históricas de vazões naturais afluentes do VAZOES.DAT.
-Vazões mensais de postos fluviométricos; não é vazão mínima operacional (ver MODIF VAZMIN).
+Vazões históricas postos fluviométricos VAZOES.DAT séries naturais afluentes mensais.
 ```
 
 ### Justificativa
 | Problema | Solução |
 |----------|---------|
-| Repetição: "vazões históricas", "séries históricas", "afluências históricas" | Consolida em uma frase |
-| Pode confundir com VAZMIN do MODIF | Fronteira explícita |
-| Não menciona granularidade | Adiciona "mensais" |
+| Repetição: "vazões históricas", "séries históricas", "afluências históricas" | Consolida em termos únicos |
+| "não é vazão mínima (ver MODIF)" | **Removido**: negação não funciona em embedding |
+| Diferenciação | Keywords únicos: VAZOES.DAT, históricas, postos fluviométricos, afluentes (MODIF = VAZMIN temporal) |
 
 ---
 
@@ -295,16 +320,15 @@ Queries que ativam esta tool:
 
 ### Depois
 ```
-Cadastro fixo de usinas hidrelétricas do HIDR.DAT (produtibilidade, volumes, cotas, perdas).
-Dados estruturais permanentes; não é configuração variável (ver CONFHD) nem modificação temporária (ver MODIF).
+Cadastro usinas hidrelétricas HIDR.DAT produtibilidade volumes cotas perdas.
 ```
 
 ### Justificativa
 | Problema | Solução |
 |----------|---------|
 | "Informações cadastrais" genérico | Especifica: produtibilidade, volumes, cotas, perdas |
-| Pode confundir com CONFHD e MODIF | Fronteiras explícitas |
-| Não diferencia fixo vs variável | Adiciona "estruturais permanentes" |
+| "não é configuração (ver CONFHD) nem modificação (ver MODIF)" | **Removido**: negação e "ver X" não funcionam em embedding |
+| Diferenciação | Keywords únicos: HIDR.DAT, cadastro, produtibilidade (CONFHD = configuração/REE, MODIF = modificações temporárias) |
 
 ---
 
@@ -324,16 +348,15 @@ Queries que ativam esta tool:
 
 ### Depois
 ```
-Configuração operacional de hídricas do CONFHD.DAT (REE, volume inicial, status, posto).
-Atribuições de configuração por usina; não é cadastro físico (ver HIDR) nem modificação temporal (ver MODIF).
+Configuração usinas hidrelétricas CONFHD.DAT REE volume inicial status posto.
 ```
 
 ### Justificativa
 | Problema | Solução |
 |----------|---------|
 | "Configuração" genérico | Especifica: REE, volume inicial, status, posto |
-| Pode confundir com HIDR (cadastro) e MODIF | Fronteiras explícitas |
-| "Dados de configuração do sistema hidrelétrico" redundante | Removido |
+| "não é cadastro (ver HIDR) nem modificação (ver MODIF)" | **Removido**: negação e "ver X" não funcionam em embedding |
+| Diferenciação | Keywords únicos: CONFHD.DAT, configuração, REE, volume inicial (HIDR = cadastro, MODIF = modificações) |
 
 ---
 
@@ -353,16 +376,15 @@ Queries que ativam esta tool:
 
 ### Depois
 ```
-Desvios de água para usos consuntivos do DSVAGUA.DAT.
-Vazão desviada por usina hidrelétrica e estágio; não é vazão mínima (MODIF) nem vazão histórica (VAZOES).
+Desvios água usos consuntivos DSVAGUA.DAT usina estágio.
 ```
 
 ### Justificativa
 | Problema | Solução |
 |----------|---------|
-| Pode confundir com VAZMIN e VAZOES | Fronteiras explícitas |
+| "não é vazão mínima (MODIF) nem vazão histórica (VAZOES)" | **Removido**: negação não funciona em embedding; citar MODIF/VAZOES aumentaria similaridade errada |
 | Lista de queries | Removida |
-| Boa descrição original | Mantida essência, adicionada diferenciação |
+| Diferenciação | Keywords únicos: DSVAGUA.DAT, desvios, usos consuntivos, estágio (VAZOES = históricas, MODIF = VAZMIN) |
 
 ---
 
@@ -382,16 +404,15 @@ Queries que ativam esta tool:
 
 ### Depois
 ```
-Restrições elétricas do arquivo restricao-eletrica.csv.
-Fórmulas, horizontes e limites de restrições do modelo; não é limite de intercâmbio (ver SISTEMA/AGRINT).
+Restrições elétricas restricao-eletrica.csv fórmulas horizontes limites modelo NEWAVE.
 ```
 
 ### Justificativa
 | Problema | Solução |
 |----------|---------|
-| Pode confundir com limites de intercâmbio | Fronteira explícita |
+| "não é limite de intercâmbio (ver SISTEMA/AGRINT)" | **Removido**: negação e "ver X" não funcionam em embedding |
 | Lista de queries | Removida |
-| Não especifica conteúdo | Adiciona "fórmulas, horizontes e limites" |
+| Diferenciação | Keywords únicos: restricao-eletrica.csv, fórmulas, horizontes, restrições (intercâmbio = SISTEMA/AGRINT) |
 
 ---
 
@@ -411,16 +432,15 @@ Queries que ativam esta tool:
 
 ### Depois
 ```
-Cadastro fixo de usinas termoelétricas do TERM.DAT (potência nominal, fator capacidade, TEIF, GTMIN base).
-Dados estruturais permanentes; não é modificação temporal (ver EXPT) nem custo (ver CLAST).
+Cadastro usinas termoelétricas TERM.DAT potência nominal fator capacidade TEIF GTMIN.
 ```
 
 ### Justificativa
 | Problema | Solução |
 |----------|---------|
-| "Dados estruturais e operacionais básicos" genérico | Especifica: potência nominal, fator capacidade, TEIF, GTMIN base |
-| Pode confundir com EXPT e CLAST | Fronteiras explícitas |
-| Lista de queries | Removida |
+| "Dados estruturais e operacionais básicos" genérico | Especifica: potência nominal, fator capacidade, TEIF, GTMIN |
+| "não é modificação (ver EXPT) nem custo (ver CLAST)" | **Removido**: negação e "ver X" não funcionam em embedding |
+| Diferenciação | Keywords únicos: TERM.DAT, cadastro, potência nominal, TEIF (EXPT = modificações, CLAST = CVU) |
 
 ---
 
@@ -434,15 +454,15 @@ e compara os resultados lado a lado com gráfico comparativo.
 
 ### Depois
 ```
-Comparação multi-deck: executa qualquer tool em dois decks (dezembro e janeiro) e compara resultados.
-Análise lado-a-lado de diferenças entre versões de deck; não é análise de mudanças específicas (ver MudancasGTMIN, MudancasVAZMIN).
+Comparação multi-deck dois decks dezembro janeiro compara resultados lado a lado.
 ```
 
 ### Justificativa
 | Problema | Solução |
 |----------|---------|
-| Descrição curta e boa, mas pode confundir com tools de mudanças | Fronteira: "não é análise de mudanças específicas" |
+| "não é análise de mudanças específicas (ver MudancasGTMIN...)" | **Removido**: negação e "ver X" não funcionam em embedding; citar MudancasGTMIN/VAZMIN aumentaria similaridade errada |
 | "Gráfico comparativo" é detalhe de implementação | Removido |
+| Diferenciação | Keywords únicos: comparação multi-deck, dois decks, lado a lado (MudancasGTMIN/VAZMIN = mudanças GTMIN/VAZMIN entre decks) |
 
 ---
 
@@ -462,16 +482,15 @@ Esta tool é especializada em:
 
 ### Depois
 ```
-Mudanças de GTMIN (geração térmica mínima) entre decks dezembro/janeiro.
-Diferenças de GTMIN do EXPT.DAT entre versões; não é comparação genérica (ver MultiDeckComparisonTool).
+Mudanças GTMIN geração térmica mínima decks dezembro janeiro EXPT.DAT.
 ```
 
 ### Justificativa
 | Problema | Solução |
 |----------|---------|
 | Lista de funcionalidades é detalhe de implementação | Removida |
-| Pode confundir com MultiDeckComparisonTool | Fronteira explícita |
-| Não menciona arquivo fonte | Adiciona EXPT.DAT |
+| "não é comparação genérica (ver MultiDeckComparisonTool)" | **Removido**: negação e "ver X" não funcionam em embedding |
+| Diferenciação | Keywords únicos: GTMIN, EXPT.DAT, geração térmica mínima (MultiDeck = comparação genérica, MudancasVAZMIN = VAZMIN) |
 
 ---
 
@@ -492,17 +511,16 @@ a tool retorna TODAS as mudanças de ambos os tipos (VAZMIN e VAZMINT), diferenc
 
 ### Depois
 ```
-Mudanças de VAZMIN e VAZMINT (vazão mínima) entre decks dezembro/janeiro.
-Diferenças de vazão mínima do MODIF.DAT entre versões; não é comparação genérica (ver MultiDeckComparisonTool).
+Mudanças VAZMIN VAZMINT vazão mínima decks dezembro janeiro MODIF.DAT.
 ```
 
 ### Justificativa
 | Problema | Solução |
 |----------|---------|
 | "IMPORTANTE:" é instrução de LLM | Removido |
-| Explicação longa de VAZMIN vs VAZMINT | Condensado (ambos mencionados) |
-| Pode confundir com MultiDeckComparisonTool | Fronteira explícita |
-| Não menciona arquivo fonte | Adiciona MODIF.DAT |
+| Explicação longa de VAZMIN vs VAZMINT | Condensado (ambos mencionados como keywords) |
+| "não é comparação genérica (ver MultiDeck...)" | **Removido**: negação e "ver X" não funcionam em embedding |
+| Diferenciação | Keywords únicos: VAZMIN, VAZMINT, MODIF.DAT, vazão mínima (MultiDeck = comparação genérica, MudancasGTMIN = GTMIN) |
 
 ---
 
@@ -522,16 +540,15 @@ Queries que ativam esta tool:
 
 ### Depois
 ```
-Volume inicial percentual (V.INIC) de reservatórios do CONFHD.DAT.
-Nível inicial de armazenamento por usina hidrelétrica; não é volume max/min (ver HIDR) nem modificação temporal (ver MODIF).
+Volume inicial percentual V.INIC reservatórios CONFHD.DAT usina hidrelétrica.
 ```
 
 ### Justificativa
 | Problema | Solução |
 |----------|---------|
-| Pode confundir com HIDR (volumes estruturais) e MODIF (VOLMIN/VOLMAX temporal) | Fronteiras explícitas |
+| "não é volume max/min (ver HIDR) nem modificação (ver MODIF)" | **Removido**: negação e "ver X" não funcionam em embedding |
 | Lista de queries | Removida |
-| "Reservatório inicial" redundante com "volume inicial" | Consolida |
+| Diferenciação | Keywords únicos: V.INIC, volume inicial percentual, CONFHD.DAT (HIDR = cadastro, MODIF = VOLMIN/VOLMAX temporal) |
 
 ---
 
@@ -541,15 +558,17 @@ Nível inicial de armazenamento por usina hidrelétrica; não é volume max/min 
 |-----------------|--------|
 | Listas de "Queries que ativam esta tool" | `NEWAVE_QUERY_EXPANSIONS` já faz expansão de sinônimos |
 | "IMPORTANTE:", "SEMPRE deve...", "NÃO confundir" | São instruções para LLM, não semântica para embedding |
+| **"não é X", "não inclui Y", "(ver TOOL_Z)"** | **Embedding não interpreta negação nem referências**; incluir "C_ADIC" numa descrição **aumenta** a similaridade com queries sobre C_ADIC — efeito oposto ao desejado |
 | Repetição de sinônimos na mesma frase | Dilui o vetor de embedding |
 | Detalhes de implementação (ordenação, classificação) | Embedding não precisa saber como a tool funciona internamente |
+| Frases contextuais ("Alterações por período; não é custo...") | Match é só similaridade cosseno entre vetores; não há interpretação de frases |
 
 | Padrão Adicionado | Motivo |
 |-------------------|--------|
-| Arquivo + bloco/objeto fonte | Diferencia tools que usam mesmo arquivo (ex: SISTEMA.DAT) |
-| Códigos específicos (GTMIN, POTEF, VAZMIN) | Keywords únicas para matching preciso |
-| "não é X (ver TOOL_Y)" | Fronteira clara para embedding não confundir tools similares |
-| Granularidade (mensal, por período, permanente) | Diferencia dados temporais de dados fixos |
+| **Apenas keywords positivos** | O que a tool **é** e **faz**; maximiza distância entre vetores de tools diferentes |
+| Arquivo + bloco/objeto fonte | Diferencia tools que usam mesmo arquivo (ex: SISTEMA.DAT → `mercado_energia` vs `geracao_usinas_nao_simuladas`) |
+| Códigos específicos (GTMIN, POTEF, VAZMIN, VOLMIN, etc.) | Keywords únicas para matching preciso; diferenciam EXPT vs CLAST vs TERM, MODIF vs HIDR vs CONFHD |
+| Granularidade (mensal, período) quando relevante | Diferencia dados temporais de dados fixos |
 
 ---
 

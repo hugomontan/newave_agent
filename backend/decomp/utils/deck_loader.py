@@ -405,10 +405,10 @@ def load_deck(deck_name: str) -> Path:
             f"Deck {deck_name} não encontrado. "
             f"Procurado em: {decks_dir / deck_name} e {decks_dir / f'{deck_name}.zip'}"
         )
-    
+
     # O diretório de extração deve incluir a semana no nome para evitar conflitos
     extract_path = decks_dir / f"{deck_name}_extracted"
-    
+
     # Extrair se ainda não foi extraído
     if not extract_path.exists():
         extract_path.mkdir(parents=True, exist_ok=True)
@@ -422,11 +422,29 @@ def load_deck(deck_name: str) -> Path:
             for item in inner_dir.iterdir():
                 shutil.move(str(item), str(extract_path / item.name))
             inner_dir.rmdir()
-    
+
     # Verificar se é um deck DECOMP válido
     if not is_decomp_deck(extract_path):
         raise ValueError(f"Deck {deck_name} não contém arquivo dadger.rv* (não é um deck DECOMP válido)")
-    
+
+    # Aquecer caches de Dadger e Dadgnl sempre que um deck for carregado
+    try:
+        # Imports locais para evitar dependências cíclicas
+        from backend.decomp.utils.dadger_cache import get_cached_dadger
+        from backend.decomp.utils.dadgnl_cache import get_cached_dadgnl
+
+        deck_path_str = str(extract_path)
+
+        # Aquecer Dadger (se existir)
+        _ = get_cached_dadger(deck_path_str)
+
+        # Aquecer Dadgnl (se existir)
+        _ = get_cached_dadgnl(deck_path_str)
+
+    except Exception as e:
+        # Não deve quebrar o carregamento do deck por falhas de cache
+        print(f"[DECK LOADER] Erro ao aquecer cache para {deck_name}: {e}")
+
     return extract_path
 
 

@@ -2,21 +2,18 @@
 Vector store para RAG do DECOMP.
 Usa ChromaDB com collection separada para DECOMP.
 """
-from langchain_openai import OpenAIEmbeddings
 from langchain_chroma import Chroma
 from langchain_core.documents import Document
-from backend.decomp.config import OPENAI_API_KEY, OPENAI_EMBEDDING_MODEL, DECOMP_CHROMA_DIR as CHROMA_DIR
+from backend.decomp.config import DECOMP_CHROMA_DIR as CHROMA_DIR
+from backend.core.azure_openai import get_azure_embeddings
 
 
 _vectorstore = None
 
 
-def get_embeddings() -> OpenAIEmbeddings:
+def get_embeddings():
     """Retorna o modelo de embeddings configurado."""
-    return OpenAIEmbeddings(
-        api_key=OPENAI_API_KEY,
-        model=OPENAI_EMBEDDING_MODEL
-    )
+    return get_azure_embeddings()
 
 
 def get_vectorstore() -> Chroma:

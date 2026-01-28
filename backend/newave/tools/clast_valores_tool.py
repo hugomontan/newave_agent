@@ -443,39 +443,4 @@ class ClastValoresTool(NEWAVETool):
         Returns:
             String com descrição detalhada
         """
-        return """
-        Custos de classes térmicas. Valores estruturais e conjunturais do CLAST. Custos operacionais das classes térmicas.
-        
-        IMPORTANTE: Quando a query mencionar CVU (Custo Variável Unitário) ou "custo variável unitário", 
-        a resposta SEMPRE deve retornar dados de TODOS OS ANOS disponíveis, não apenas de um ano específico.
-        Mesmo que a query mencione um ano específico (ex: "CVU da classe ANGRA 1 para 2025"), 
-        a resposta deve incluir todos os anos disponíveis no arquivo.
-        
-        Queries que ativam esta tool:
-        - "quais são os custos das classes térmicas"
-        - "custos das classes térmicas"
-        - "custo da classe térmica"
-        - "valores estruturais do CLAST"
-        - "valores estruturais"
-        - "valores conjunturais do CLAST"
-        - "valores conjunturais"
-        - "CVU da classe ANGRA 1" (retorna TODOS OS ANOS)
-        - "CVU da classe 211" (retorna TODOS OS ANOS)
-        - "custo variável unitário" (retorna TODOS OS ANOS)
-        - "custos base das classes térmicas"
-        - "custos operacionais das classes térmicas"
-        - "modificações sazonais da classe 211"
-        - "modificações sazonais"
-        - "ajustes sazonais de custos"
-        - "custos conjunturais das classes térmicas"
-        - "classes térmicas com custo zero"
-        - "custos por tipo de combustível"
-        - "preços de operação das classes térmicas"
-        - "custos de geração das classes térmicas"
-        - "quais classes têm os menores custos"
-        - "custos base das termelétricas"
-        - "dados do CLAST"
-        - "CVU de curto prazo da classe ANGRA 1" (retorna TODOS OS ANOS)
-        
-        Termos-chave: clast, CVU, classe térmica, classes térmicas, custo térmico, custos térmicos, valor estrutural, valores estruturais, valor conjuntural, valores conjunturais, custos base, custos operacionais, CVU, custo variável unitário, preços de operação, custos de geração, modificação sazonal, modificações sazonais.
-        """
+        return """Custos classes térmicas CVU CLAST.DAT usinas modificacoes custo variável unitário."""

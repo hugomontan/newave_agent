@@ -620,5 +620,4 @@ class MultiDeckComparisonTool(NEWAVETool):
     
     def get_description(self) -> str:
         """Retorna descrição da tool."""
-        return """Tool que executa outras tools em dois decks (dezembro e janeiro) 
-        e compara os resultados lado a lado com gráfico comparativo."""
+        return """Comparação multi-deck dois decks dezembro janeiro compara resultados lado a lado."""

@@ -740,25 +740,5 @@ class VazoesTool(NEWAVETool):
         Returns:
             String com descrição detalhada
         """
-        return """
-        Vazões históricas de postos fluviométricos. Vazões naturais afluentes. Séries históricas de vazões. Afluências históricas.
-        
-        Queries que ativam esta tool:
-        - "vazões históricas do posto 1"
-        - "vazão histórica de Itaipu"
-        - "vazões da usina Furnas"
-        - "vazão do posto 15"
-        - "série histórica de vazões"
-        - "vazões naturais afluentes"
-        - "afluências históricas"
-        - "vazão histórica da usina Tucurui"
-        - "vazões do posto fluviométrico 42"
-        - "histórico de vazões do posto 10"
-        - "vazões de Itaipu"
-        - "afluência de Furnas"
-        - "vazão natural do posto 5"
-        - "vazões históricas das usinas"
-        
-        Termos-chave: vazão, vazões, vazão histórica, vazões históricas, posto fluviométrico, postos fluviométricos, vazão natural, vazões naturais, afluência, afluências, série histórica de vazões, histórico de vazões.
-        """
+        return """Vazões históricas postos fluviométricos VAZOES.DAT séries naturais afluentes mensais."""
 

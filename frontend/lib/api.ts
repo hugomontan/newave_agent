@@ -6,6 +6,9 @@ const NEWAVE_API_URL = `${API_URL}/api/newave`;
 // Funções DECOMP
 const DECOMP_API_URL = `${API_URL}/api/decomp`;
 
+// Funções DESSEM
+const DESSEM_API_URL = `${API_URL}/api/dessem`;
+
 export interface QueryResponse {
   session_id: string;
   query: string;
@@ -336,8 +339,11 @@ export async function* sendQueryStream(
   }
 }
 
-export async function getSession(sessionId: string, model: "newave" | "decomp" = "newave"): Promise<SessionInfo> {
-  const apiUrl = model === "decomp" ? `${DECOMP_API_URL}` : NEWAVE_API_URL;
+export async function getSession(sessionId: string, model: "newave" | "decomp" | "dessem" = "newave"): Promise<SessionInfo> {
+  const apiUrl =
+    model === "decomp" ? `${DECOMP_API_URL}` :
+    model === "dessem" ? `${DESSEM_API_URL}` :
+    NEWAVE_API_URL;
   const response = await fetch(`${apiUrl}/sessions/${sessionId}`);
 
   if (!response.ok) {
@@ -348,8 +354,11 @@ export async function getSession(sessionId: string, model: "newave" | "decomp" =
   return response.json();
 }
 
-export async function deleteSession(sessionId: string, model: "newave" | "decomp" = "newave"): Promise<void> {
-  const apiUrl = model === "decomp" ? `${DECOMP_API_URL}` : NEWAVE_API_URL;
+export async function deleteSession(sessionId: string, model: "newave" | "decomp" | "dessem" = "newave"): Promise<void> {
+  const apiUrl =
+    model === "decomp" ? `${DECOMP_API_URL}` :
+    model === "dessem" ? `${DESSEM_API_URL}` :
+    NEWAVE_API_URL;
   const response = await fetch(`${apiUrl}/sessions/${sessionId}`, {
     method: "DELETE",
   });
@@ -600,6 +609,142 @@ export async function loadDecompDeckFromRepo(deckName: string): Promise<UploadRe
  */
 export async function initDecompComparison(selectedDecks?: string[]): Promise<ComparisonInitResponse> {
   const response = await fetch(`${DECOMP_API_URL}/init-comparison`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      selected_decks: selectedDecks,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || "Erro ao inicializar comparação");
+  }
+
+  return response.json();
+}
+
+// =====================
+// APIs para DESSEM
+// =====================
+
+export async function uploadDessemDeck(file: File): Promise<UploadResponse> {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const response = await fetch(`${DESSEM_API_URL}/upload`, {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || "Erro ao fazer upload");
+  }
+
+  return response.json();
+}
+
+export async function* queryDessemStream(
+  sessionId: string,
+  query: string,
+  analysisMode?: "single" | "comparison"
+): AsyncGenerator<StreamEvent> {
+  const response = await fetch(`${DESSEM_API_URL}/query/stream`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      session_id: sessionId,
+      query: query,
+      analysis_mode: analysisMode || "single",
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || "Erro ao processar query");
+  }
+
+  const reader = response.body?.getReader();
+  if (!reader) {
+    throw new Error("Streaming não suportado");
+  }
+
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+
+    buffer = lines.pop() || "";
+
+    for (const line of lines) {
+      if (line.startsWith("data: ")) {
+        try {
+          const data = JSON.parse(line.slice(6));
+          yield data as StreamEvent;
+        } catch (e) {
+          console.error("[SSE] Erro ao parsear evento:", e);
+        }
+      }
+    }
+  }
+}
+
+export async function reindexDessemDocs(): Promise<{ documents_count: number; message: string }> {
+  const response = await fetch(`${DESSEM_API_URL}/index`, {
+    method: "POST",
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || "Erro ao reindexar");
+  }
+
+  return response.json();
+}
+
+export async function listAvailableDessemDecks(): Promise<DecksListResponse> {
+  const url = `${DESSEM_API_URL}/decks/list`;
+  const response = await fetch(url);
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || "Erro ao listar decks");
+  }
+
+  return response.json();
+}
+
+export async function loadDessemDeckFromRepo(deckName: string): Promise<UploadResponse> {
+  const response = await fetch(`${DESSEM_API_URL}/load-deck`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      deck_name: deckName,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || "Erro ao carregar deck");
+  }
+
+  return response.json();
+}
+
+export async function initDessemComparison(selectedDecks?: string[]): Promise<ComparisonInitResponse> {
+  const response = await fetch(`${DESSEM_API_URL}/init-comparison`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

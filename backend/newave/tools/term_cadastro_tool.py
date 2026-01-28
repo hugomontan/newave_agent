@@ -462,46 +462,5 @@ class TermCadastroTool(NEWAVETool):
         Returns:
             String com descrição detalhada
         """
-        return """
-        Cadastro de usinas termoelétricas. Dados estruturais e operacionais básicos das usinas termoelétricas do TERM.DAT.
-        
-        Queries que ativam esta tool:
-        - "dados da usina térmica 1"
-        - "informações cadastrais da usina térmica ANGRA 1"
-        - "cadastro da usina térmica X"
-        - "características da usina térmica Y"
-        - "potência efetiva da usina térmica"
-        - "geração mínima da usina térmica"
-        - "fator de capacidade máximo da térmica"
-        - "indisponibilidade programada da térmica"
-        - "taxa de indisponibilidade forçada"
-        - "dados estruturais da usina térmica"
-        - "informações do term.dat da usina"
-        - "potef da usina"
-        - "fcmax da térmica"
-        - "teif da usina"
-        - "ip da térmica"
-        
-        Esta tool consulta o arquivo TERM.DAT e retorna todas as informações cadastrais disponíveis sobre uma usina térmica específica, incluindo:
-        - Informações básicas (código, nome)
-        - Potência efetiva (POT) - MW
-        - Fator de capacidade máximo (FCMX) - %
-        - Taxa equivalente de indisponibilidade forçada (TEIF) - %
-        - Indisponibilidade programada (IP) - %
-        - Geração mínima mensal do primeiro ano (GTMIN) - 12 valores (JAN a DEZ) - MW
-        - Geração mínima para anos seguintes (D+ ANOS) - 2 valores - MW
-        
-        IMPORTANTE: 
-        - TERM.DAT contém os valores PADRÃO/PERSISTENTES das características das usinas térmicas
-        - Modificações temporárias são definidas no EXPT.DAT
-        - Para períodos não declarados no EXPT.DAT, os valores do TERM.DAT são utilizados
-        
-        A tool identifica automaticamente a usina mencionada na query através de matching inteligente:
-        - Busca por código numérico explícito
-        - Busca por nome completo da usina
-        - Busca por similaridade de strings
-        - Busca por palavras-chave do nome
-        
-        Termos-chave: term.dat, cadastro térmica, informações cadastrais térmicas, dados cadastrais térmicas, características da usina térmica, potência efetiva, geração mínima, fator de capacidade máximo, indisponibilidade programada, indisponibilidade forçada, potef, fcmax, teif, ip.
-        """
+        return """Cadastro usinas termoelétricas TERM.DAT potência nominal fator capacidade TEIF GTMIN."""
 

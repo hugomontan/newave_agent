@@ -980,22 +980,4 @@ class MudancasGeracoesTermicasTool(NEWAVETool):
         Returns:
             String com descrição detalhada
         """
-        return """
-        Mudanças em gerações térmicas. Análise de variações de GTMIN (Geração Térmica Mínima) entre decks no modo multideck.
-        
-        Esta tool é especializada em:
-        - Identificar todas as mudanças de GTMIN entre dezembro e janeiro
-        - Ordenar mudanças por magnitude (maior variação primeiro)
-        - Classificar tipos de mudança (alterado, novo_registro, removido)
-        - Retornar apenas as mudanças (não todos os registros)
-        
-        Queries que ativam esta tool:
-        - "mudanças gtmin" ou "mudancas gtmin"
-        - "variação gtmin" ou "variacao gtmin"
-        - "variações de gtmin" ou "variacoes de gtmin" (plural)
-        - "quais foram as variações de gtmin" ou "quais foram as variacoes de gtmin"
-        - "análise gtmin" ou "analise gtmin"
-        - "mudanças em gerações térmicas" ou "mudancas em geracoes termicas"
-        
-        Termos-chave: mudanças gtmin, variação gtmin, variações de gtmin, análise gtmin, mudancas gtmin, variacao gtmin, variacoes de gtmin, analise gtmin, geração mínima térmica, mudanças em gerações térmicas, variações em gerações térmicas.
-        """
+        return """Mudanças GTMIN geração térmica mínima decks dezembro janeiro EXPT.DAT."""

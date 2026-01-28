@@ -1,11 +1,18 @@
 """
 Módulo de observabilidade com Langfuse para rastrear chamadas LLM.
 Genérico para uso em NEWAVE e DECOMP agents.
+
+ATENÇÃO:
+- Por padrão, o Langfuse está DESABILITADO para evitar rastreamento em produção.
+- Para habilitar explicitamente, defina a variável de ambiente LANGFUSE_ENABLED=true.
 """
 from typing import Optional
 from langfuse.langchain import CallbackHandler
 from langfuse import Langfuse
 import os
+
+
+LANGFUSE_ENABLED = os.getenv("LANGFUSE_ENABLED", "").lower() in ("1", "true", "yes", "on")
 
 
 def get_langfuse_handler(
@@ -30,8 +37,12 @@ def get_langfuse_handler(
         host: Host do Langfuse (se None, tenta do ambiente)
         
     Returns:
-        CallbackHandler do Langfuse ou None se não configurado
+        CallbackHandler do Langfuse ou None se não configurado ou desabilitado
     """
+    # Curto-circuito se o Langfuse estiver desabilitado
+    if not LANGFUSE_ENABLED:
+        return None
+
     # Obter credenciais do ambiente se não fornecidas
     if not public_key:
         public_key = os.getenv("LANGFUSE_PUBLIC_KEY")
@@ -78,6 +89,10 @@ def flush_langfuse(
     Força o envio de todos os eventos pendentes para o Langfuse.
     Útil para chamar antes de encerrar a aplicação.
     """
+    # Se o Langfuse estiver desabilitado, não faz nada
+    if not LANGFUSE_ENABLED:
+        return
+
     try:
         if not public_key:
             public_key = os.getenv("LANGFUSE_PUBLIC_KEY")

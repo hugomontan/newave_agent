@@ -494,45 +494,5 @@ class RestricaoEletricaTool(NEWAVETool):
         Returns:
             String com descrição detalhada
         """
-        return """
-        Restrições elétricas. Dados de restrições elétricas do modelo NEWAVE do arquivo restricao-eletrica.csv.
-        
-        Queries que ativam esta tool:
-        - "restrição elétrica"
-        - "restrições elétricas"
-        - "fórmula restrição"
-        - "limite restrição"
-        - "horizonte restrição"
-        - "patamar restrição"
-        - "restrição 1"
-        - "código restrição 20"
-        - "limites da restrição 1"
-        - "fórmula da restrição 20"
-        - "horizonte da restrição 1"
-        - "limites da restrição 1 patamar 2"
-        - "restrição elétrica período 2025/12"
-        - "restrição Escoamento Madeira"
-        - "restrição RSUL"
-        - "restrição FNS"
-        - "limites da restrição FNS"
-        - "restrição FNS + FNESE"
-        - "restrição FNS + FNESE + XINGU"
-        - "restrição Cachoeira Caldeirão + Ferreira Gomes"
-        
-        Esta tool consulta o arquivo restricao-eletrica.csv e retorna informações sobre restrições elétricas, incluindo:
-        - Fórmulas das restrições (ger_usih, ener_interc, etc.)
-        - Períodos de validade das restrições (horizonte)
-        - Limites por período e patamar
-        
-        A tool permite filtrar por:
-        - Código da restrição (cod_rest) - ex: "restrição 1", "código restrição 20"
-        - Nome da restrição - ex: "Escoamento Madeira", "RSUL", "FNS", "FNS + FNESE", "FNS + FNESE + XINGU", "Cachoeira Caldeirão + Ferreira Gomes"
-        - Patamar (1, 2, 3, ...)
-        - Período (formato YYYY/MM)
-        
-        As restrições elétricas são usadas para modelar limites operacionais no sistema elétrico,
-        como limites de geração de usinas específicas ou limites de intercâmbio entre submercados.
-        
-        Termos-chave: restrição elétrica, restrições elétricas, fórmula restrição, limite restrição, horizonte restrição, patamar restrição, ger_usih, ener_interc, cod_rest.
-        """
+        return """Restrições elétricas restricao-eletrica.csv fórmulas horizontes limites modelo NEWAVE."""
 

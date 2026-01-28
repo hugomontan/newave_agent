@@ -523,43 +523,5 @@ class HidrCadastroTool(NEWAVETool):
         Returns:
             String com descrição detalhada
         """
-        return """
-        Informações cadastrais de usinas hidrelétricas. Dados físicos e operacionais básicos das usinas hidrelétricas do HIDR.DAT.
-        
-        Queries que ativam esta tool:
-        - "me de informacoes da usina de balbina"
-        - "dados da usina de itaipu"
-        - "informações cadastrais da usina X"
-        - "cadastro da usina Y"
-        - "características da usina Z"
-        - "dados físicos da usina"
-        - "volume mínimo da usina"
-        - "volume máximo da usina"
-        - "cota mínima da usina"
-        - "cota máxima da usina"
-        - "produtibilidade da usina"
-        - "potência nominal da usina"
-        - "conjuntos de máquinas da usina"
-        - "tipo de regulação da usina"
-        - "informações do hidr.dat da usina"
-        
-        Esta tool consulta o arquivo HIDR.DAT e retorna todas as informações cadastrais disponíveis sobre uma usina específica, incluindo:
-        - Informações básicas (nome, posto, submercado, empresa)
-        - Volumes e cotas (mínimo, máximo, vertedouro)
-        - Polinômios (volume-cota, cota-área)
-        - Evaporação mensal
-        - Conjuntos de máquinas (potência, vazão, queda nominal)
-        - Produtibilidade, perdas, vazão mínima
-        - Polinômios de jusante
-        - Tipo de regulação
-        - E mais de 60 campos no total
-        
-        A tool identifica automaticamente a usina mencionada na query através de matching inteligente:
-        - Busca por código numérico explícito
-        - Busca por nome completo da usina
-        - Busca por similaridade de strings
-        - Busca por palavras-chave do nome
-        
-        Termos-chave: hidr.dat, cadastro hidrelétrica, informações cadastrais, dados cadastrais, características da usina, dados físicos da usina, volume mínimo, volume máximo, cota mínima, cota máxima, produtibilidade, potência nominal, conjuntos de máquinas, tipo de regulação.
-        """
+        return """Cadastro usinas hidrelétricas HIDR.DAT produtibilidade volumes cotas perdas."""
 

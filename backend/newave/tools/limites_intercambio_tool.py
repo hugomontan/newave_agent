@@ -657,26 +657,5 @@ class LimitesIntercambioTool(NEWAVETool):
         Returns:
             String com descrição detalhada
         """
-        return """
-        Limites de intercâmbio entre subsistemas. Capacidade de interligação entre submercados. Intercâmbio mínimo obrigatório. Limites máximos de intercâmbio.
-        
-        Queries que ativam esta tool:
-        - "quais são os limites de intercâmbio entre subsistemas"
-        - "limites de intercâmbio"
-        - "limite de intercâmbio entre Sudeste e Sul"
-        - "limite de intercâmbio entre subsistema 1 e subsistema 2"
-        - "capacidade de intercâmbio"
-        - "intercâmbio mínimo obrigatório"
-        - "limite máximo de intercâmbio"
-        - "limites entre submercados"
-        - "capacidade de interligação"
-        - "intercâmbio de 1 para 2"
-        - "intercâmbio entre Nordeste e Sudeste"
-        - "limites de intercâmbio do Sudeste para o Sul"
-        - "capacidade de intercâmbio entre sistemas"
-        - "limite de interligação"
-        - "intercâmbio entre subsistemas"
-        
-        Termos-chave: limite de intercâmbio, limites de intercâmbio, intercâmbio entre, capacidade de intercâmbio, intercâmbio mínimo, intercâmbio máximo, capacidade de interligação, limite de interligação, intercâmbio entre subsistemas, intercâmbio entre submercados.
-        """
+        return """Limites intercâmbio subsistemas limites_intercambio SISTEMA.DAT par-a-par interligação capacidade."""
 

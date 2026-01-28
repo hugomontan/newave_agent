@@ -455,37 +455,4 @@ class ExptOperacaoTool(NEWAVETool):
         Returns:
             String com descrição detalhada
         """
-        return """
-        Operação térmica. Expansões térmicas. Modificações temporárias das características operacionais das usinas termoelétricas.
-        
-        Queries que ativam esta tool:
-        - "quais são as modificações térmicas do EXPT"
-        - "modificações térmicas"
-        - "expansão térmica"
-        - "expansões térmicas"
-        - "operação térmica"
-        - "modificação termelétrica"
-        - "expansões da usina 1"
-        - "expansões da usina ANGRA 1"
-        - "potência efetiva das térmicas"
-        - "potência efetiva térmica"
-        - "geração mínima das térmicas"
-        - "geração mínima térmica"
-        - "fator de capacidade"
-        - "fator de capacidade máximo"
-        - "indisponibilidades programadas das térmicas"
-        - "indisponibilidade programada térmica"
-        - "desativações de usinas térmicas"
-        - "desativações térmicas"
-        - "repotenciações no EXPT"
-        - "repotenciações térmicas"
-        - "modificações da usina ANGRA 1"
-        - "modificações da usina CUBATÃO"
-        - "ajustes operacionais das usinas térmicas"
-        - "alterações de capacidade das termelétricas"
-        - "quais térmicas foram desativadas"
-        - "usinas térmicas com repotenciação"
-        - "dados de operação térmica do EXPT"
-        
-        Termos-chave: expt, modificações térmicas, expansão térmica, expansões térmicas, operação térmica, modificação termelétrica, potência efetiva, geração mínima, fator de capacidade, indisponibilidade programada, desativações, repotenciações.
-        """
+        return """Modificações temporárias térmicas EXPT.DAT POTEF GTMIN FCMAX IPTER TEIFT período."""

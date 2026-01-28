@@ -837,39 +837,4 @@ class ModifOperacaoTool(NEWAVETool):
         Returns:
             String com descrição detalhada
         """
-        return """
-        Modificações hídricas. Operação hídrica. Modificações temporárias das características operacionais das usinas hidrelétricas.
-        
-        Queries que ativam esta tool:
-        - "quais são as modificações hídricas do MODIF"
-        - "modificações hídricas"
-        - "modificação hídrica"
-        - "operação hídrica"
-        - "modificações hidrelétricas"
-        - "alterações hidrelétricas"
-        - "modificações da usina 1"
-        - "modificações da usina ITAIPU"
-        - "volume mínimo das usinas"
-        - "volumes mínimos das usinas"
-        - "volume máximo das usinas"
-        - "volumes máximos das usinas"
-        - "vazão mínima da usina"
-        - "vazões mínimas das usinas"
-        - "vazão máxima da usina"
-        - "vazões máximas das usinas"
-        - "canal de fuga das usinas"
-        - "nível de montante"
-        - "nível montante"
-        - "turbinamento máximo"
-        - "turbinamento mínimo"
-        - "potência efetiva hidrelétrica"
-        - "indisponibilidades programadas das hidrelétricas"
-        - "indisponibilidade programada"
-        - "indisponibilidade forçada"
-        - "ajustes operacionais da usina"
-        - "condições de operação hídrica"
-        - "parâmetros operacionais das hidrelétricas"
-        - "dados de operação hídrica do MODIF"
-        
-        Termos-chave: modif, modificação hídrica, modificações hídricas, operação hídrica, modificação hidrelétrica, volume mínimo, volume máximo, vazão mínima, vazão máxima, canal de fuga, nível montante, turbinamento, potência efetiva hidrelétrica, indisponibilidade programada, indisponibilidade forçada.
-        """
+        return """Modificações temporárias hídricas MODIF.DAT VOLMIN VOLMAX VAZMIN VAZMAX TURBM NUMMAQ período."""

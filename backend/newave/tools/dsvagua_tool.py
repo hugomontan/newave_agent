@@ -456,37 +456,5 @@ class DsvaguaTool(NEWAVETool):
         Returns:
             String com descrição detalhada
         """
-        return """
-        Desvios de água para usos consuntivos. Dados de desvios de água por usina e estágio do arquivo DSVAGUA.DAT.
-        
-        Queries que ativam esta tool:
-        - "desvios de água do dsvagua"
-        - "desvios de água da usina X"
-        - "desvios de água da usina Itaipu"
-        - "desvio de água consuntivo"
-        - "usos consuntivos de água"
-        - "desvios de água em 2023"
-        - "desvios de água da usina 10 em janeiro"
-        - "desvios de água da usina Furnas"
-        - "desvios de água consuntivos"
-        
-        Esta tool consulta o arquivo DSVAGUA.DAT e retorna informações sobre desvios de água para usos consuntivos, incluindo:
-        - Código da usina
-        - Data (estágio) do desvio
-        - Valor do desvio
-        - Considera desvio de usina NC (não considerada)
-        - Comentários
-        
-        A tool permite filtrar por:
-        - Usina específica (código numérico ou nome da usina)
-        - Período (ano e/ou mês)
-        
-        A tool identifica automaticamente a usina mencionada na query através de matching inteligente:
-        - Busca por código numérico explícito (ex: "usina 10")
-        - Busca por nome completo da usina (ex: "usina Itaipu")
-        - Busca por similaridade de strings
-        - Busca por palavras-chave do nome
-        
-        Termos-chave: DSVAGUA, desvio de água, desvios de água, uso consuntivo, usos consuntivos, água consuntiva, diversão de água.
-        """
+        return """Desvios água usos consuntivos DSVAGUA.DAT usina estágio."""
 

@@ -38,7 +38,7 @@ from backend.decomp.config import UPLOADS_DIR
 from backend.decomp.agents.single_deck.graph import run_query as single_deck_run_query, run_query_stream as single_deck_run_query_stream
 from backend.decomp.agents.multi_deck.graph import run_query as multi_deck_run_query, run_query_stream as multi_deck_run_query_stream
 from backend.decomp.rag import index_documentation
-from backend.decomp.utils.dadger_cache import get_cached_dadger, get_cache_stats
+from backend.decomp.utils.dadger_cache import get_cache_stats
 from backend.decomp.utils.deck_loader import list_available_decks, load_deck
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import time
@@ -126,41 +126,37 @@ def preload_decomp_decks():
         
         # Listar todos os decks disponíveis
         available_decks = list_available_decks()
-        
+
         if not available_decks:
             print("[PRELOAD DECOMP] ⚠️ Nenhum deck DECOMP encontrado")
             return
-        
+
         print(f"[PRELOAD DECOMP] 📦 Encontrados {len(available_decks)} decks")
-        
+
         # Preload em paralelo (usar até 8 workers para não sobrecarregar)
         max_workers = min(8, len(available_decks))
         loaded_count = 0
         error_count = 0
         errors_detail = []
-        
+
         def load_single_deck(deck_info):
-            """Carrega um deck no cache."""
+            """Carrega um deck usando o deck_loader (que aquece os caches)."""
             try:
                 deck_name = deck_info["name"]
-                # Carregar deck (extrai se necessário)
-                deck_path = load_deck(deck_name)
-                # Carregar Dadger no cache
-                dadger = get_cached_dadger(str(deck_path))
-                if dadger:
-                    return (deck_name, True, None)
-                return (deck_name, False, "Dadger não encontrado")
+                # Carregar deck (extrai se necessário e aquece Dadger/Dadgnl via deck_loader)
+                _ = load_deck(deck_name)
+                return (deck_name, True, None)
             except Exception as e:
                 return (deck_info.get('name', 'unknown'), False, str(e))
-        
+
         print(f"[PRELOAD DECOMP] 🔄 Carregando {len(available_decks)} decks em paralelo ({max_workers} workers)...")
-        
+
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = {
-                executor.submit(load_single_deck, deck): deck 
+                executor.submit(load_single_deck, deck): deck
                 for deck in available_decks
             }
-            
+
             for future in as_completed(futures):
                 deck_name, success, error = future.result()
                 if success:
@@ -172,19 +168,19 @@ def preload_decomp_decks():
                     errors_detail.append((deck_name, error))
                     if error:
                         print(f"[PRELOAD DECOMP] ⚠️ Erro ao carregar {deck_name}: {error}")
-        
+
         elapsed = time.time() - start_time
         cache_stats = get_cache_stats()
-        
+
         print("\n" + "-"*60)
         print(f"[PRELOAD DECOMP] ✅ Preload concluído em {elapsed:.2f}s")
         print(f"[PRELOAD DECOMP]   📊 Decks carregados: {loaded_count}/{len(available_decks)}")
         print(f"[PRELOAD DECOMP]   ❌ Erros: {error_count}")
         if error_count > 0:
             print(f"[PRELOAD DECOMP]   ⚠️ Decks com erro: {[e[0] for e in errors_detail[:5]]}")
-        print(f"[PRELOAD DECOMP]   💾 Cache: {cache_stats['currsize']}/{cache_stats['maxsize']} slots usados")
+        print(f"[PRELOAD DECOMP]   💾 Cache (Dadger): {cache_stats['currsize']}/{cache_stats['maxsize']} slots usados")
         if cache_stats['hits'] + cache_stats['misses'] > 0:
-            print(f"[PRELOAD DECOMP]   🎯 Hit rate: {cache_stats['hit_rate']*100:.1f}%")
+            print(f"[PRELOAD DECOMP]   🎯 Hit rate (Dadger): {cache_stats['hit_rate']*100:.1f}%")
         print("="*60 + "\n")
         
     except Exception as e:

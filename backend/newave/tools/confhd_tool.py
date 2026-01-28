@@ -427,42 +427,5 @@ class ConfhdTool(NEWAVETool):
         Returns:
             String com descrição detalhada
         """
-        return """
-        Configuração de usinas hidrelétricas. Dados de configuração do sistema hidrelétrico do arquivo CONFHD.DAT.
-        
-        Queries que ativam esta tool:
-        - "configuração de usinas do confhd"
-        - "usinas do REE 1"
-        - "volume inicial da usina X"
-        - "status da usina Y"
-        - "usinas existentes"
-        - "usinas em expansão"
-        - "usinas modificadas"
-        - "histórico de vazões da usina Z"
-        - "cadeia hidráulica"
-        - "usina a jusante"
-        - "configuração da usina Itaipu"
-        - "ree da usina Furnas"
-        
-        Esta tool consulta o arquivo CONFHD.DAT e retorna informações de configuração das usinas, incluindo:
-        - Associação a REE (Reservatório Equivalente de Energia)
-        - Status da usina (EX=existente, EE=existente com expansão, NE=não existente, NC=não considerada)
-        - Volume inicial armazenado (% do volume útil)
-        - Índice de modificação (indica se dados serão modificados via MODIF.DAT)
-        - Histórico de vazões (anos início/fim para ajuste do modelo)
-        - Usina a jusante (cadeia hidráulica)
-        - Posto de vazões
-        
-        A tool identifica automaticamente a usina mencionada na query através de matching inteligente:
-        - Busca por código numérico explícito
-        - Busca por nome completo da usina
-        - Busca por similaridade de strings
-        - Busca por palavras-chave do nome
-        
-        A tool também permite filtrar por:
-        - REE específico
-        - Status da usina (EX, EE, NE, NC)
-        
-        Termos-chave: CONFHD, configuração hidrelétrica, REE, reservatório equivalente, volume inicial, status da usina, usina existente, usina em expansão, usina modificada, histórico de vazões, cadeia hidráulica, usina a jusante.
-        """
+        return """Configuração usinas hidrelétricas CONFHD.DAT REE volume inicial status posto."""
 

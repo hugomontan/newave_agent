@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
-import { FileText, ArrowRight, Zap, Calendar } from "lucide-react";
+import { FileText, ArrowRight, Zap, Calendar, Activity } from "lucide-react";
 
 export default function Home() {
   const router = useRouter();
@@ -41,7 +41,7 @@ export default function Home() {
             </p>
           </motion.div>
 
-          <div className="grid md:grid-cols-2 gap-6">
+          <div className="grid md:grid-cols-3 gap-6">
             {/* NEWAVE */}
             <motion.div
               initial={{ opacity: 0, x: -20 }}
@@ -119,6 +119,45 @@ export default function Home() {
                       Acessar DECOMP
                       <ArrowRight className="w-4 h-4 ml-2" />
                     </Button>
+                </CardContent>
+              </Card>
+            </motion.div>
+
+            {/* DESSEM */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.4 }}
+            >
+              <Card
+                className="h-full hover:shadow-lg transition-shadow cursor-pointer border-2 hover:border-primary/50"
+                onClick={(e) => {
+                  if ((e.target as HTMLElement).closest("button")) {
+                    return;
+                  }
+                  router.push("/dessem");
+                }}
+              >
+                <CardHeader>
+                  <div className="flex items-center space-x-3">
+                    <div className="p-3 bg-primary/10 rounded-lg">
+                      <Activity className="w-6 h-6 text-primary" />
+                    </div>
+                    <CardTitle className="text-2xl">DESSEM</CardTitle>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <Button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      router.push("/dessem");
+                    }}
+                    className="w-full"
+                    size="lg"
+                  >
+                    Acessar DESSEM
+                    <ArrowRight className="w-4 h-4 ml-2" />
+                  </Button>
                 </CardContent>
               </Card>
             </motion.div>

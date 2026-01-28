@@ -357,25 +357,5 @@ class AgrintTool(NEWAVETool):
         Returns:
             String com descrição detalhada
         """
-        return """
-        Agrupamentos de intercâmbio. Restrições lineares de transmissão. Limites combinados de interligações. Corredores de transmissão.
-        
-        Queries que ativam esta tool:
-        - "quais são os agrupamentos de intercâmbio"
-        - "agrupamentos de intercâmbio"
-        - "agrupamento 1"
-        - "limites do agrupamento 1"
-        - "interligações do agrupamento 2"
-        - "coeficientes do agrupamento"
-        - "limites por patamar do agrupamento"
-        - "restrições lineares de transmissão"
-        - "corredor de transmissão"
-        - "limite combinado de interligações"
-        - "agrupamento de intercâmbio número 3"
-        - "limites do agrupamento no patamar 1"
-        - "combinação linear de interligações"
-        - "restrições de agrupamento"
-        
-        Termos-chave: agrupamento de intercâmbio, agrupamentos de intercâmbio, agrint, restrição linear, restrições lineares, limite de agrupamento, limites de agrupamento, combinação linear, corredor de transmissão, limite combinado, limites combinados, coeficiente de agrupamento.
-        """
+        return """Agrupamentos intercâmbio AGRINT.DAT restrições lineares combinadas soma diferença múltiplas interligações."""
 

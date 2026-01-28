@@ -539,41 +539,5 @@ class CargaMensalTool(NEWAVETool):
         Returns:
             String com descrição detalhada
         """
-        return """
-        Carga mensal por submercado. Demanda mensal por submercado. Consumo mensal de energia por submercado.
-        
-        Queries que ativam esta tool:
-        - "me dê as cargas mensais por submercado"
-        - "me de as cargas mensais por submercado"
-        - "mostre as cargas mensais por submercado"
-        - "quais são as cargas mensais por submercado"
-        - "cargas mensais por submercado"
-        - "demanda mensal por submercado"
-        - "demandas mensais por submercado"
-        - "carga mensal do subsistema"
-        - "demanda mensal do subsistema"
-        - "carga do Sudeste"
-        - "demanda do Sudeste"
-        - "carga do Sul"
-        - "demanda do Sul"
-        - "carga do Norte"
-        - "demanda do Norte"
-        - "carga do Nordeste"
-        - "demanda do Nordeste"
-        - "cargas do submercado"
-        - "demandas do submercado"
-        - "consumo mensal por região"
-        - "carga total anual por submercado"
-        - "demanda total anual por submercado"
-        - "evolução da demanda mensal"
-        - "mercado energia"
-        - "submercado energia"
-        - "subsistema energia"
-        - "carga mensal subsistema 1"
-        - "demanda mensal subsistema 2"
-        - "carga do subsistema número 3"
-        - "demanda do subsistema número 4"
-        
-        Termos-chave: carga mensal, cargas mensais, demanda mensal, demandas mensais, consumo mensal, carga por submercado, demanda por submercado, carga subsistema, demanda subsistema, mercado energia, submercado energia, subsistema energia, Sudeste, Sul, Norte, Nordeste.
-        """
+        return """Carga mensal principal submercado mercado_energia SISTEMA.DAT demanda base."""
 

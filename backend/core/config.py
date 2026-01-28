@@ -107,10 +107,19 @@ def debug_print(*args, **kwargs):
     if DEBUG_MODE:
         safe_print(*args, **kwargs)
 
-# OpenAI
+# OpenAI (API pública ou Azure, dependendo da configuração)
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 OPENAI_EMBEDDING_MODEL = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+
+# Azure OpenAI (usado para embeddings via Azure)
+# Em produção, recomenda-se definir explicitamente:
+# - AZURE_OPENAI_API_KEY
+# - AZURE_OPENAI_ENDPOINT (ex.: https://it-commodities.openai.azure.com/)
+# - AZURE_OPENAI_API_VERSION (ex.: 2024-02-01)
+AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY") or OPENAI_API_KEY
+AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
+AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION") or "2024-02-01"
 
 # RAG settings
 RAG_CHUNK_SIZE = int(os.getenv("RAG_CHUNK_SIZE", "2000"))
