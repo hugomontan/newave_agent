@@ -25,16 +25,53 @@ sudo chown -R ubuntu:ubuntu /opt/nw_multi
 
 ---
 
-### 2. Trazer o código para a EC2
+### 2. Trazer o código para a EC2 (sem git na EC2)
 
-- **Via git** (recomendado), como `ubuntu`:
+Se a EC2 não tiver `git` ou `apt` funcionando, você pode enviar o código a partir do seu computador local.
+
+#### 2.1 Empacotar o projeto localmente (Windows)
+
+No seu computador:
+- No Explorer, clique com o botão direito na pasta do projeto `nw_multi`.
+- Escolha **Enviar para → Pasta compactada (.zip)**.
+- Suponha que o arquivo gerado seja `C:\Users\SEU_USUARIO\Desktop\nw_multi.zip`.
+
+#### 2.2 Enviar o `.zip` para a EC2 via `scp`
+
+No PowerShell/CMD do seu computador (onde você já usa `ssh`), rode:
+
+```powershell
+scp -i C:\caminho\para\sua-chave.pem C:\Users\SEU_USUARIO\Desktop\nw_multi.zip usuario@HOST:/home/usuario/
+```
+
+- `usuario` é o mesmo que você usa no `ssh` (`ubuntu`, `ec2-user`, etc.).
+- `HOST` é o hostname/IP que você usa no SSH.
+
+#### 2.3 Descompactar no diretório de deploy
+
+Na EC2 (já conectado via SSH como o mesmo usuário):
+
+```bash
+sudo mkdir -p /opt/nw_multi
+sudo chown -R "$USER:$USER" /opt/nw_multi
+
+mv ~/nw_multi.zip /opt/nw_multi/
+cd /opt/nw_multi
+unzip nw_multi.zip
+```
+
+Se o `.zip` criar uma pasta `nw_multi` dentro de `/opt/nw_multi`, ajuste:
 
 ```bash
 cd /opt/nw_multi
-git clone <URL_DO_REPO> .
+ls
+# Se aparecer uma pasta nw_multi dentro, faça:
+mv nw_multi/* .
+mv nw_multi/.* . 2>/dev/null || true
+rmdir nw_multi
 ```
 
-- Ou **copiar via scp/rsync** do notebook para `/opt/nw_multi`.
+Ao final, você deve ter o código em `/opt/nw_multi` com a estrutura `backend/`, `frontend/`, etc.
 
 ---
 
