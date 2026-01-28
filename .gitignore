@@ -39,11 +39,6 @@ test-results/
 playwright-report/
 playwright/.cache/
 
-# Agents específicos
-newave_agent/data/
-newave_agent/uploads/
-decomp_agent/data/
-decomp_agent/uploads/
 
 # Backup
 *.backup
